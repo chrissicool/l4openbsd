@@ -1,0 +1,1565 @@
+.\"	$OpenBSD: ifconfig.8,v 1.209 2010/08/08 20:36:58 jmc Exp $
+.\"	$NetBSD: ifconfig.8,v 1.11 1996/01/04 21:27:29 pk Exp $
+.\"     $FreeBSD: ifconfig.8,v 1.16 1998/02/01 07:03:29 steve Exp $
+.\"
+.\" Copyright (c) 1983, 1991, 1993
+.\"	The Regents of the University of California.  All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. Neither the name of the University nor the names of its contributors
+.\"    may be used to endorse or promote products derived from this software
+.\"    without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\"     @(#)ifconfig.8	8.4 (Berkeley) 6/1/94
+.\"
+.Dd $Mdocdate: August 8 2010 $
+.Dt IFCONFIG 8
+.Os
+.Sh NAME
+.Nm ifconfig
+.Nd configure network interface parameters
+.Sh SYNOPSIS
+.Nm ifconfig
+.Op Fl AaC
+.Op Ar interface
+.Op Ar address_family
+.Oo
+.Ar address
+.Op Ar dest_address
+.Oc
+.Op Ar parameters
+.Sh DESCRIPTION
+The
+.Nm
+utility is used to assign an address
+to a network interface and/or configure
+network interface parameters.
+Generally speaking,
+.Xr hostname.if 5
+files are used at boot-time to define the network address
+of each interface present on a machine;
+.Nm
+is used at
+a later time to redefine an interface's address
+or other operating parameters.
+.Pp
+.Nm
+displays the current configuration for a network interface
+when no optional parameters are supplied.
+If a protocol family is specified,
+.Nm
+will report only the details specific to that protocol family.
+If no parameters are provided, a summary of all interfaces is provided.
+.Pp
+Only the superuser may modify the configuration of a network interface.
+.Pp
+The following options are available:
+.Bl -tag -width Ds
+.It Fl A
+Causes full interface alias information for each interface to
+be displayed.
+.It Fl a
+Causes
+.Nm
+to print information on all interfaces.
+The protocol family may be specified as well.
+This is the default, if no parameters are given to
+.Nm .
+.It Fl C
+Print the names of all network pseudo-devices that
+can be created dynamically at runtime using
+.Cm ifconfig create .
+.It Ar interface
+The
+.Ar interface
+parameter is a string of the form
+.Dq name unit ,
+for example,
+.Dq en0 .
+If no optional parameters are supplied, this string can instead be just
+.Dq name .
+In this case, all interfaces of that type will be displayed.
+For example,
+.Dq carp
+will display the current configuration of all
+.Xr carp 4
+interfaces.
+.It Ar address_family
+Specifies the address family
+which affects interpretation of the remaining parameters.
+Since an interface can receive transmissions in differing protocols
+with different naming schemes, specifying the address family is recommended.
+The address or protocol families currently
+supported are
+.Dq inet ,
+.Dq inet6 ,
+and
+.Dq atalk .
+.It Ar address
+Internet version 4 and 6 addresses
+take the form of
+a host name present in the host name database,
+.Xr hosts 5 ;
+.Dq dot
+notation (IPv4);
+colon separated (IPv6);
+or CIDR notation.
+.Pp
+AppleTalk (LLAP) addresses are specified as
+.Dq nn.na
+.Pq Dq Network Number.Node Address .
+Node addresses are divided into two classes: User Node IDs and Server Node IDs.
+1\(en127($01\(en$7F) are for User Node IDs while 128\(en254($80\(en$FE)
+are used for Server Node IDs.
+Node 0($00) is not allowed (unknown)
+while Node 255($FF) is reserved for the AppleTalk broadcast hardware
+address (broadcast ID).
+.It Ar dest_address
+Specify the address of the correspondent on the other end
+of a point-to-point link.
+.El
+.Pp
+The following
+.Ar parameters
+may be set with
+.Nm :
+.Bl -tag -width dest_addressxx
+.It Cm alias
+Establish an additional network address for this interface.
+This is sometimes useful when changing network numbers, and
+one wishes to accept packets addressed to the old interface.
+.It Fl alias
+A synonym for
+.Cm delete .
+Use of this option is discouraged in favour of
+.Cm delete .
+.It Cm arp
+Enable the use of the Address Resolution Protocol (ARP)
+in mapping
+between network level addresses and link level addresses (default).
+This is currently implemented for mapping between
+DARPA Internet addresses and Ethernet addresses.
+.It Fl arp
+Disable the use of ARP.
+.It Cm broadcast Ar addr
+(inet only)
+Specify the address to use to represent broadcasts to the
+network.
+The default broadcast address is the address with a host part of all 1's.
+.It Cm create
+Create the specified network pseudo-device.
+At least the following devices can be created on demand:
+.Pp
+.Xr bridge 4 ,
+.Xr carp 4 ,
+.Xr enc 4 ,
+.Xr faith 4 ,
+.Xr gif 4 ,
+.Xr gre 4 ,
+.Xr lo 4 ,
+.Xr mpe 4 ,
+.Xr pflog 4 ,
+.Xr pflow 4 ,
+.Xr pfsync 4 ,
+.Xr ppp 4 ,
+.Xr pppoe 4 ,
+.Xr sl 4 ,
+.Xr trunk 4 ,
+.Xr tun 4 ,
+.Xr vether 4 ,
+.Xr vlan 4
+.It Cm debug
+Enable driver-dependent debugging code; usually, this turns on
+extra console error logging.
+.It Fl debug
+Disable driver-dependent debugging code.
+.It Cm delete
+Remove the specified network address,
+including any netmask or destination address configured with this address.
+.It Cm description Ar value
+Specify a description of the interface.
+This can be used to label interfaces in situations where they may
+otherwise be difficult to distinguish.
+.It Cm -description
+Clear the interface description.
+.It Cm destroy
+Destroy the specified network pseudo-device.
+.It Cm down
+Mark an interface
+.Dq down .
+When an interface is marked
+.Dq down ,
+the system will not attempt to
+transmit messages through that interface.
+If possible, the interface will be reset to disable reception as well.
+This action automatically disables routes using the interface.
+.It Cm group Ar group-name
+Assign the interface to a
+.Dq group .
+Any interface can be in multiple groups.
+.Pp
+For instance, such a group could be used to create a hardware
+independent
+.Xr pf 4
+ruleset (i.e. not one based on the names of NICs) using
+existing (egress, carp, etc.) or user-defined groups.
+.Pp
+Some interfaces belong to specific groups by default:
+.Pp
+.Bl -dash -width Ds -compact
+.It
+All interfaces are members of the
+.Em all
+interface group.
+.It
+Cloned interfaces are members of their interface family group.
+For example, a PPP interface such as
+.Em ppp0
+is a member of the
+.Em ppp
+interface family group.
+.It
+The interface(s) the default route(s) point to are members of the
+.Em egress
+interface group.
+.It
+IEEE 802.11 wireless interfaces are members of the
+.Em wlan
+interface group.
+.It
+Any interfaces used for network booting are members of the
+.Em netboot
+interface group.
+.El
+.It Cm -group Ar group-name
+Remove the interface from the given
+.Dq group .
+.It Fl inet6
+Disable
+.Xr inet6 4
+on the given interface and remove all configured
+.Xr inet6 4
+addresses, including the link-local ones.
+To turn it on again, assign any inet6 address or run
+.Xr rtsol 8 .
+.It Cm instance Ar minst
+Set the media instance to
+.Ar minst .
+This is useful for devices which have multiple physical layer interfaces
+(PHYs).
+Setting the instance on such devices may not be strictly required
+by the network interface driver as the driver may take care of this
+automatically; see the driver's manual page for more information.
+.It Cm ipdst Ar addr
+This is used to specify an Internet host which is willing to receive
+IP packets encapsulating AppleTalk packets bound for a remote network.
+An apparent point-to-point link is constructed, and
+the address specified will be taken as the address and network
+of the destination.
+IP encapsulation of Connectionless Network Protocol
+(``CLNP'')
+packets is done differently.
+.It Cm link[0-2]
+Enable special processing of the link level of the interface.
+These three options are interface specific in actual effect; however,
+they are in general used to select special modes of operation.
+An example
+of this is to enable SLIP compression, or to select the connector type
+for some Ethernet cards.
+Refer to the man page for the specific driver for more information.
+.It Fl link[0-2]
+Disable special processing at the link level with the specified interface.
+.It Cm lladdr Ar etheraddr Ns \*(Ba Ns Cm random
+Change the link layer address (MAC address) of the interface.
+This should be specified as six colon-separated hex values, or can
+be chosen randomly.
+.It Cm media Op Ar type
+Set the media type of the interface to
+.Ar type .
+If no argument is given,
+display a list of all available media.
+.Pp
+Some interfaces support the mutually exclusive use of one of several
+different physical media connectors.
+For example, a 10Mb/s Ethernet interface might support the use of either
+AUI or twisted pair connectors.
+Setting the media type to
+.Dq 10base5
+or
+.Dq AUI
+would change the currently active connector to the AUI port.
+Setting it to
+.Dq 10baseT
+or
+.Dq UTP
+would activate twisted pair.
+Refer to the interface's driver-specific man page for a complete
+list of the available types,
+or use the following command
+for a listing of choices:
+.Pp
+.Dl $ ifconfig interface media
+.It Cm mediaopt Ar opts
+Set the specified media options on the interface.
+.Ar opts
+is a comma delimited list of options to apply to the interface.
+Refer to the interface's driver-specific man page for a complete
+list of available options,
+or use the following command
+for a listing of choices:
+.Pp
+.Dl $ ifconfig interface media
+.It Fl mediaopt Ar opts
+Disable the specified media options on the interface.
+.It Cm metric Ar nhops
+Set the routing metric of the interface to
+.Ar nhops ,
+default 0.
+The routing metric can be used by routing protocols.
+Higher metrics have the effect of making a route less favorable.
+.It Cm mode Ar mode
+If the driver for the interface supports the media selection system,
+set the specified operating mode on the interface to the given
+.Ar mode .
+For IEEE 802.11 wireless interfaces that support multiple operating modes,
+this directive is used to select between 802.11a
+.Pq Dq 11a ,
+802.11b
+.Pq Dq 11b ,
+and 802.11g
+.Pq Dq 11g
+operating modes.
+.It Cm mpls
+Enable Multiprotocol Label Switching (MPLS) on the interface,
+allowing it to send and receive MPLS traffic.
+.It Fl mpls
+Disable MPLS on the interface.
+.It Cm mtu Ar value
+Set the MTU for this device to the given
+.Ar value .
+Cloned routes will inherit this value as a default.
+Currently, not all devices support setting the MTU.
+.It Cm netmask Ar mask
+(inet and inet6)
+Specify how much of the address to reserve for subdividing
+networks into subnetworks.
+The mask includes the network part of the local address
+and the subnet part, which is taken from the host field of the address.
+The mask can be specified as a single hexadecimal number
+with a leading 0x, with a dot-notation Internet address,
+or with a pseudo-network name listed in the network table
+.Xr networks 5 .
+The mask contains 1's for the bit positions in the 32-bit address
+which are to be used for the network and subnet parts,
+and 0's for the host part.
+The mask should contain at least the standard network portion,
+and the subnet field should be contiguous with the network
+portion.
+.\" see
+.\" Xr eon 5 .
+.It Cm phase Ar n
+The argument
+.Ar n
+specifies the version (phase) of the
+AppleTalk network attached to the interface.
+Values of 1 or 2 are permitted.
+.It Cm prefixlen Ar n
+(inet and inet6 only)
+Effect is similar to
+.Cm netmask ,
+but you can specify prefix length by digits.
+.It Cm priority Ar n
+Set the interface routing priority to
+.Ar n .
+This will influence the default routing priority of new static routes added to
+the kernel.
+.Ar n
+is in the range of 0 to 16 with smaller numbers being better.
+.It Cm range Ar netrange
+Under AppleTalk, set the interface to respond to a
+.Ar netrange
+of the form
+.Dq startnet-endnet .
+AppleTalk uses this scheme instead of
+netmasks though
+.Ox
+implements it internally as a set of netmasks.
+.It Cm rdomain Ar route-id
+Attach the interface to the routing table with the specified
+.Ar route-id .
+Interfaces in different routing domains are separated and can not directly
+pass traffic between each other.
+By default all interfaces belong to routing table 0.
+.It Cm rtlabel Ar route-label
+(inet)
+Attach
+.Ar route-label
+to new network routes of the specified interface.
+Route labels can be used to implement policy routing;
+see
+.Xr route 4 ,
+.Xr route 8 ,
+and
+.Xr pf.conf 5 .
+.It Cm -rtlabel
+Clear the route label.
+.It Cm timeslot Ar timeslot_range
+Set the timeslot range map, which is used to control which channels
+an interface device uses.
+.It Cm up
+Mark an interface
+.Dq up .
+This may be used to enable an interface after an
+.Cm ifconfig down .
+It happens automatically when setting the first address on an interface.
+If the interface was reset when previously marked down,
+the hardware will be re-initialized.
+.El
+.Pp
+.Nm
+supports a multitude of sub-types,
+described in the following sections:
+.Pp
+.Bl -dash -offset indent -compact
+.It
+.Xr bridge 4
+.It
+.Xr carp 4
+.It
+IEEE 802.11 (wireless devices)
+.It
+.Xr inet6 4
+.It
+interface groups
+.It
+.Xr mpe 4
+.It
+.Xr pflow 4
+.It
+.Xr pfsync 4
+.It
+.Xr pppoe 4
+.It
+.Xr sppp 4
+(PPP Link Control Protocol)
+.It
+.Xr trunk 4
+.It
+tunnel
+.Pf ( Xr gif 4
+and
+.Xr gre 4 )
+.It
+.Xr vlan 4
+.El
+.\" BRIDGE
+.Sh BRIDGE
+The following options are available for a
+.Xr bridge 4
+interface:
+.Bl -tag -width Ds
+.It Cm add Ar interface
+Add
+.Ar interface
+as a member of the bridge.
+The interface is put into promiscuous mode so
+that it can receive every packet sent on the
+network.
+An interface can be a member of at most one bridge.
+.It Cm addr
+Display the addresses that have been learned by the bridge.
+.It Cm addspan Ar interface
+Add
+.Ar interface
+as a span port on the bridge.
+.It Cm autoedge Ar interface
+Automatically detect the spanning tree edge port status on
+.Ar interface .
+This is the default for interfaces added to the bridge.
+.It Cm -autoedge Ar interface
+Disable automatic spanning tree edge port detection on
+.Ar interface .
+.It Cm autoptp Ar interface
+Automatically detect the point-to-point status on
+.Ar interface
+by checking the full duplex link status.
+This is the default for interfaces added to the bridge.
+.It Cm -autoptp Ar interface
+Disable automatic point-to-point link detection on
+.Ar interface .
+.It Cm blocknonip Ar interface
+Mark
+.Ar interface
+so that no non-IPv4, IPv6, ARP, or Reverse
+ARP packets are accepted from it or forwarded to it from other
+bridge member interfaces.
+.It Cm -blocknonip Ar interface
+Allow non-IPv4, IPv6, ARP, or Reverse ARP packets through
+.Ar interface .
+.It Cm del Ar interface
+Alias for
+.Cm delete .
+.It Cm deladdr Ar address
+Delete
+.Ar address
+from the cache.
+.It Cm delete Ar interface
+Remove
+.Ar interface
+from the bridge.
+Promiscuous mode is turned off for the interface when it is
+removed from the bridge.
+.It Cm delspan Ar interface
+Delete
+.Ar interface
+from the list of span ports of the bridge.
+.It Cm discover Ar interface
+Mark
+.Ar interface
+so that packets are sent out of the interface
+if the destination port of the packet is unknown.
+If the bridge has no address cache entry for the destination of
+a packet, meaning that there is no static entry and no dynamically learned
+entry for the destination, the bridge will forward the packet to all member
+interfaces that have this flag set.
+This is the default for interfaces added to the bridge.
+.It Cm -discover Ar interface
+Mark
+.Ar interface
+so that packets are not sent out of the interface
+if the destination port of the packet is unknown.
+Turning this flag
+off means that the bridge will not send packets out of this interface
+unless the packet is a broadcast packet, multicast packet, or a
+packet with a destination address found on the interface's segment.
+This, in combination with static address cache entries,
+prevents potentially sensitive packets from being sent on
+segments that have no need to see the packet.
+.It Cm down
+Stop the bridge from forwarding packets.
+.It Cm edge Ar interface
+Set
+.Ar interface
+as a spanning tree edge port.
+An edge port is a single connection to the network and cannot create
+bridge loops.
+This allows a straight transition to forwarding.
+.It Cm -edge Ar interface
+Disable edge port status on
+.Ar interface .
+.It Cm flush
+Remove all dynamically learned addresses from the cache.
+.It Cm flushall
+Remove all addresses from the cache including static addresses.
+.It Cm flushrule Ar interface
+Remove all Ethernet MAC filtering rules from
+.Ar interface .
+.It Cm fwddelay Ar time
+Set the time (in seconds) before an interface begins forwarding packets.
+Defaults to 15 seconds, minimum of 4, maximum of 30.
+.It Cm hellotime Ar time
+Set the time (in seconds) between broadcasting spanning tree protocol
+configuration packets.
+Defaults to 2 seconds, minimum of 1, maximum of 2.
+This option is only supported in STP mode with rapid transitions disabled;
+see the
+.Cm proto
+command for setting the protocol version.
+.It Cm holdcnt Ar time
+Set the transmit hold count, which is the number of spanning tree protocol
+packets transmitted before being rate limited.
+Defaults to 6, minimum of 1, maximum of 10.
+.It Cm ifcost Ar interface Ar num
+Set the spanning tree path cost of
+.Ar interface
+to
+.Ar num .
+Defaults to 55, minimum of 1, maximum of 200000000 in RSTP mode,
+and maximum of 65535 in STP mode.
+.It Cm -ifcost Ar interface
+Automatically calculate the spanning tree priority of
+.Ar interface
+based on the current link speed, interface status, and spanning tree mode.
+This is the default for interfaces added to the bridge.
+.It Cm ifpriority Ar interface Ar num
+Set the spanning tree priority of
+.Ar interface
+to
+.Ar num .
+Defaults to 128, minimum of 0, maximum of 240.
+.It Cm learn Ar interface
+Mark
+.Ar interface
+so that the source address of packets received from
+the interface
+are entered into the address cache.
+This is the default for interfaces added to the bridge.
+.It Cm -learn Ar interface
+Mark
+.Ar interface
+so that the source address of packets received from interface
+are not entered into the address cache.
+.It Cm link0
+Setting this flag stops all IP multicast packets from
+being forwarded by the bridge.
+.It Cm -link0
+Clear the
+.Cm link0
+flag on the bridge interface.
+.It Cm link1
+Setting this flag stops all non-IP multicast packets from
+being forwarded by the bridge.
+.It Cm -link1
+Clear the
+.Cm link1
+flag on the bridge interface.
+.It Cm link2
+Setting this flag causes all packets to be passed on to
+.Xr ipsec 4
+for processing, based on the policies established by the administrator
+using the
+.Xr ipsecctl 8
+command and
+.Xr ipsec.conf 5 .
+If appropriate security associations (SAs) exist, they will be used to
+encrypt or decrypt the packets.
+Otherwise, any key management daemons such as
+.Xr isakmpd 8
+that are running on the bridge will be invoked to establish the
+necessary SAs.
+These daemons have to be configured as if they were running on the
+host whose traffic they are protecting (i.e. they need to have the
+appropriate authentication and authorization material, such as keys
+and certificates, to impersonate the protected host(s)).
+.It Cm -link2
+Clear the
+.Cm link2
+flag on the bridge interface.
+.It Cm maxaddr Ar size
+Set the address cache size to
+.Ar size .
+The default is 100 entries.
+.It Cm maxage Ar time
+Set the time (in seconds) that a spanning tree protocol configuration is valid.
+Defaults to 20 seconds, minimum of 6, maximum of 40.
+.It Cm proto Ar value
+Force the spanning tree protocol version.
+The available values are
+.Ar rstp
+to operate in the default Rapid Spanning Tree (RSTP) mode
+or
+.Ar stp
+to force operation in Spanning Tree (STP) mode with rapid transitions disabled.
+.It Cm ptp Ar interface
+Set
+.Ar interface
+as a point-to-point link.
+This is required for straight transitions to forwarding and
+should be enabled for a full duplex link or a
+.Xr trunk 4
+with at least two physical links to the same network segment.
+.It Cm -ptp Ar interface
+Disable point-to-point link status on
+.Ar interface .
+This should be disabled for a half duplex link and for an interface
+connected to a shared network segment,
+like a hub or a wireless network.
+.It Xo
+.Cm rule
+.Cm block Ns \*(Ba Ns Cm pass
+.Op Cm in \*(Ba out
+.Cm on Ar interface
+.Op Cm src Ar address
+.Op Cm dst Ar address
+.Op Cm tag Ar tagname
+.Xc
+Add a filtering rule to an interface.
+Rules have a similar syntax to those in
+.Xr pf.conf 5 .
+Rules can be used to selectively block or pass frames based on Ethernet
+MAC addresses.
+They can also tag packets for
+.Xr pf 4
+to filter on.
+Rules are processed in the order in which they were added
+to the interface, and the first rule matched takes the action (block or pass)
+and, if given, the tag of the rule.
+If no source or destination address is specified, the
+rule will match all frames (good for creating a catchall policy).
+.It Cm rulefile Ar filename
+Load a set of rules from the file
+.Ar filename .
+.It Cm rules Ar interface
+Display the active filtering rules in use on
+.Ar interface .
+.It Cm spanpriority Ar num
+Set the spanning priority of this bridge to
+.Ar num .
+Defaults to 32768, minimum of 0, maximum of 61440.
+.It Cm static Ar interface address
+Add a static entry into the address cache pointing to
+.Ar interface .
+Static entries are never aged out of the cache or replaced, even if the address
+is seen on a different interface.
+.It Cm stp Ar interface
+Enable spanning tree protocol on
+.Ar interface .
+.It Cm -stp Ar interface
+Disable spanning tree protocol on
+.Ar interface .
+This is the default for interfaces added to the bridge.
+.It Cm timeout Ar time
+Set the timeout, in seconds, for addresses in the cache to
+.Ar time .
+The default is 240 seconds.
+If
+.Ar time
+is set to zero, then entries will not be expired.
+.It Cm up
+Start the bridge forwarding packets.
+.El
+.\" CARP
+.Sh CARP
+.nr nS 1
+.Bk -words
+.Nm ifconfig
+.Ar carp-interface
+.Op Cm advbase Ar n
+.Op Cm advskew Ar n
+.Op Cm balancing Ar mode
+.Op Cm carpnodes Ar vhid:advskew,vhid:advskew,...
+.Op Cm carpdev Ar iface
+.Op Oo Fl Oc Ns Cm carppeer Ar peer_address
+.Op Cm pass Ar passphrase
+.Op Cm state Ar state
+.Op Cm vhid Ar host-id
+.Ek
+.nr nS 0
+.Pp
+The following options are available for a
+.Xr carp 4
+interface:
+.Bl -tag -width Ds
+.It Cm advbase Ar n
+Set the base advertisement interval to
+.Ar n
+seconds.
+This is an 8-bit number; the default value is 1 second.
+.It Cm advskew Ar n
+Skew the advertisement interval by
+.Ar n .
+This is an 8-bit number; the default value is 0.
+.It Cm balancing Ar mode
+Set the load balancing mode to
+.Ar mode .
+Valid modes are
+.Ar arp ,
+.Ar ip ,
+.Ar ip-stealth ,
+and
+.Ar ip-unicast .
+.It Cm carpnodes Ar vhid:advskew,vhid:advskew,...
+Create a load balancing group consisting of up to 32 nodes.
+Each node is specified as a
+.Ar vhid:advskew
+tuple in a comma separated list.
+.It Cm carpdev Ar iface
+Attach to
+.Ar iface .
+If not specified, the kernel will attempt to select an interface with
+a subnet matching that of the carp interface.
+.It Cm carppeer Ar peer_address
+Send the carp advertisements to a specified
+point-to-point peer or multicast group instead of sending the messages
+to the default carp multicast group.
+The
+.Ar peer_address
+is the IP address of the other host taking part in the carp cluster.
+With this option,
+.Xr carp 4
+traffic can be protected using
+.Xr ipsec 4
+and it may be desired in networks that do not allow or have problems
+with IPv4 multicast traffic.
+.It Fl carppeer
+Send the advertisements to the default carp multicast
+group.
+.It Cm pass Ar passphrase
+Set the authentication key to
+.Ar passphrase .
+There is no passphrase by default.
+.It Cm state Ar state
+Explicitly force the interface to enter this state.
+Valid states are
+.Ar init ,
+.Ar backup ,
+and
+.Ar master .
+.It Cm vhid Ar n
+Set the virtual host ID to
+.Ar n .
+Acceptable values are 1 to 255.
+.El
+.Pp
+Taken together, the
+.Cm advbase
+and
+.Cm advskew
+indicate how frequently, in seconds, the host will advertise the fact that it
+considers itself master of the virtual host.
+The formula is
+.Cm advbase
++
+.Pf ( Cm advskew
+/ 256).
+If the master does not advertise within three times this interval, this host
+will begin advertising as master.
+.\" IEEE 802.11
+.Sh IEEE 802.11 (WIRELESS DEVICES)
+.nr nS 1
+.Bk -words
+.Nm ifconfig
+.Ar wireless-interface
+.Op Oo Fl Oc Ns Cm bssid Ar bssid
+.Op Oo Fl Oc Ns Cm chan Op Ar n
+.Op Oo Fl Oc Ns Cm nwflag Ar flag
+.Op Oo Fl Oc Ns Cm nwid Ar id
+.Op Oo Fl Oc Ns Cm nwkey Ar key
+.Op Oo Fl Oc Ns Cm powersave Op Ar duration
+.Op Cm scan
+.Op Oo Fl Oc Ns Cm txpower Ar dBm
+.Op Oo Fl Oc Ns Cm wpa
+.Op Cm wpaakms Ar akm,akm,...
+.Op Cm wpaciphers Ar cipher,cipher,...
+.Op Cm wpagroupcipher Ar cipher
+.Op Cm wpaprotos Ar proto,proto,...
+.Op Oo Fl Oc Ns Cm wpapsk Ar psk
+.Ek
+.nr nS 0
+.Pp
+The following options are available for a wireless interface:
+.Bl -tag -width Ds
+.It Cm bssid Ar bssid
+Set the desired BSSID.
+.It Fl bssid
+Unset the desired BSSID.
+The interface will automatically select a BSSID in this mode, which is
+the default.
+.It Cm chan Op Ar n
+Set the channel (radio frequency) to
+.Ar n .
+.Pp
+With no channel specified,
+show the list of channels supported by the device.
+.It Fl chan
+Unset the desired channel.
+It doesn't affect the channel to be created for IBSS or Host AP mode.
+.It Cm nwflag Ar flag
+Set specified flag.
+The flag name can be either
+.Ql hidenwid
+or
+.Ql nobridge .
+The
+.Ql hidenwid
+flag will hide the network ID (ESSID) in beacon frames when operating
+in Host AP mode.
+It will also prevent responses to probe requests with an unspecified
+network ID.
+The
+.Ql nobridge
+flag will disable the direct bridging of frames between associated
+nodes when operating in Host AP mode.
+Setting this flag will block and filter direct inter-station
+communications.
+.Pp
+Note that the
+.Ql hidenwid
+and
+.Ql nobridge
+options do not provide any security.
+The hidden network ID will be sent in clear text by associating
+stations and can be easily discovered with tools like
+.Xr tcpdump 8
+and
+.Xr hostapd 8 .
+.It Fl nwflag Ar flag
+Remove specified flag.
+.It Cm nwid Ar id
+Configure network ID.
+The
+.Ar id
+can either be any text string up to 32 characters in length,
+or a series of hexadecimal digits up to 64 digits.
+The empty string allows the interface to connect to any available
+access points.
+Note that network ID is synonymous with Extended Service Set ID (ESSID).
+.It Fl nwid
+Set the network ID to the empty string to allow the interface to connect
+to any available access point.
+.It Cm nwkey Ar key
+Enable WEP encryption using the specified
+.Ar key .
+The
+.Ar key
+can either be a string, a series of hexadecimal digits (preceded by
+.So 0x Sc ) ,
+or a set of keys
+of the form
+.Dq n:k1,k2,k3,k4
+where
+.Sq n
+specifies which of the keys will be used for transmitted packets,
+and the four keys,
+.Dq k1
+through
+.Dq k4 ,
+are configured as WEP keys.
+If a set of keys is specified, a comma
+.Pq Sq \&,
+within the key must be escaped with a backslash.
+Note that if multiple keys are used, their order must be the same within
+the network.
+The length of each key must be either 40 bits, i.e. a 5-character string or
+10 hexadecimal digits or 104 bits (13-character).
+.It Fl nwkey
+Disable WEP encryption.
+.It Cm nwkey Cm persist
+Enable WEP encryption using the persistent key stored in the network card.
+.It Cm nwkey Cm persist : Ns Ar key
+Write
+.Ar key
+to the persistent memory of the network card, and
+enable WEP encryption using that
+.Ar key .
+.It Cm powersave Op Ar duration
+Enable 802.11 power saving mode.
+Optionally set the receiver sleep duration (in milliseconds).
+.It Fl powersave
+Disable 802.11 power saving mode.
+.It Cm scan
+Show the results of an access point scan.
+In Host AP mode, this will dump the list of known nodes without scanning.
+.It Cm txpower Ar dBm
+Set the transmit power.
+The driver will disable any auto level and transmit power controls in this
+mode.
+.It Fl txpower
+Disable manual transmit power mode and enable any auto level and transmit
+power controls.
+.It Cm wpa
+Enable Wi-Fi Protected Access.
+WPA is a Wi-Fi Alliance protocol based on the IEEE 802.11i standard.
+It was designed to enhance the security of wireless networks.
+Notice that not all drivers support WPA.
+Check the driver's manual page to know if this option is supported.
+.It Fl wpa
+Disable Wi-Fi Protected Access.
+.It Cm wpaakms Ar akm,akm,...
+Set the comma-separated list of allowed authentication and key management
+protocols.
+.Pp
+The supported values are
+.Dq psk
+and
+.Dq 802.1x .
+.Ar psk
+authentication (also known as personal mode) uses a 256-bit pre-shared key.
+.Ar 802.1x
+authentication (also known as enterprise mode) is meant to be used with
+an external IEEE 802.1X authentication server,
+but is currently unsupported.
+The default value is
+.Dq psk .
+.Dq psk
+can only be used if a pre-shared key is configured using the
+.Cm wpapsk
+option.
+.It Cm wpaciphers Ar cipher,cipher,...
+Set the comma-separated list of allowed pairwise ciphers.
+.Pp
+The supported values are
+.Dq tkip ,
+.Dq ccmp ,
+and
+.Dq usegroup .
+.Ar usegroup
+specifies that no pairwise ciphers are supported and that only group keys
+should be used.
+The default value is
+.Dq tkip,ccmp .
+If multiple pairwise ciphers are specified, the pairwise cipher will
+be negotiated between the station and the access point at association
+time.
+A station will always try to use
+.Ar ccmp
+over
+.Ar tkip
+if both ciphers are allowed and supported by the access point.
+If the selected cipher is not supported by the hardware, software
+encryption will be used.
+Check the driver's manual page to know which ciphers are supported in
+hardware.
+.It Cm wpagroupcipher Ar cipher
+Set the group cipher used to encrypt broadcast and multicast traffic.
+.Pp
+The supported values are
+.Dq wep40 ,
+.Dq wep104 ,
+.Dq tkip ,
+and
+.Dq ccmp .
+The default value is
+.Dq tkip .
+The use of
+.Ar wep40
+or
+.Ar wep104
+as the group cipher is discouraged due to weaknesses in WEP.
+The
+.Cm wpagroupcipher
+option is available in Host AP mode only.
+A station will always use the group cipher of the BSS.
+.It Cm wpaprotos Ar proto,proto,...
+Set the comma-separated list of allowed WPA protocol versions.
+.Pp
+The supported values are
+.Dq wpa1
+and
+.Dq wpa2 .
+.Ar wpa1
+is based on draft 3 of the IEEE 802.11i standard whereas
+.Ar wpa2
+is based on the ratified standard.
+The default value is
+.Dq wpa1,wpa2 .
+If
+.Dq wpa1,wpa2
+is specified, a station will always use the
+.Ar wpa2
+protocol when supported by the access point.
+.It Cm wpapsk Ar psk
+Set the 256-bit pre-shared key.
+The pre-shared key must be specified using a series of 64 hexadecimal digits
+(preceded by
+.So 0x Sc ) .
+The pre-shared key will be used only if
+.Dq psk
+authentication is allowed using the
+.Cm wpaakms
+option.
+Pre-shared keys can be generated from passphrases using
+.Xr wpa-psk 8 ,
+as in the following example, which configures wpi0 to join network
+.Dq my_net
+using WPA-PSK with passphrase
+.Dq my_passphrase :
+.Bd -literal -offset indent
+# ifconfig wpi0 nwid my_net wpa wpapsk \e
+        `wpa-psk my_net my_passphrase`
+.Ed
+.It Fl wpapsk
+Delete the pre-shared key.
+This will prevent
+.Dq psk
+authentication.
+.El
+.\" INET6
+.Sh INET6
+.nr nS 1
+.Bk -words
+.Nm ifconfig
+.Ar inet6-interface
+.Op Oo Fl Oc Ns Cm anycast
+.Op Oo Fl Oc Ns Cm autoconfprivacy
+.Op Cm eui64
+.Op Cm pltime Ar n
+.Op Oo Fl Oc Ns Cm tentative
+.Op Cm vltime Ar n
+.Ek
+.nr nS 0
+.Pp
+The following options are available for an
+.Xr ip6 4
+interface:
+.Bl -tag -width Ds
+.It Cm anycast
+Set the IPv6 anycast address bit.
+.It Fl anycast
+Clear the IPv6 anycast address bit.
+.It Cm autoconfprivacy
+Enable privacy extensions for stateless IPv6 address autoconfiguration
+(RFC 4941) on the interface.
+The purpose of these extensions is to prevent tracking of individual
+devices which connect to the IPv6 internet from different networks
+using stateless autoconfiguration.
+The interface identifier often remains constant and provides the lower
+64 bits of an autoconfigured IPv6 address, facilitating tracking of
+individual devices (and hence, potentially, users of these devices)
+over long periods of time (weeks to months to years).
+When these extensions are active, random interface identifiers are used
+for autoconfigured addresses.
+.Pp
+Autoconfigured addresses are also made temporary, which means that they
+will automatically be replaced regularly.
+Temporary addresses are deprecated after 24 hours.
+Once a temporary address has been deprecated, a new temporary address
+will be configured upon reception of a router advertisement indicating
+that the prefix is still valid.
+Deprecated addresses will not be used for new connections as long as a
+non-deprecated address remains available.
+Temporary addresses become invalid after one week, at which time they
+will be removed from the interface.
+Address lifetime extension through router advertisements is ignored
+for temporary addresses.
+.It Fl autoconfprivacy
+Disable IPv6 autoconf privacy extensions on the interface.
+Currently configured addresses will not be removed until they become
+invalid.
+.It Cm eui64
+Fill the interface index
+.Pq the lowermost 64th bit of an IPv6 address
+automatically.
+.It Cm pltime Ar n
+Set preferred lifetime for the address.
+.It Cm tentative
+Set the IPv6 tentative address bit.
+.It Fl tentative
+Clear the IPv6 tentative address bit.
+.It Cm vltime Ar n
+Set valid lifetime for the address.
+.El
+.\" INTERFACE GROUPS
+.Sh INTERFACE GROUPS
+.Nm ifconfig
+.Fl g
+.Ar group-name
+.Oo
+.Oo Fl Oc Ns Cm carpdemote
+.Op Ar number
+.Oc
+.Pp
+The following options are available for interface groups:
+.Bl -tag -width Ds
+.It Fl g Ar group-name
+Specify the group.
+.It Cm carpdemote Op Ar number
+Increase
+.Xr carp 4
+demote count for given interface group by
+.Ar number .
+If
+.Ar number
+is omitted, it is increased by 1.
+.It Fl carpdemote Op Ar number
+Decrease
+.Xr carp 4
+demote count for given interface group by
+.Ar number .
+If
+.Ar number
+is omitted, it is decreased by 1.
+.El
+.\" MPE
+.Sh MPE
+.Nm ifconfig
+.Ar mpe-interface
+.Op Cm mplslabel Ar mpls-label
+.Pp
+The following options are available for an
+.Xr mpe 4
+interface:
+.Bl -tag -width Ds
+.It Cm mplslabel Ar mpls-label
+Set the MPLS label to
+.Ar mpls-label .
+This value is a 20-bit number which will be used as the MPLS header for
+packets entering the MPLS domain.
+.El
+.\" PFLOW
+.Sh PFLOW
+.Nm ifconfig
+.Ar pflow-interface
+.Op Oo Fl Oc Ns Cm flowdst Ar addr : Ns Ar port
+.Op Oo Fl Oc Ns Cm flowsrc Ar addr
+.Pp
+The following options are available for a
+.Xr pflow 4
+interface:
+.Bl -tag -width Ds
+.It Cm flowdst Ar addr : Ns Ar port
+Set the receiver address and the port for
+.Xr pflow 4
+packets.
+Both must be defined to export pflow data.
+.Ar addr
+is the IP address and
+.Ar port
+is the port number of the flow collector.
+Pflow data will be sent to this address/port.
+.It Fl flowdst
+Unset the receiver address and stop sending pflow data.
+.It Cm flowsrc Ar addr
+Set the source IP address for pflow packets.
+.Ar addr
+is the IP address used as sender of the UDP packets and may be used to
+identify the source of the data on the pflow collector.
+.It Fl flowsrc
+Unset the source address.
+.El
+.\" PFSYNC
+.Sh PFSYNC
+.nr nS 1
+.Bk -words
+.Nm ifconfig
+.Ar pfsync-interface
+.Op Oo Fl Oc Ns Cm defer
+.Op Cm maxupd Ar n
+.Op Oo Fl Oc Ns Cm syncdev Ar iface
+.Op Oo Fl Oc Ns Cm syncpeer Ar peer_address
+.Ek
+.nr nS 0
+.Pp
+The following options are available for a
+.Xr pfsync 4
+interface:
+.Bl -tag -width Ds
+.It Cm defer
+Defer transmission of the first packet in a state until a peer has
+acknowledged that the associated state has been inserted.
+See
+.Xr pfsync 4
+for more information.
+.It Fl defer
+Do not defer the first packet in a state.
+This is the default.
+.It Cm maxupd Ar n
+Indicate the maximum number
+of updates for a single state which can be collapsed into one.
+This is an 8-bit number; the default value is 128.
+.It Cm syncdev Ar iface
+Use the specified interface
+to send and receive pfsync state synchronisation messages.
+.It Fl syncdev
+Stop sending pfsync state synchronisation messages over the network.
+.It Cm syncpeer Ar peer_address
+Make the pfsync link point-to-point rather than using
+multicast to broadcast the state synchronisation messages.
+The peer_address is the IP address of the other host taking part in
+the pfsync cluster.
+With this option,
+.Xr pfsync 4
+traffic can be protected using
+.Xr ipsec 4 .
+.It Fl syncpeer
+Broadcast the packets using multicast.
+.El
+.\" PPPOE
+.Sh PPPOE
+.nr nS 1
+.Bk -words
+.Nm ifconfig
+.Ar pppoe-interface
+.Op Cm authkey Ar key
+.Op Cm authname Ar name
+.Op Cm authproto Ar proto
+.Op Oo Fl Oc Ns Cm peerflag Ar flag
+.Op Cm peerkey Ar key
+.Op Cm peername Ar name
+.Op Cm peerproto Ar proto
+.Op Oo Fl Oc Ns Cm pppoeac Ar access-concentrator
+.Op Cm pppoedev Ar parent-interface
+.Op Oo Fl Oc Ns Cm pppoesvc Ar service
+.Ek
+.nr nS 0
+.Pp
+.Xr pppoe 4
+uses the
+.Xr sppp 4
+"generic" SPPP framework.
+Any options not described in the section immediately following
+are described in the
+.Sx SPPP
+section, below.
+.Pp
+The following options are available for a
+.Xr pppoe 4
+interface:
+.Bl -tag -width Ds
+.It Cm pppoeac Ar access-concentrator
+Set the name of the access-concentrator.
+.It Fl pppoeac
+Clear a previously set access-concentrator name.
+.It Cm pppoedev Ar parent-interface
+Set the name of the interface through which
+packets will be transmitted and received.
+.It Cm pppoesvc Ar service
+Set the service name of the interface.
+.It Fl pppoesvc
+Clear a previously set service name.
+.El
+.\" SPPP
+.Sh SPPP (PPP LINK CONTROL PROTOCOL)
+.nr nS 1
+.Bk -words
+.Nm
+.Ar sppp-interface
+.Op Cm authkey Ar key
+.Op Cm authname Ar name
+.Op Cm authproto Ar proto
+.Op Oo Fl Oc Ns Cm peerflag Ar flag
+.Op Cm peerkey Ar key
+.Op Cm peername Ar name
+.Op Cm peerproto Ar proto
+.Ek
+.nr nS 0
+.Pp
+The following options are availble for an
+.Xr sppp 4
+or
+.Xr pppoe 4
+interface:
+.Bl -tag -width Ds
+.It Cm authkey Ar key
+Set the client key or password for the PPP authentication protocol.
+.It Cm authname Ar name
+Set the client name for the PPP authentication protocol.
+.It Cm authproto Ar proto
+Set the PPP authentication protocol on the specified
+interface acting as a client.
+The protocol name can be either
+.Ql chap ,
+.Ql pap ,
+or
+.Ql none .
+In the latter case, authentication will be turned off.
+.It Cm peerflag Ar flag
+Set a specified PPP flag for the remote authenticator.
+The flag name can be either
+.Ql callin
+or
+.Ql norechallenge .
+The
+.Ql callin
+flag will require the remote peer to authenticate only when he's
+calling in, but not when the peer is called by the local client.
+This is required for some peers that do not implement the
+authentication protocols symmetrically.
+The
+.Ql norechallenge
+flag is only meaningful with the CHAP protocol to not re-challenge
+once the initial CHAP handshake has been successful.
+This is used to work around broken peer implementations that can't
+grok being re-challenged once the connection is up.
+.It Fl peerflag Ar flag
+Remove a specified PPP flag for the remote authenticator.
+.It Cm peerkey Ar key
+Set the authenticator key or password for the PPP authentication protocol.
+.It Cm peername Ar name
+Set the authenticator name for the PPP authentication protocol.
+.It Cm peerproto Ar proto
+Set the PPP authentication protocol on the specified
+interface acting as an authenticator.
+The protocol name can be either
+.Ql chap ,
+.Ql pap ,
+or
+.Ql none .
+In the latter case, authentication will be turned off.
+.El
+.\" TRUNK
+.Sh TRUNK
+.Nm ifconfig
+.Ar trunk-interface
+.Op Oo Fl Oc Ns Cm trunkport Ar child-iface
+.Op Cm trunkproto Ar proto
+.Pp
+The following options are available for a
+.Xr trunk 4
+interface:
+.Bl -tag -width Ds
+.It Cm trunkport Ar child-iface
+Add
+.Ar child-iface
+as a trunk port.
+.It Fl trunkport Ar child-iface
+Remove the trunk port
+.Ar child-iface .
+.It Cm trunkproto Ar proto
+Set the trunk protocol.
+Refer to
+.Xr trunk 4
+for a complete list of the available protocols,
+.El
+.\" TUNNEL
+.Sh TUNNEL
+.nr nS 1
+.Bk -words
+.Nm ifconfig
+.Ar tunnel-interface
+.Op Cm deletetunnel Ar src_address dest_address
+.Op Oo Fl Oc Ns Cm keepalive Ar period count
+.Op Cm tunnel Ar src_address dest_address
+.Op Cm tunneldomain Ar route-id
+.Ek
+.nr nS 0
+.Pp
+The following options are available for a tunnel interface:
+.Bl -tag -width Ds
+.It Cm deletetunnel Ar src_address dest_address
+Remove the source and destination tunnel addresses.
+.It Cm keepalive Ar period count
+Enable
+.Xr gre 4
+keepalive with a packet sent every
+.Ar period
+seconds.
+A second timer is run with a timeout of
+.Ar count
+*
+.Ar period .
+If no keepalive response is received during that time, the link is considered
+down.
+The minimal usable
+.Ar count
+is 2 since the round-trip time of keepalive packets needs to be accounted for.
+.It Fl keepalive
+Disable the
+.Xr gre 4
+keepalive mechanism.
+.It Cm tunnel Ar src_address dest_address
+Set the source and destination tunnel addresses on a tunnel interface,
+including
+.Xr gif 4 .
+Packets routed to this interface will be encapsulated in
+IPv4 or IPv6, depending on the source and destination address families.
+Both addresses must be of the same family.
+.It Cm tunneldomain Ar route-id
+Use routing table
+.Ar route-id
+instead of the default table.
+The tunnel does not need to terminate in the same routing domain as the
+interface itself.
+.Ar route-id
+can be set to any valid routing table ID;
+the corresponding routing domain is derived from this table.
+.El
+.\" VLAN
+.Sh VLAN
+.nr nS 1
+.Bk -words
+.Nm ifconfig
+.Ar vlan-interface
+.Op Cm vlan Ar vlan-tag
+.Op Oo Fl Oc Ns Cm vlandev Ar parent-interface
+.Op Cm vlanprio Ar vlan-priority
+.Ek
+.nr nS 0
+.Pp
+The following options are available for a
+.Xr vlan 4
+interface:
+.Bl -tag -width Ds
+.It Cm vlan Ar vlan-tag
+Set the vlan tag value
+to
+.Ar vlan-tag .
+This value is a 12-bit number which is used to create an 802.1Q
+vlan header for packets sent from the vlan interface.
+This value cannot be changed once it is set for an interface.
+.It Cm vlandev Ar parent-interface
+Associate with physical interface
+.Ar iface .
+Packets transmitted through the vlan interface will be
+diverted to the specified physical interface
+.Ar iface
+with 802.1Q vlan encapsulation.
+Packets with 802.1Q encapsulation received
+by the parent interface with the correct vlan tag will be diverted to
+the associated vlan pseudo-device.
+The vlan interface is assigned a
+copy of the parent interface's flags and the parent's Ethernet address.
+If
+.Cm vlandev
+and
+.Cm vlan
+are not set at the same time, the vlan tag will be inferred from
+the interface name, for instance
+.Cm vlan5
+will be assigned 802.1Q tag 5.
+If the vlan interface already has
+a physical interface associated with it, this command will fail.
+To change the association to another physical interface, the existing
+association must be cleared first.
+.It Fl vlandev
+Disassociate from the physical interface.
+This breaks the link between the vlan interface and its parent,
+clears its vlan tag, flags, and link address, and shuts the interface down.
+.It Cm vlanprio Ar vlan-priority
+Set the vlan priority value
+to
+.Ar vlan-priority .
+This value is a 3-bit number which is used to create an 802.1Q
+vlan header for packets sent from the vlan interface.
+.El
+.Sh EXAMPLES
+Assign the
+address of 192.168.1.10 with a network mask of
+255.255.255.0 to interface fxp0:
+.Pp
+.Dl # ifconfig fxp0 inet 192.168.1.10 netmask 255.255.255.0
+.Pp
+Configure the xl0 interface to use 100baseTX, full duplex:
+.Pp
+.Dl # ifconfig xl0 media 100baseTX mediaopt full-duplex
+.Pp
+Label the em0 interface as an uplink:
+.Pp
+.Dl # ifconfig em0 description \&"Uplink to Gigabit Switch 2\&"
+.Pp
+Create the gif1 network interface:
+.Pp
+.Dl # ifconfig gif1 create
+.Pp
+Scan for wireless networks using bwi0:
+.Pp
+.Dl # ifconfig bwi0 scan
+.Sh DIAGNOSTICS
+Messages indicating the specified interface does not exist, the
+requested address is unknown, or the user is not privileged and
+tried to alter an interface's configuration.
+.Sh SEE ALSO
+.Xr netstat 1 ,
+.Xr ifmedia 4 ,
+.Xr inet 4 ,
+.Xr intro 4 ,
+.Xr netintro 4 ,
+.Xr hostname.if 5 ,
+.Xr hosts 5 ,
+.Xr networks 5 ,
+.Xr rc 8 ,
+.Xr tcpdump 8
+.Sh HISTORY
+The
+.Nm
+command appeared in
+.Bx 4.2 .

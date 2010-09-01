@@ -1,0 +1,118 @@
+.\"	$OpenBSD: microtime.9,v 1.13 2008/06/26 05:42:08 ray Exp $
+.\"     $NetBSD: microtime.9,v 1.2 1999/03/16 00:40:47 garbled Exp $
+.\"
+.\" Copyright (c) 1998 The NetBSD Foundation, Inc.
+.\" All rights reserved.
+.\"
+.\" This code is derived from software contributed to The NetBSD Foundation
+.\" by Jeremy Cooper.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+.\" ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+.\" TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+.\" PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+.\" BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+.\" CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+.\" SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+.\" INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+.\" CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+.\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.\" POSSIBILITY OF SUCH DAMAGE.
+.\"
+.Dd $Mdocdate: June 26 2008 $
+.Dt MICROTIME 9
+.Os
+.Sh NAME
+.Nm microtime ,
+.Nm getmicrotime ,
+.Nm microuptime ,
+.Nm getmicrouptime ,
+.Nm nanotime ,
+.Nm getnanotime ,
+.Nm nanouptime ,
+.Nm getnanouptime ,
+.Nm bintime ,
+.Nm binuptime
+.Nd system clock
+.Sh SYNOPSIS
+.Fd #include <sys/time.h>
+.Ft void
+.Fo "microtime"
+.Fa "struct timeval *tv"
+.Fc
+.Ft void
+.Fo "getmicrotime"
+.Fa "struct timeval *tv"
+.Fc
+.Ft void
+.Fo "microuptime"
+.Fa "struct timeval *tv"
+.Fc
+.Ft void
+.Fo "getmicrouptime"
+.Fa "struct timeval *tv"
+.Fc
+.Ft void
+.Fo "nanotime"
+.Fa "struct timespec *tv"
+.Fc
+.Ft void
+.Fo "getnanotime"
+.Fa "struct timespec *tv"
+.Fc
+.Ft void
+.Fo "nanouptime"
+.Fa "struct timespec *tv"
+.Fc
+.Ft void
+.Fo "getnanouptime"
+.Fa "struct timespec *tv"
+.Fc
+.Ft void
+.Fo "bintime"
+.Fa "struct bintime *tv"
+.Fc
+.Ft void
+.Fo "binuptime"
+.Fa "struct bintime *tv"
+.Fc
+.Sh DESCRIPTION
+This family of functions return the system clock in various different formats.
+The functions with the "uptime" suffix return the monotonically increasing
+time since boot.
+The functions without "up" return UTC time.
+The various formats for the result are specified with:
+.Bl -tag -offset indent -width "micro"
+.It bin
+result in struct bintime containing seconds and 64-bit fractions of seconds.
+.It nano
+result in struct timespec containing seconds and nanoseconds
+.It micro
+result in struct timeval containing seconds and microseconds
+.El
+.Pp
+The functions with the "get" prefix return a less precise result, but much
+faster.
+They should be used where a precision of 10 msec is acceptable and where
+performance is critical.
+The functions without the "get" prefix return the best timestamp that can
+be produced in the given format.
+.Sh CODE REFERENCES
+The implementation of these functions is partly machine dependent, but
+the bulk of the code is in the file
+.Pa sys/kern/kern_clock.c .
+.Sh SEE ALSO
+.Xr settimeofday 2 ,
+.Xr hardclock 9 ,
+.Xr hz 9 ,
+.Xr inittodr 9 ,
+.Xr time 9

@@ -1,0 +1,8 @@
+#	$OpenBSD: files.atapiscsi,v 1.7 2009/06/20 14:35:51 miod Exp $
+# ATAPI transport for SCSI protocol
+#
+
+device	atapiscsi: scsi, wdc_base
+attach	atapiscsi at atapi
+file	dev/atapiscsi/atapiscsi.c	atapiscsi needs-flag
+

@@ -1,0 +1,13 @@
+/Makefile/1.18/Fri Aug 22 00:48:33 2008//TOPENBSD_4_8_BASE
+D/arch////
+D/copy////
+D/crypto////
+D/ddb////
+D/dev////
+D/ffs////
+D/fifofs////
+D/kern////
+D/net////
+D/ptrace////
+D/sys////
+D/uvm////

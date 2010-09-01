@@ -1,0 +1,557 @@
+#!/bin/sh -
+#
+# THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
+# generated from:
+#
+#	OpenBSD: etc.vax/MAKEDEV.md,v 1.41 2010/07/03 03:59:15 krw Exp 
+#	OpenBSD: MAKEDEV.common,v 1.51 2010/08/03 20:12:01 miod Exp 
+#	OpenBSD: MAKEDEV.mi,v 1.79 2009/01/25 17:30:48 miod Exp 
+#	OpenBSD: MAKEDEV.sub,v 1.14 2005/02/07 06:14:18 david Exp 
+#
+#
+# Copyright (c) 2001-2004 Todd T. Fries <todd@OpenBSD.org>
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+# Device "make" file.  Valid arguments:
+#	all	makes all known devices, including local devices.
+#		Tries to make the ``standard'' number of each type.
+#	ramdisk	Ramdisk kernel devices
+#	std	Standard devices
+#	local	Configuration specific devices
+# Disks:
+#	ccd*	Concatenated disk devices
+#	cd*	ATAPI and SCSI CD-ROM drives
+#	fd*	Floppy disk drives (3 1/2", 5 1/4")
+#	hk*	UNIBUS RK06 and RK07 disks
+#	hd*	HDC9224 disks
+#	hp*	MASSBUS disks
+#	ra*	MSCP disks
+#	raid*	RAIDframe disk devices
+#	rb*	730 IDC w/ RB80 and/or RB02
+#	rd*	"rd" pseudo-disks
+#	rl*	UNIBUS RL02
+#	rx*	RX02 floppy disks
+#	sd*	SCSI disks, including flopticals
+#	up*	Other UNIBUS devices
+#	vnd*	"file" pseudo-disk devices
+# Tapes:
+#	ch*	SCSI media changers
+#	ht*	MASSBUS TM03 and TU?? devices
+#	mt*	(Magnetic) 9-track reel tape drives
+#	st*	SCSI tape drives
+#	tm*	UNIBUS TM11 and TE10 emulations (e.g. Emulex TC-11)
+#	ts*	UNIBUS TS11
+#	ut*	UNIBUS TU45 emulations (e.g. 9700)
+# Terminal ports:
+#	dhu*	UNIBUS DHU11
+#	dl*	UNIBUS DL11
+#	dz*	UNIBUS DZ11 and DZ32
+#	qsc*	VXT2000 serial ports
+# Pseudo terminals:
+#	ptm	pty master device
+#	pty*	Set of 62 master pseudo terminals
+#	tty*	Set of 62 slave pseudo terminals
+# Console ports:
+#	wscons	Minimal wscons devices
+#	ttyC-J*	wscons display devices
+#	wskbd*	wscons keyboards
+# Pointing devices:
+#	wsmouse*	wscons mice
+# Special purpose devices:
+#	bio	ioctl tunnel pseudo-device
+#	bpf*	Berkeley Packet Filter
+#	fd	fd/* nodes
+#	lkm	Loadable kernel modules interface
+#	pf*	Packet Filter
+#	*random	In-kernel random data source
+#	systrace*	System call tracing device
+#	tun*	Network tunnel driver
+#	uk*	Unknown SCSI devices
+#	nnpfs*	NNPFS filesystem node
+#	vscsi*	Virtual SCSI controller
+#	diskmap	Disk mapper
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+T=$0
+
+# set this to echo for Echo-Only debugging
+[ "$eo" ] || eo=
+
+hex()
+{
+	case $1 in
+	[0-9]) echo -n $1;;
+	10) echo -n a;;
+	11) echo -n b;;
+	12) echo -n c;;
+	13) echo -n d;;
+	14) echo -n e;;
+	15) echo -n f;;
+	esac
+}
+
+alph2d()
+{
+	local t="$1"
+	local p="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	local sub=${p%${t}*}
+	echo ${#sub}
+}
+
+h2d()
+{
+	local s="$1"
+	local f=${s%*[0-9a-f]} n=${s#[0-9a-f]*}
+
+	echo $(($(_h2d $f)*16+ $(_h2d $n) ))
+}
+
+_h2d()
+{
+	case $1 in
+	[0-9]) echo -n $1;;
+	a) echo -n 10;;
+	b) echo -n 11;;
+	c) echo -n 12;;
+	d) echo -n 13;;
+	e) echo -n 14;;
+	f) echo -n 15;;
+	esac
+}
+
+unt()
+{
+	# XXX pdksh can't seem to deal with locally scoped variables
+	# in ${foo#$bar} expansions
+	arg="$1"
+	tmp="${arg#[a-zA-Z]*}"
+	tmp="${tmp%*[a-zA-Z]}"
+	while [ "$tmp" != "$arg" ]
+	do
+		arg=$tmp
+		tmp="${arg#[a-zA-Z]*}"
+		tmp="${tmp%*[a-zA-Z]}"
+	done
+	echo $arg
+}
+
+dodisk()
+{
+	[ "$DEBUG" ] && set -x
+	n=$(($((${5}*${7:-16}))+${6})) count=0
+	[ 0$7 -ne 8 ] && l="i j k l m n o p"
+	for d in a b c d e f g h $l
+	do
+		M $1$2$d	b $3 $(($n+$count)) 640 operator
+		M r$1$2$d	c $4 $(($n+$count)) 640 operator
+		let count=count+1
+	done
+}
+
+dodisk2()
+{
+	n=$(($(($5*${7:-16}))+$6))
+	M $1$2a b $3 $n 640 operator
+	M r$1$2a c $4 $n 640 operator
+	n=$(($n+2))
+	M $1$2c b $3 $n 640 operator
+	M r$1$2c c $4 $n 640 operator
+}
+
+# M name b/c major minor [mode] [group]
+RMlist[0]="rm -f"
+
+mkl() {
+	mklist[${#mklist[*]}]=";mknod -m $1 $2 $3 $4 $5"
+}
+
+M() {
+	RMlist[${#RMlist[*]}]=$1
+	mkl ${5-666} $1 $2 $3 $4
+	G=${6:-wheel}
+	[ "$7" ] && {
+		MKlist[${#MKlist[*]}]=";chown $7:$G $1"
+	} || {
+		case $G in
+		wheel)
+			[ ${#whlist[*]} = 0 ] && whlist[0]=";chgrp wheel"
+			whlist[${#whlist[*]}]="$1"
+		;;
+		operator)
+			[ ${#oplist[*]} = 0 ] && oplist[0]=";chgrp operator"
+			oplist[${#oplist[*]}]="$1"
+		;;
+		*)
+			MKlist[${#MKlist[*]}]=";chgrp $G $1";
+		esac
+	}
+	return 0
+}
+
+R() {
+[ "$DEBUG" ] && set -x
+for i in "$@"
+do
+U=`unt $i`
+[ "$U" ] || U=0
+
+case $i in
+ramdisk)
+	R std bpf0 bio diskmap
+	R fd0 sd0 sd1 rd0
+	;;
+
+std)
+	M console	c 0 0 600
+	M tty		c 2 0
+	M mem		c 3 0 640 kmem
+	M kmem		c 3 1 640 kmem
+	M null		c 3 2
+	M zero		c 3 12
+	M stdin		c 53 0
+	M stdout	c 53 1
+	M stderr	c 53 2
+	M ksyms		c 50 0 640 kmem
+	M klog		c 33 0 600
+	M ttyg0		c 25 0 600
+	M ttyg1		c 25 1 600
+	M ttyg2		c 25 2 600
+	M ttyg3		c 25 3 600
+	M crl		c 35 0 600
+	M csa1		c 51 0 600
+	M csa2		c 51 1 600
+	M tu0		b 8 0 600
+	M tu1		b 8 1 600
+	M floppy	c 8 0 600
+	;;
+
+ht*|tm*|mt*|ts*|ut*)
+	case $i in
+	ht*) n=ht b=1 c=5;;
+	mt*) n=mt b=15 c=38;;
+	tm*) n=tm b=5 c=14;;
+	ts*) n=ts b=6 c=16;;
+	ut*) n=ut b=10 c=17;;
+	esac
+	case $U in
+	[0-7])
+		four=$(($U+4))
+		eight=$(($U+8))
+		twelve=$(($U+12))
+		twenty=$(($U+20))
+		M $n$U		b $b $U	660 operator
+		M $n$four	b $b $four	660 operator
+		M $n$eight	b $b $eight	660 operator
+		M $n$twelve	b $b $twelve	660 operator
+		M n$n$U		b $b $four	660 operator;: sanity w/pdp11 v7
+		M n$n$eight	b $b $twelve	660 operator;: ditto
+		M nr$n$U	c $c $four	660 operator;: ditto
+		M nr$n$eight	c $c $twelve	660 operator;: ditto
+		M r$n$U		c $c $U		660 operator
+		M r$n$four	c $c $four	660 operator
+		M r$n$eight	c $c $eight	660 operator
+		M r$n$twelve	c $c $twelve	660 operator
+		if [ "$i" = "ut" ];
+		then
+			M $n$twenty	b $b $twenty 660 operator
+			M r$n$twenty	c $b $twenty 660 operator
+		fi
+		;;
+	*)
+		echo bad unit for tape in: $i
+		;;
+	esac
+	umask 77
+	;;
+
+diskmap)
+	M diskmap c 79 0 640 operator
+	;;
+
+vscsi*)
+	M vscsi$U c 78 $U 600
+	;;
+
+nnpfs*)
+	M nnpfs$U c 74 $U 600
+	;;
+
+uk*)
+	M uk$U c 65 $U 640 operator
+	;;
+
+tun*)
+	M tun$U c 57 $U 600
+	;;
+
+systrace)
+	M systrace c 49 0 644
+	;;
+
+*random)
+	n=0
+	for pre in " " s u a
+	do
+		M ${pre}random c 67 $n 644
+		n=$(($n+1))
+	done
+	;;
+
+pf*)
+	M pf c 42 0 600
+	;;
+
+lkm)
+	M lkm c 28 0 640 _lkm
+	;;
+
+fd)
+	RMlist[${#RMlist[*]}]=";mkdir -p fd;rm -f" n=0
+	while [ $n -lt 64 ];do M fd/$n c 53 $n;n=$(($n+1));done
+	MKlist[${#MKlist[*]}]=";chmod 555 fd"
+	;;
+
+bpf*)
+	M bpf$U c 56 $U 600
+	;;
+
+bio)
+	M bio c 72 0 600
+	;;
+
+wsmouse[0-9]*)
+	M wsmouse$U c 70 $U 600
+	;;
+
+wskbd[0-9]*)
+	M wskbd$U c 69 $U 600
+	;;
+
+tty[C-J]*)
+	U=${i##tty[C-J]}
+	case $i in
+	ttyC*) n=C m=0;;
+	ttyD*) n=D m=256;;
+	ttyE*) n=E m=512;;
+	ttyF*) n=F m=768;;
+	ttyG*) n=G m=1024;;
+	ttyH*) n=H m=1280;;
+	ttyI*) n=I m=1536;;
+	ttyJ*) n=J m=1792;;
+	esac
+	case $U in
+	[0-9a-f]) M tty$n$U c 68 $((16#$U+$m)) 600;;
+	cfg) M tty${n}cfg c 68 $((255+$m)) 600;;
+	*) echo bad unit $U for $i; exit 1;;
+	esac
+	;;
+
+wscons)
+	R wsmouse0 wsmouse1 wsmouse2 wsmouse3 wskbd0 wskbd1 wskbd2
+	R wskbd3 ttyCcfg ttyC0 ttyC1 ttyC2 ttyC3 ttyC4 ttyC5 ttyC6
+	R ttyC7 ttyC8 ttyC9 ttyCa ttyCb
+	;;
+
+pty*)
+	if [ $U -gt 15 ]; then
+		echo bad unit for pty in: $i
+		continue
+	fi
+	set -A letters p q r s t u v w x y z P Q R S T
+	set -A suffixes 0 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q \
+	    r s t u v w x y z A B C D E F G H I J K L M N O P Q R S T U V W X \
+	    Y Z
+
+	name=${letters[$U]}
+	n=0
+	while [ $n -lt 62 ]
+	do
+		nam=$name${suffixes[$n]}
+		off=$(($U*62))
+		M tty$nam c 20 $(($off+$n))
+		M pty$nam c 21 $(($off+$n))
+		n=$(($n+1))
+	done
+	;;
+
+ptm)
+	M ptm c 75 0 666
+	;;
+
+qsc*)
+	
+	case $U in
+	0)
+		for i in 0 1 2 3; do
+			M ttyb${i} c 48 ${i} 600
+		done
+	;;
+	*)
+		echo bad unit for qsc in: $i
+	;;
+	esac
+	;;
+
+dz*)
+	case $U in
+	[0-7])
+		i=0
+		while [ $i -lt 8 ]; do
+			no=$(($(($U*8))+$i))
+			if [ $no -lt 10 ]; then
+				no="0${no}"
+			fi
+			M tty${no} c 1 $no 600
+			i="$(( $i + 1 ))"
+		done
+	;;
+	*)
+		echo bad unit for dz in: $i
+		;;
+	esac
+	;;
+
+dl*)
+	set -A cnvtbl 0 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q r s t u v
+	let=${cnvtbl[$U]}
+	if [ -n "$let" ] ;then
+		M ttyJ${let} c 66 $U 600
+	else
+		echo bad unit for dl in: $i
+	fi
+	;;
+
+dhu*)
+	set -A cnvtbl 0 1 2 3 4 5 6 7 8 9 a b c d e f
+	case $U in
+	[0-7])
+		case $U in
+		0) ch=S ;; 1) ch=T ;; 2) ch=U ;; 3) ch=V ;;
+		4) ch=W ;; 5) ch=X ;; 6) ch=Y ;; 7) ch=Z ;;
+		esac
+		i=0
+		while [ $i -lt 16 ]; do
+			let=${cnvtbl[$i]}
+			M tty${ch}${let} c 34 $(($(($U*16))+$i)) 600
+			i="$(( $i + 1 ))"
+		done
+	;;
+	*)
+		echo bad unit for dhu in: $i
+	;;
+	esac
+	;;
+
+st*)
+	n=$(($U*16))
+	for pre in " " n e en
+	do
+		M ${pre}st$U	b 21 $n 660 operator
+		M ${pre}rst$U	c 60 $n 660 operator
+		n=$(($n+1))
+	done
+	;;
+
+ch*)
+	M ch$U c 63 $U 660 operator
+	;;
+
+vnd*)
+	dodisk vnd $U 18 55 $U 0
+	dodisk svnd $U 18 55 $U 2048
+	;;
+
+rd*)
+	dodisk2 rd $U 23 62 $U 0
+	;;
+
+fd*)
+	typnam=$U${i#fd[01]*}
+	case $typnam in
+	0|1)	typnum=0;; # no type specified, assume A
+	*A)	typnum=0; typnam=0;;
+	*B)	typnum=1;;
+	*C)	typnum=2;;
+	*D)	typnum=3;;
+	*E)	typnum=4;;
+	*F)	typnum=5;;
+	*G)	typnum=6;;
+	*H)	typnum=7;;
+	*)	echo bad type $typnam for $i; exit 1;;
+	esac
+	case $U in
+	0|1)	blk=16; chr=54;;
+	*)	echo bad unit $U for $i; exit 1;;
+	esac
+	nam=fd${typnam}
+	n=$(($(($U*128))+$(($typnum*16))))
+	M ${nam}a	b $blk $n 640 operator
+	M ${nam}b	b $blk $(($n+1)) 640 operator
+	M ${nam}c	b $blk $(($n+2)) 640 operator
+	M ${nam}i	b $blk $(($n+8)) 640 operator
+	M r${nam}a	c $chr $n 640 operator
+	M r${nam}b	c $chr $(($n+1)) 640 operator
+	M r${nam}c	c $chr $(($n+2)) 640 operator
+	M r${nam}i	c $chr $(($n+8)) 640 operator
+	;;
+
+cd*)
+	dodisk2 cd $U 22 61 $U 0
+	;;
+
+local)
+	test -s $T.local && sh $T.local
+	;;
+
+all)
+	R dl0 dz0 dhu0 ts0 ts1 mt0 mt1 hd0 hd1 hd2 ccd0 vnd0 sd0 sd1
+	R sd2 sd3 cd0 tun0 tun1 bio bpf0 bpf1 bpf2 bpf3 bpf4 bpf5 bpf6
+	R bpf7 pty0 diskmap vscsi0 nnpfs0 ptm local wscons uk0 random
+	R lkm pf systrace rx0 rx1 ra0 ra1 ra2 ra3 hp0 hp1 hp2 hp3
+	R raid0 raid1 raid2 raid3 std st0 st1 fd
+	;;
+
+up*|sd*|rx*|rl*|rb*|raid*|ra*|hp*|hk*|hd*|ccd*)
+	case $i in
+	up*) dodisk up $U 2 13 $U 0;;
+	sd*) dodisk sd $U 20 59 $U 0;;
+	rx*) dodisk rx $U 12 30 $U 0;;
+	rl*) dodisk rl $U 14 32 $U 0;;
+	rb*) dodisk rb $U 11 23 $U 0;;
+	raid*) dodisk raid $U 25 73 $U 0;;
+	ra*) dodisk ra $U 9 9 $U 0;;
+	hp*) dodisk hp $U 0 4 $U 0;;
+	hk*) dodisk hk $U 3 11 $U 0;;
+	hd*) dodisk hd $U 19 58 $U 0;;
+	ccd*) dodisk ccd $U 17 54 $U 0;;
+	esac
+	;;
+
+*)
+	echo $i: unknown device
+	;;
+esac
+done
+}
+R "$@"
+{
+echo -n ${RMlist[*]}
+echo -n ${mklist[*]}
+echo -n ${MKlist[*]}
+echo -n ${whlist[*]}
+echo ${oplist[*]}
+} | if [ "$eo" = "echo" ]; then
+        cat
+else
+	sh
+fi

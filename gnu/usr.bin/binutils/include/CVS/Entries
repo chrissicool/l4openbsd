@@ -1,0 +1,51 @@
+/COPYING/1.3/Mon May 13 17:07:40 2002//TOPENBSD_4_8_BASE
+/ChangeLog/1.9/Tue Nov  2 20:45:41 2004//TOPENBSD_4_8_BASE
+/ChangeLog-9103/1.1.1.1/Tue Nov  2 20:23:01 2004//TOPENBSD_4_8_BASE
+/MAINTAINERS/1.1.1.1/Mon May 13 13:52:37 2002//TOPENBSD_4_8_BASE
+/alloca-conf.h/1.1.1.1/Mon May 13 13:52:37 2002//TOPENBSD_4_8_BASE
+/ansidecl.h/1.7/Tue Nov  2 20:45:41 2004//TOPENBSD_4_8_BASE
+/bfdlink.h/1.6/Tue Nov  2 20:45:41 2004//TOPENBSD_4_8_BASE
+/bin-bugs.h/1.1.1.2/Mon May 13 13:52:40 2002//TOPENBSD_4_8_BASE
+/bout.h/1.3/Mon May 17 21:54:48 2004//TOPENBSD_4_8_BASE
+/demangle.h/1.9/Tue Nov  2 20:45:41 2004//TOPENBSD_4_8_BASE
+/dis-asm.h/1.9/Tue Nov  2 20:45:41 2004//TOPENBSD_4_8_BASE
+/dyn-string.h/1.1.1.2/Mon May 17 20:42:36 2004//TOPENBSD_4_8_BASE
+/fibheap.h/1.1.1.2/Tue Nov  2 20:23:01 2004//TOPENBSD_4_8_BASE
+/filenames.h/1.1.1.2/Mon May 17 20:42:36 2004//TOPENBSD_4_8_BASE
+/floatformat.h/1.5/Tue Nov  2 20:45:42 2004//TOPENBSD_4_8_BASE
+/fnmatch.h/1.4/Mon May 13 17:07:40 2002//TOPENBSD_4_8_BASE
+/fopen-bin.h/1.1/Mon Jan  8 11:08:11 1996//TOPENBSD_4_8_BASE
+/fopen-same.h/1.1/Mon Jan  8 11:08:11 1996//TOPENBSD_4_8_BASE
+/fopen-vms.h/1.1.1.1/Wed Sep  4 17:40:41 1996//TOPENBSD_4_8_BASE
+/gdbm.h/1.1/Mon Jan  8 11:08:11 1996//TOPENBSD_4_8_BASE
+/getopt.h/1.6/Tue Nov  2 20:45:42 2004//TOPENBSD_4_8_BASE
+/hashtab.h/1.1.1.4/Tue Nov  2 20:23:01 2004//TOPENBSD_4_8_BASE
+/hp-symtab.h/1.4/Tue Nov  2 20:45:42 2004//TOPENBSD_4_8_BASE
+/ieee.h/1.3/Mon May 13 17:07:40 2002//TOPENBSD_4_8_BASE
+/libiberty.h/1.9/Tue Nov  2 20:45:42 2004//TOPENBSD_4_8_BASE
+/md5.h/1.1.1.1/Mon May 13 13:52:50 2002//TOPENBSD_4_8_BASE
+/oasys.h/1.2/Mon May 13 17:07:40 2002//TOPENBSD_4_8_BASE
+/objalloc.h/1.1.1.3/Mon May 17 20:42:36 2004//TOPENBSD_4_8_BASE
+/obstack.h/1.6/Tue Nov  2 20:45:42 2004//TOPENBSD_4_8_BASE
+/os9k.h/1.2/Mon May 13 17:07:40 2002//TOPENBSD_4_8_BASE
+/partition.h/1.1.1.3/Mon May 17 20:42:36 2004//TOPENBSD_4_8_BASE
+/progress.h/1.2/Mon May 13 17:07:40 2002//TOPENBSD_4_8_BASE
+/safe-ctype.h/1.1.1.3/Tue Nov  2 20:23:02 2004//TOPENBSD_4_8_BASE
+/sort.h/1.1.1.2/Mon May 17 20:42:37 2004//TOPENBSD_4_8_BASE
+/splay-tree.h/1.1.1.3/Mon May 17 20:42:37 2004//TOPENBSD_4_8_BASE
+/symcat.h/1.1.1.2/Mon May 13 13:52:55 2002//TOPENBSD_4_8_BASE
+/ternary.h/1.1.1.1/Mon May 17 20:42:37 2004//TOPENBSD_4_8_BASE
+/wait.h/1.2/Mon Jun 10 10:53:30 1996//TOPENBSD_4_8_BASE
+/xregex.h/1.1.1.1/Mon May 17 20:42:37 2004//TOPENBSD_4_8_BASE
+/xregex2.h/1.1.1.1/Mon May 17 20:42:37 2004//TOPENBSD_4_8_BASE
+/xtensa-config.h/1.1.1.2/Tue Nov  2 20:23:02 2004//TOPENBSD_4_8_BASE
+/xtensa-isa-internal.h/1.1.1.1/Mon May 17 20:42:37 2004//TOPENBSD_4_8_BASE
+/xtensa-isa.h/1.1.1.1/Mon May 17 20:42:37 2004//TOPENBSD_4_8_BASE
+D/aout////
+D/coff////
+D/elf////
+D/gdb////
+D/mpw////
+D/nlm////
+D/opcode////
+D/regs////

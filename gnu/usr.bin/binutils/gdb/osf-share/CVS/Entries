@@ -1,0 +1,19 @@
+/README/1.2/Sat Nov 23 03:48:55 1996//TOPENBSD_4_8_BASE
+/cma_attr.h/1.2/Sat Nov 23 03:48:56 1996//TOPENBSD_4_8_BASE
+/cma_deb_core.h/1.2/Sat Nov 23 03:48:57 1996//TOPENBSD_4_8_BASE
+/cma_debug_client.h/1.2/Sat Nov 23 03:48:57 1996//TOPENBSD_4_8_BASE
+/cma_errors.h/1.2/Sat Nov 23 03:48:58 1996//TOPENBSD_4_8_BASE
+/cma_handle.h/1.2/Sat Nov 23 03:48:58 1996//TOPENBSD_4_8_BASE
+/cma_init.h/1.2/Sat Nov 23 03:48:59 1996//TOPENBSD_4_8_BASE
+/cma_list.h/1.2/Sat Nov 23 03:49:00 1996//TOPENBSD_4_8_BASE
+/cma_mutex.h/1.2/Sat Nov 23 03:49:00 1996//TOPENBSD_4_8_BASE
+/cma_sched.h/1.2/Sat Nov 23 03:49:01 1996//TOPENBSD_4_8_BASE
+/cma_semaphore_defs.h/1.2/Sat Nov 23 03:49:01 1996//TOPENBSD_4_8_BASE
+/cma_sequence.h/1.2/Sat Nov 23 03:49:02 1996//TOPENBSD_4_8_BASE
+/cma_stack.h/1.2/Sat Nov 23 03:49:02 1996//TOPENBSD_4_8_BASE
+/cma_stack_int.h/1.2/Sat Nov 23 03:49:03 1996//TOPENBSD_4_8_BASE
+/cma_tcb_defs.h/1.2/Sat Nov 23 03:49:04 1996//TOPENBSD_4_8_BASE
+/cma_util.h/1.2/Sat Nov 23 03:49:04 1996//TOPENBSD_4_8_BASE
+D/AT386////
+D/HP800////
+D/RIOS////

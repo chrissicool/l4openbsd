@@ -1,0 +1,21 @@
+/cache.t/1.1.1.1/Mon Sep 29 17:19:03 2008/-ko/TOPENBSD_4_8_BASE
+/case.pl/1.1.1.4/Mon Sep 29 17:19:03 2008/-ko/TOPENBSD_4_8_BASE
+/chomp.t/1.1.1.1/Mon Aug  9 17:48:37 2004//TOPENBSD_4_8_BASE
+/chr.t/1.1.1.1/Mon Sep 29 17:19:03 2008/-ko/TOPENBSD_4_8_BASE
+/class.t/1.1.1.5/Mon Oct 12 18:10:42 2009//TOPENBSD_4_8_BASE
+/fold.t/1.1.1.2/Mon Oct 12 18:10:42 2009/-ko/TOPENBSD_4_8_BASE
+/greek.t/1.1.1.1/Mon Sep 29 17:19:03 2008/-ko/TOPENBSD_4_8_BASE
+/latin2.t/1.1.1.1/Mon Sep 29 17:19:03 2008/-ko/TOPENBSD_4_8_BASE
+/lex_utf8.t/1.1.1.1/Mon Oct 12 18:10:42 2009//TOPENBSD_4_8_BASE
+/lower.t/1.1.1.2/Tue Mar 28 18:49:49 2006/-ko/TOPENBSD_4_8_BASE
+/overload.t/1.1.1.1/Mon Sep 29 17:19:03 2008/-ko/TOPENBSD_4_8_BASE
+/sprintf.t/1.1.1.2/Tue Mar 28 18:49:49 2006/-ko/TOPENBSD_4_8_BASE
+/tie.t/1.1.1.1/Mon Oct 12 18:10:42 2009//TOPENBSD_4_8_BASE
+/title.t/1.1.1.2/Tue Mar 28 18:49:49 2006/-ko/TOPENBSD_4_8_BASE
+/tr_7jis.t/1.6/Mon Oct 12 18:30:28 2009//TOPENBSD_4_8_BASE
+/tr_eucjp.t/1.5/Mon Oct 12 18:30:28 2009//TOPENBSD_4_8_BASE
+/tr_sjis.t/1.6/Mon Oct 12 18:30:28 2009//TOPENBSD_4_8_BASE
+/tr_utf8.t/1.6/Mon Oct 12 18:30:28 2009//TOPENBSD_4_8_BASE
+/upper.t/1.1.1.2/Tue Mar 28 18:49:49 2006/-ko/TOPENBSD_4_8_BASE
+/write.t/1.1.1.1/Wed Dec  3 02:44:33 2003//TOPENBSD_4_8_BASE
+D

@@ -1,0 +1,2 @@
+pass in on lo1000000 all flags S/SA keep state
+match out on lo0 inet all nat-to 127.0.0.1

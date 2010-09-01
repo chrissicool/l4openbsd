@@ -1,0 +1,16 @@
+/Makefile.inc/1.10/Tue Apr 21 09:34:50 2009//TOPENBSD_4_8_BASE
+/_setjmp.S/1.5/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/divrem.m4/1.4/Sat Mar  1 00:19:08 2003//TOPENBSD_4_8_BASE
+/fabs.S/1.5/Tue Dec  9 20:21:06 2008//TOPENBSD_4_8_BASE
+/flt_rounds.c/1.5/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/fpgetmask.c/1.5/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/fpgetround.c/1.4/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/fpgetsticky.c/1.5/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/fpsetmask.c/1.5/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/fpsetround.c/1.4/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/fpsetsticky.c/1.5/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/infinity.c/1.5/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/nan.c/1.1/Thu Jul 24 09:31:06 2008//TOPENBSD_4_8_BASE
+/setjmp.S/1.7/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+/sigsetjmp.S/1.4/Sun Aug  7 16:40:13 2005//TOPENBSD_4_8_BASE
+D

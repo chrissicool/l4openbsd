@@ -1,0 +1,218 @@
+.\" $OpenBSD: bgpd.8,v 1.38 2010/06/27 19:53:34 claudio Exp $
+.\"
+.\" Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: June 27 2010 $
+.Dt BGPD 8
+.Os
+.Sh NAME
+.Nm bgpd
+.Nd "Border Gateway Protocol daemon"
+.Sh SYNOPSIS
+.Nm bgpd
+.Bk -words
+.Op Fl cdnv
+.Op Fl D Ar macro Ns = Ns Ar value
+.Op Fl f Ar file
+.Ek
+.Sh DESCRIPTION
+.Nm
+is a Border Gateway Protocol
+.Pq BGP
+daemon which manages the network routing tables.
+Its main purpose is to exchange information
+concerning
+.Qq network reachability
+with other BGP systems.
+.Nm
+uses the Border Gateway Protocol, Version 4,
+as described in RFC 4271.
+Please refer to that document for more information about BGP.
+.Pp
+.Nm
+is usually started at boot time, and can be enabled by
+setting the following in
+.Pa /etc/rc.conf.local :
+.Pp
+.Dl bgpd_flags=\&"\&"
+.Pp
+See
+.Xr rc 8
+and
+.Xr rc.conf 8
+for more information on the boot process
+and enabling daemons.
+.Pp
+When
+.Nm
+starts up, it reads settings from a configuration file,
+typically
+.Xr bgpd.conf 5 .
+A running
+.Nm
+process can be controlled using the
+.Xr bgpctl 8
+utility.
+.Pp
+The options are as follows:
+.Bl -tag -width "-f fileXXX"
+.It Fl c
+Force
+.Nm
+to do
+.Xr carp 4
+demotion at startup when the
+.Em demote
+functionality is used.
+Normally,
+.Nm
+will only do demotion at startup when the demotion counter for the group
+in question is already greater than 0.
+.Nm
+will start handling demotion after all sessions with demotion configured for
+the given group have been successfully established.
+At system startup,
+.Xr rc 8
+has the demotion counter for the group
+.Em carp
+increased until after
+.Nm
+is started, so this option should
+.Em not
+be used in
+.Xr rc.conf 8 .
+.It Fl D Ar macro Ns = Ns Ar value
+Define
+.Ar macro
+to be set to
+.Ar value
+on the command line.
+Overrides the definition of
+.Ar macro
+in the configuration file.
+.It Fl d
+Do not daemonize.
+If this option is specified,
+.Nm
+will run in the foreground and log to
+.Em stderr .
+.It Fl f Ar file
+Use
+.Ar file
+as the configuration file,
+instead of the default
+.Pa /etc/bgpd.conf .
+.It Fl n
+Configtest mode.
+Only check the configuration file for validity.
+.It Fl v
+Produce more verbose output.
+.El
+.Sh FILES
+.Bl -tag -width "/var/run/bgpd.sockXXX" -compact
+.It Pa /etc/bgpd.conf
+default
+.Nm
+configuration file
+.It Pa /var/run/bgpd.sock
+default
+.Nm
+control socket
+.El
+.Sh SEE ALSO
+.Xr bgpd.conf 5 ,
+.Xr bgpctl 8 ,
+.Xr bgplg 8 ,
+.Xr bgplgsh 8
+.Rs
+.%R RFC 4271
+.%T "A Border Gateway Protocol 4 (BGP-4)"
+.%D January 2006
+.Re
+.Rs
+.%R RFC 1997
+.%T "BGP Communities Attribute"
+.%D August 1996
+.Re
+.Rs
+.%R RFC 2385
+.%T "Protection of BGP Sessions via the TCP MD5 Signature Option"
+.%D August 1998
+.Re
+.Rs
+.%R RFC 2545
+.%T "Use of BGP-4 Multiprotocol Extensions for IPv6 Inter-Domain Routing"
+.%D March 1999
+.Re
+.Rs
+.%R RFC 2796
+.%T "BGP Route Reflection - An Alternative to Full Mesh IBGP"
+.%D April 2000
+.Re
+.Rs
+.%R RFC 2918
+.%T "Route Refresh Capability for BGP-4"
+.%D September 2000
+.Re
+.Rs
+.%R RFC 3682
+.%T "The Generalized TTL Security Mechanism (GTSM)"
+.%D February 2004
+.Re
+.Rs
+.%R RFC 3765
+.%T "NOPEER Community for Border Gateway Protocol"
+.%D April 2004
+.Re
+.Rs
+.%R RFC 4360
+.%T "BGP Extended Communities Attribute"
+.%D February 2006
+.Re
+.Rs
+.%R RFC 4364
+.%T "BGP/MPLS IP Virtual Private Networks (VPNs)"
+.%D February 2006
+.Re
+.Rs
+.%R RFC 4486
+.%T "BGP Cease Notification Message Subcodes"
+.%D April 2006
+.Re
+.Rs
+.%R RFC 4760
+.%T "Multiprotocol Extensions for BGP-4"
+.%D January 2007
+.Re
+.Rs
+.%R RFC 4893
+.%T "BGP Support for Four-octet AS Number Space"
+.%D May 2007
+.Re
+.Rs
+.%R RFC 5492
+.%T "Capabilities Advertisement with BGP-4"
+.%D February 2009
+.Re
+.Rs
+.%R draft-ietf-idr-optional-transitive-00
+.%T "Error Handling for Optional Transitive BGP Attributes"
+.%D April 2009
+.Re
+.Sh HISTORY
+The
+.Nm
+program first appeared in
+.Ox 3.5 .

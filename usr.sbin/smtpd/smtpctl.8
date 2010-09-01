@@ -1,0 +1,104 @@
+.\" $OpenBSD: smtpctl.8,v 1.16 2010/06/01 23:06:25 jacekm Exp $
+.\"
+.\" Copyright (c) 2006 Pierre-Yves Ritschard <pyr@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: June 1 2010 $
+.Dt SMTPCTL 8
+.Os
+.Sh NAME
+.Nm smtpctl
+.Nd control the Simple Mail Transfer Protocol daemon
+.Sh SYNOPSIS
+.Nm
+.Ar command
+.Op Ar argument ...
+.Sh DESCRIPTION
+The
+.Nm
+program controls
+.Xr smtpd 8 .
+.Pp
+The following commands are available:
+.Bl -tag -width Ds
+.It Cm log brief
+Disable verbose debug logging.
+.It Cm log verbose
+Enable verbose debug logging.
+.It Cm pause incoming
+Temporarily stop accepting incoming sessions.
+.It Cm pause local
+Temporarily stop deliveries to local users.
+.It Cm pause outgoing
+Temporarily stop relaying and deliveries to
+remote users.
+.It Cm remove Ar message-id | Cm all
+Removes messages with the same message ID, or all messages.
+.It Cm resume incoming
+Resume accepting incoming sessions.
+.It Cm resume local
+Resume deliveries to local users.
+.It Cm resume outgoing
+Resume relaying and deliveries to remote users.
+.It Cm schedule Ar message-id | Cm all
+Marks messages with the same message ID, or all messages,
+as ready for immediate delivery.
+.It Cm show queue Op Ic raw
+Displays undelivered messages.
+.It Cm show runqueue
+Displays information concerning envelopes
+that are scheduled for delivery.
+.It Cm show stats
+Displays runtime statistics concerning
+.Xr smtpd 8 .
+.El
+.Pp
+When
+.Nm smtpd
+receives a message, it generates a
+.Ar message-id
+for the message, and one
+.Ar message-uid
+per recipient.
+The
+.Ar message-id
+consists of a timestamp followed by a random identifier
+that is guaranteed to be unique on the host system.
+The
+.Ar message-uid
+consists of the
+.Ar message-id
+followed by a random identifier that is also guaranteed
+to be unique between recipients of the same message.
+.Pp
+A command which specifies a
+.Ar message-id
+applies to all recipients of a message;
+a command which specifies a
+.Ar message-uid
+applies to a specific recipient of a message.
+.Sh FILES
+.Bl -tag -width "/var/run/smtpd.sockXX" -compact
+.It /var/run/smtpd.sock
+.Ux Ns -domain
+socket used for communication with
+.Xr smtpd 8 .
+.El
+.Sh SEE ALSO
+.Xr smtpd 8
+.Sh HISTORY
+The
+.Nm
+program first appeared in
+.Ox 4.6 .

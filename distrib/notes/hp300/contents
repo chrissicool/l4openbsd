@@ -1,0 +1,37 @@
+dnl	$OpenBSD: contents,v 1.43 2009/05/12 21:06:50 miod Exp $
+TopPart
+
+OpenBSDdistsets
+
+OpenBSDbsd
+
+OpenBSDrd
+
+	SYS_UBOOT	Unified boot file, used for booting from disk or
+			from the network.
+
+	SYS_CDBOOT	Simplified boot file, used for booting from CD-ROM.
+
+DistributionDescription(eleven)
+
+OpenBSDbase(49864698,160453569)
+
+OpenBSDcomp(59112072,199026782)
+
+OpenBSDetc(513941,1531164)
+
+OpenBSDgame(2650805,6304930)
+
+OpenBSDman(7717166,28070472)
+
+OpenBSDmisc(2935649,9912406)
+
+OpenBSDxbase(8630302,26192133)
+
+OpenBSDxetc(76556,310135)
+
+OpenBSDxfont(35587566,43728442)
+
+OpenBSDxserv(5679605,17122207)
+
+OpenBSDxshare(2743456,14667503)

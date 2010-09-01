@@ -1,0 +1,17 @@
+/scoop_mmc.c/1.2/Thu Sep  3 21:40:29 2009//TOPENBSD_4_8_BASE
+/scoop_pcic.c/1.3/Sun Mar 29 21:53:52 2009//TOPENBSD_4_8_BASE
+/zaurus_apm.c/1.16/Tue Jul 20 12:23:02 2010//TOPENBSD_4_8_BASE
+/zaurus_apm.h/1.1/Mon Apr 11 03:21:03 2005//TOPENBSD_4_8_BASE
+/zaurus_audio.c/1.11/Thu Jul 15 03:43:11 2010//TOPENBSD_4_8_BASE
+/zaurus_flash.c/1.9/Thu May 21 23:45:48 2009//TOPENBSD_4_8_BASE
+/zaurus_kbd.c/1.29/Mon Sep 17 01:33:33 2007//TOPENBSD_4_8_BASE
+/zaurus_kbdmap.h/1.19/Tue May 10 08:26:12 2005//TOPENBSD_4_8_BASE
+/zaurus_remote.c/1.1/Thu Nov 17 05:26:31 2005//TOPENBSD_4_8_BASE
+/zaurus_scoop.c/1.18/Tue Nov 25 14:55:44 2008//TOPENBSD_4_8_BASE
+/zaurus_scoopreg.h/1.8/Sun Mar 18 20:50:23 2007//TOPENBSD_4_8_BASE
+/zaurus_scoopvar.h/1.11/Sun Mar 18 20:50:23 2007//TOPENBSD_4_8_BASE
+/zaurus_ssp.c/1.6/Fri Apr  8 21:58:49 2005//TOPENBSD_4_8_BASE
+/zaurus_sspvar.h/1.3/Fri Apr  8 21:58:49 2005//TOPENBSD_4_8_BASE
+/zaurus_udc.c/1.1/Mon Jun  7 16:34:20 2010//TOPENBSD_4_8_BASE
+/zts.c/1.11/Tue May 29 21:09:43 2007//TOPENBSD_4_8_BASE
+D

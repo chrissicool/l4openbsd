@@ -1,0 +1,250 @@
+.\"	$OpenBSD: tun.4,v 1.36 2007/05/31 19:19:52 jmc Exp $
+.\"
+.\" Copyright (c) 2003 Marcus D. Watts  All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, and the entire permission notice in its entirety,
+.\"    including the disclaimer of warranties.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. The name of the author may not be used to endorse or promote
+.\"    products derived from this software without specific prior
+.\"    written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+.\" INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+.\" AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL
+.\" MARCUS D. WATTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+.\" BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
+.\" OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+.\" ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+.\" TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+.\" USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.Dd $Mdocdate: May 31 2007 $
+.Dt TUN 4
+.Os
+.Sh NAME
+.Nm tun
+.Nd network tunnel pseudo-device
+.Sh SYNOPSIS
+.Cd "pseudo-device tun"
+.Pp
+.Fd #include <sys/types.h>
+.Fd #include <net/if_tun.h>
+.Sh DESCRIPTION
+The
+.Nm
+driver provides a network interface pseudo-device.
+Packets sent to this interface can be read by a userland process
+and processed as desired.
+Packets written by the userland process are injected back into
+the kernel networking subsystem.
+.Pp
+A
+.Nm
+interface can be created at runtime using the
+.Ic ifconfig tun Ns Ar N Ic create
+command or by opening the character special device
+.Pa /dev/tunN .
+.Pp
+Both layer 3 and layer 2 tunneling is supported.
+Layer 3 tunneling is the default mode; to enable layer 2 tunneling mode the
+.Ar link0
+flag needs to be set with
+.Xr ifconfig 8 ,
+or by setting up a
+.Xr hostname.if 5
+configuration file for
+.Xr netstart 8 .
+In layer 2 mode the
+.Nm
+interface is simulating an Ethernet network interface.
+.Pp
+Each device has the exclusive open property; it cannot be opened
+if it is already open and in use by another process.
+Each read returns at most one packet; if insufficient
+buffer space is provided, the packet is truncated.
+Each write supplies exactly one packet.
+Each packet read or written is prefixed with a tunnel header consisting of
+a 4-byte network byte order integer containing the address family in the case
+of layer 3 tunneling.
+In layer 2 mode the 4-byte tunnel header is replaced with an Ethernet header.
+On the last close of the device, all queued packets are discarded.
+If the device was created by opening
+.Pa /dev/tunN ,
+it will be automatically destroyed.
+Devices created via
+.Xr ifconfig 8
+are only marked as not running and traffic will be dropped returning
+.Er EHOSTDOWN .
+.Pp
+Writes never block.
+If the protocol queue is full, the packet is dropped, a
+.Dq collision
+is counted, and
+.Er ENOBUFS
+is returned.
+.Pp
+In addition to the usual network interface
+ioctl commands described in
+.Xr netintro 4 ,
+the following special commands defined in
+.Aq Pa net/if_tun.h
+are supported:
+.Pp
+.Bl -tag -width indent -compact
+.It Dv TUNGIFINFO Fa "struct tuninfo *"
+.It Dv TUNSIFINFO Fa "struct tuninfo *"
+Get or set the interface characteristics.
+.Bd -literal
+/* iface info */
+struct tuninfo {
+        u_int   mtu;
+        u_short type;
+        u_short flags;
+        u_int   baudrate;
+};
+.Ed
+.Pp
+.Va flags
+sets the interface flags, and
+can include one or more of
+.Dv IFF_UP ,
+.Dv IFF_POINTOPOINT ,
+.Dv IFF_MULTICAST ,
+.Dv IFF_BROADCAST .
+Flags given will be set; flags omitted will be cleared; flags not in this list
+will not be changed even when given.
+Flags default to
+.Dv IFF_POINTOPOINT
+for layer 3 and to
+.Dv IFF_BROADCAST \&| IFF_MULTICAST
+for layer 2 mode.
+It is an error to set both
+.Dv IFF_POINTOPOINT
+and
+.Dv IFF_BROADCAST .
+.\" should say what type affects...
+.Va type
+defaults to
+.Dv IFT_TUNNEL
+for layer 3 and
+.Dv IFT_ETHER
+for layer 2 tunneling mode.
+This sets the interface media address header type.
+.Pp
+.It Dv TUNSIFMODE Fa int *flags
+Set just the interface flags.
+The same restrictions as for
+.Dv TUNSIFINFO
+apply.
+.Pp
+.It Dv FIONBIO Fa int *flag
+Set non-blocking I/O.
+.Pp
+.It Dv FIOASYNC Fa int *flag
+Cause signal
+.Dv SIGIO
+to be sent when a packet can be read.
+.Pp
+.It Dv TIOCSPGRP Fa int *pgrp
+.It Dv TIOCGPGRP Fa int *pgrp
+Get or set the process group to which signals might be sent
+via
+.Dv FIOASYNC .
+.Pp
+.It Dv FIONREAD Fa int *count
+Get the byte count of the next packet available to be read.
+.Pp
+.It Dv SIOCGIFADDR Fa struct ether_addr *addr
+.It Dv SIOCSIFADDR Fa struct ether_addr *addr
+Get or set the Ethernet address of the device in layer 2 mode.
+.El
+.Sh FILES
+.Bl -tag -width /dev/tun* -compact
+.It Pa /dev/tun*
+.El
+.Sh ERRORS
+If open fails,
+.Xr errno 2
+may be set to one of:
+.Bl -tag -width Er
+.It Bq Er EPERM
+Only the superuser may open the device.
+.It Bq Er ENXIO
+Not that many devices configured.
+.It Bq Er EBUSY
+Device was already open.
+.El
+.Pp
+If a
+.Xr write 2
+call fails,
+.Xr errno 2
+is set to one of:
+.Bl -tag -width Er
+.It Bq Er EMSGSIZE
+The packet supplied was too small or too large.
+The maximum sized packet allowed is currently 16384 bytes.
+.It Bq Er ENOBUFS
+There were no mbufs, or
+the queue for the outgoing protocol is full.
+.It Bq Er EAFNOSUPPORT
+The address family specified in the tunnel header was not
+recognized.
+.El
+.Pp
+Ioctl commands may fail with:
+.Bl -tag -width Er
+.It Bq Er EINVAL
+Attempt to set both
+.Dv IFF_POINTOPOINT
+and
+.Dv IFF_BROADCAST
+with
+.Dv TUNSIFMODE
+or using
+.Dv SIOCGIFADDR
+or
+.Dv SIOCSIFADDR
+in layer 3 mode.
+.It Bq Er ENOTTY
+Unrecognized ioctl command.
+.El
+.Pp
+A
+.Xr read 2
+call may fail because of:
+.Bl -tag -width Er
+.It Bq Er EHOSTDOWN
+The device is not ready.
+The device must have an
+.Xr inet 4
+interface address assigned to it, such as via
+.Dv SIOCSIFADDR .
+.It Bq Er EWOULDBLOCK
+Non-blocking I/O was selected and no packets were available.
+.El
+.Pp
+An attempt to send a packet out via the interface may fail with:
+.Bl -tag -width Er
+.It Bq Er EHOSTDOWN
+The device is not ready.
+The device must have an
+.Xr inet 4
+interface address assigned to it, such as via
+.Dv SIOCSIFADDR .
+.El
+.Sh SEE ALSO
+.Xr inet 4 ,
+.Xr intro 4 ,
+.Xr netintro 4 ,
+.Xr hostname.if 5 ,
+.Xr ifconfig 8 ,
+.Xr netstart 8

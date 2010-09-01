@@ -1,0 +1,237 @@
+.\"	$OpenBSD: ndp.8,v 1.26 2008/05/18 10:00:49 sobrado Exp $
+.\"	$KAME: ndp.8,v 1.28 2002/07/17 08:46:33 itojun Exp $
+.\"
+.\" Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. Neither the name of the project nor the names of its contributors
+.\"    may be used to endorse or promote products derived from this software
+.\"    without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE PROJECT AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE PROJECT OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.Dd $Mdocdate: May 18 2008 $
+.Dt NDP 8
+.Os
+.\"
+.Sh NAME
+.Nm ndp
+.Nd control/diagnose IPv6 Neighbor Discovery Protocol (NDP)
+.\"
+.Sh SYNOPSIS
+.Nm ndp
+.Bk -words
+.Op Fl nrt
+.Op Fl a | c | p
+.Op Fl H | P | R
+.Op Fl A Ar wait
+.Op Fl d Ar hostname
+.Op Fl f Ar filename
+.Op Fl I Op Ar interface | Ic delete
+.Op Fl i Ar interface Op Ar flag ...
+.Oo
+.Fl s Ar nodename etheraddr
+.Op Ic temp
+.Op Ic proxy
+.Oc
+.Op Ar hostname
+.Ek
+.\"
+.Sh DESCRIPTION
+The
+.Nm
+command manipulates the address mapping table
+used by the Neighbor Discovery Protocol (NDP).
+.Bl -tag -width Ds
+.It Fl A Ar wait
+Repeat
+.Fl a
+.Pq dump NDP entries
+every
+.Ar wait
+seconds.
+.It Fl a
+Dump the currently existing NDP entries.
+The following information will be printed:
+.Bl -tag -width Ds -offset 3n
+.It Neighbor
+The IPv6 address of the neighbor.
+.It Linklayer Address
+The linklayer address of the neighbor.
+If the address is not available,
+it will be displayed as
+.Dq (incomplete) .
+.It Netif
+The network interface associated with the neighbor cache entry.
+.It Expire
+The time until expiry of the entry.
+If the entry is marked
+.Dq permanent ,
+it will never expire.
+.It S
+The state of the neighbor cache entry, as a single letter:
+.Pp
+.Bl -tag -width Ds -offset 3n -compact
+.It D
+Delay
+.It I
+Incomplete
+.It N
+Nostate
+.It P
+Probe
+.It R
+Reachable
+.It S
+Stale
+.It W
+Waitdelete
+.It \&?
+Unknown state (should never happen).
+.El
+.It Flags
+Flags on the neighbor cache entry, in a single letter.
+They are: Router
+.Pq Sq R
+and proxy neighbor advertisement
+.Pq Sq p .
+This field may be followed by a decimal number,
+representing the number of NS probes
+the node has sent during the current state.
+.El
+.It Fl c
+Erase all the NDP entries.
+.It Fl d Ar hostname
+Delete the specified NDP entry.
+.It Fl f Ar filename
+Parse the file specified by
+.Ar filename .
+.It Fl H
+Harmonize consistency between the routing table and the default router
+list; install the top entry of the list into the kernel routing table.
+.It Fl I
+Shows the default interface used as the default route when
+there is no default router.
+.It Fl I Ar interface
+Specifies the default
+.Ar interface
+to be used when there is no interface specified even though required.
+.It Fl I Ic delete
+The current default interface will be deleted from the kernel.
+.It Fl i Ar interface Op Ar flag ...
+View ND information for the specified interface.
+If additional arguments are given,
+.Nm
+sets or clears the specified flags for the interface.
+Each flag should be separated by whitespace or tab characters.
+Possible flags are as follows.
+All of the flags can begin with the
+special character
+.Ql - ,
+which means the flag should be cleared.
+Note that
+.Fl -
+would be needed before
+.Fl foo
+in this case.
+.\"
+.Bl -tag -width Ds
+.It Ic nud
+Turn on or off NUD (Neighbor Unreachability Detection) on the
+interface.
+NUD is usually turned on by default.
+.It Ic accept_rtadv
+Specify whether or not to accept Router Advertisement messages
+received on the
+.Ar interface .
+Note that the kernel does not accept Router Advertisement messages
+unless the
+.Li net.inet6.ip6.accept_rtadv
+variable is non-0, even if the flag is on.
+This flag is set to 1 by default.
+See
+.Xr sysctl 8
+and
+.Xr sysctl.conf 5
+for further details on how to set the
+.Li net.inet6.ip6.accept_rtadv
+variable.
+.\".It Xo
+.\".Ic prefer_source
+.\".Xc
+.\"Prefer addresses on the
+.\".Ar interface
+.\"as candidates of the source address for outgoing packets.
+.\"The default value of this flag is off.
+.\"For more details about the entire algorithm of source address
+.\"selection, see the
+.\".Pa IMPLEMENTATION
+.\"file supplied with the KAME kit.
+.El
+.It Fl n
+Do not try to resolve numeric addresses to hostnames.
+.It Fl P
+Flush all the entries in the prefix list.
+.It Fl p
+Show the prefix list.
+.It Fl R
+Flush all the entries in the default router list.
+.It Fl r
+Show the default router list.
+.It Xo
+.Fl s Ar nodename etheraddr
+.Op Cm temp
+.Op Cm proxy
+.Xc
+Register an NDP entry for a node.
+The entry will be permanent unless the word
+.Cm temp
+is given in the command.
+If the word
+.Cm proxy
+is given, this system will act as a proxy NDP server,
+responding to requests for
+.Ar hostname
+even though the host address is not its own.
+.It Fl t
+Print a timestamp on each entry,
+making it possible to merge output with
+.Xr tcpdump 8 .
+Most useful when used with
+.Fl A .
+.El
+.Pp
+.Ex -std ndp
+.\"
+.Sh SEE ALSO
+.Xr ip6 4 ,
+.Xr sysctl.conf 5 ,
+.Xr arp 8 ,
+.Xr sysctl 8 ,
+.Xr tcpdump 8
+.\"
+.Sh HISTORY
+The
+.Nm
+command first appeared in the WIDE Hydrangea IPv6 protocol stack kit.
+.\"
+.\" .Sh BUGS
+.\" (to be written)

@@ -1,0 +1,18 @@
+/Makefile.inc/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_add.c/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_arith.h/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_compare.c/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_div.c/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_emu.h/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_explode.c/1.6/Sat Dec 23 23:40:49 2006//TOPENBSD_4_8_BASE
+/fpu_extern.h/1.3/Thu Jun 26 05:42:05 2008//TOPENBSD_4_8_BASE
+/fpu_implode.c/1.2/Mon Feb 12 19:47:10 2007//TOPENBSD_4_8_BASE
+/fpu_mul.c/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_q.c/1.2/Tue Feb  3 17:18:13 2004//TOPENBSD_4_8_BASE
+/fpu_q.h/1.2/Tue Feb  3 17:18:13 2004//TOPENBSD_4_8_BASE
+/fpu_qp.c/1.2/Tue Sep 28 18:03:36 2004//TOPENBSD_4_8_BASE
+/fpu_reg.c/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_reg.h/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_sqrt.c/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+/fpu_subr.c/1.1/Mon Jul 21 18:41:30 2003//TOPENBSD_4_8_BASE
+D

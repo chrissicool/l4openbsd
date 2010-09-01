@@ -1,0 +1,16 @@
+@@ -1 +1,14 @@
+-blah();
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++/* a comment */
++
++/* main function */
++int
++main(int argc, char **argv)
++{
++	printf("foo bar\n");
++
++	return (0);
++}

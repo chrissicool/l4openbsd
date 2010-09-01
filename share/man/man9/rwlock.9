@@ -1,0 +1,147 @@
+.\" $OpenBSD: rwlock.9,v 1.9 2010/08/01 14:21:10 blambert Exp $
+.\"
+.\" Copyright (c) 2006 Pedro Martelletto <pedro@ambientworks.net>
+.\" All rights reserved.
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: August 1 2010 $
+.Dt RWLOCK 9
+.Os
+.Sh NAME
+.Nm rwlock ,
+.Nm rw_init ,
+.Nm rw_enter ,
+.Nm rw_exit ,
+.Nm rw_enter_read ,
+.Nm rw_enter_write ,
+.Nm rw_exit_read ,
+.Nm rw_exit_write
+.Nd interface to read/write locks
+.Sh SYNOPSIS
+.Fd #include <sys/rwlock.h>
+.Ft void
+.Fn rw_init "struct rwlock *rwl" "const char *name"
+.Ft int
+.Fn rw_enter "struct rwlock *rwl" "int flags"
+.Ft void
+.Fn rw_exit "struct rwlock *rwl"
+.Ft void
+.Fn rw_enter_read "struct rwlock *rwl"
+.Ft void
+.Fn rw_enter_write "struct rwlock *rwl"
+.Ft void
+.Fn rw_exit_read "struct rwlock *rwl"
+.Ft void
+.Fn rw_exit_write "struct rwlock *rwl"
+.Ft void
+.Fn rw_assert_wrlock "struct rwlock *rwl"
+.Ft void
+.Fn rw_assert_rdlock "struct rwlock *rwl"
+.Ft void
+.Fn rw_assert_unlocked "struct rwlock *rwl"
+.Sh DESCRIPTION
+The
+.Nm
+set of functions provides a multiple-reader, single-writer locking mechanism to
+ensure mutual exclusion between different processes.
+.Pp
+The
+.Fn rw_init
+function is used to initiate the lock pointed to by
+.Fa rwl .
+The
+.Fa name
+argument specifies the name of the lock, which is used as the wait message
+if the process needs to sleep.
+.Pp
+The
+.Fn rw_enter
+function acquires a lock.
+The
+.Fa flags
+argument specifies what kind of lock should be obtained and also
+modifies the operation.
+The possible flags are:
+.Pp
+.Bl -tag -offset indent -width RW_DOWNGRADEXXX -compact
+.It Dv RW_READ
+Acquire a shared lock.
+.It Dv RW_WRITE
+Acquire an exclusive lock.
+.It Dv RW_DOWNGRADE
+Safely release an exclusive lock and acquire a shared lock without
+letting other exclusive locks in between.
+.It Dv RW_INTR
+When waiting for a lock, allow signals to interrupt the sleep.
+.It Dv RW_NOSLEEP
+Do not wait for busy locks, fail with
+.Dv EBUSY
+instead.
+.It Dv RW_SLEEPFAIL
+Wait for busy locks, but do not obtain them, fail with
+.Dv EAGAIN
+instead.
+.El
+.Pp
+The
+.Fn rw_exit
+function is used to release a held lock.
+.Pp
+The
+.Fn rw_enter_read
+function acquires a read lock, sleeping if necessary.
+.Pp
+The
+.Fn rw_enter_write
+function acquires a write lock, sleeping if necessary.
+.Pp
+The
+.Fn rw_exit_read
+function releases a read lock.
+.Pp
+The
+.Fn rw_exit_write
+function releases a write lock.
+.Pp
+Read locks can be acquired while the write lock is not held, and may coexist in
+distinct processes at any time.
+A write lock, however, can only be acquired when there are no read locks held,
+granting exclusive access to a single process.
+.Pp
+The
+.Fn rw_assert_wrlock ,
+.Fn rw_assert_rdlock ,
+and
+.Fn rw_assert_unlocked
+functions check the status
+.Fa rwl ,
+panicking if it is not write-, read-, or unlocked, respectively.
+.Sh SEE ALSO
+.Xr lockmgr 9 ,
+.Xr mutex 9 ,
+.Xr spl 9
+.Sh HISTORY
+The
+.Nm
+functions first appeared in
+.Ox 3.5 .
+.Sh AUTHORS
+The
+.Nm
+functions were written by
+.An Artur Grabowski
+.Aq art@openbsd.org .
+.Sh CAVEATS
+While it is safe to sleep with an rwlock held, they cannot
+be used in an interrupt handler as an rwlock is bound to a process.

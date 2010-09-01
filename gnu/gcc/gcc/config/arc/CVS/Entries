@@ -1,0 +1,10 @@
+/arc-modes.def/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+/arc-protos.h/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+/arc.c/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+/arc.h/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+/arc.md/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+/arc.opt/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+/initfini.c/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+/lib1funcs.asm/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+/t-arc/1.1.1.1/Thu Oct 15 17:11:29 2009//TOPENBSD_4_8_BASE
+D

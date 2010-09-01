@@ -1,0 +1,329 @@
+.\"	$OpenBSD: mount_vnd.8,v 1.17 2010/04/15 23:19:14 tedu Exp $
+.\"
+.\" Copyright (c) 1993 University of Utah.
+.\" Copyright (c) 1980, 1989, 1991, 1993
+.\"	The Regents of the University of California.  All rights reserved.
+.\"
+.\" This code is derived from software contributed to Berkeley by
+.\" the Systems Programming Group of the University of Utah Computer
+.\" Science Department.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. Neither the name of the University nor the names of its contributors
+.\"    may be used to endorse or promote products derived from this software
+.\"    without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\"     @(#)vnconfig.8	8.1 (Berkeley) 6/5/93
+.\"
+.\"
+.\" Copyright (c) 2007 Alexander von Gernler <grunk@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: April 15 2010 $
+.Dt MOUNT_VND 8
+.Os
+.Sh NAME
+.Nm mount_vnd ,
+.Nm vnconfig
+.Nd configure vnode disks
+.Sh SYNOPSIS
+.Nm mount_vnd
+.Bk -words
+.Op Fl k
+.Op Fl K Ar rounds
+.Op Fl o Ar options
+.Op Fl S Ar saltfile
+.Op Fl t Ar disktype
+.Ar image
+.Ar vnd_dev
+.Ek
+.Nm vnconfig
+.Bk -words
+.Op Fl ckluv
+.Op Fl K Ar rounds
+.Op Fl S Ar saltfile
+.Op Fl t Ar disktype
+.Ar vnd_dev
+.Ar image
+.Ek
+.Sh DESCRIPTION
+The
+.Nm vnconfig
+command configures vnode pseudo disk devices.
+It will associate (or disassociate) the special file
+.Ar vnd_dev
+with the regular file
+.Ar image ,
+allowing the latter to be accessed as though it were a disk.
+Hence a regular file within the file system can be used for swapping
+or can contain a file system that is mounted in the name space.
+.Pp
+Both traditional devices,
+.Xr vnd 4 ,
+and the cache-coherent devices,
+.Pa svnd ,
+are configured through
+.Nm vnconfig .
+.Pa svnd
+should be mounted with the
+.Xr mount 8
+option
+.Dq sync
+if
+.Ar image
+is being read from,
+to ensure consistency in the buffer cache.
+For normal operation this is not necessary.
+.Pp
+.Nm mount_vnd
+works similarly to
+.Nm vnconfig ,
+but it provides an interface that can be used by the
+.Xr fstab 5
+infrastructure, so that an
+.Ar image
+file can be configured to a device
+.Ar node
+while booting.
+.Nm mount_vnd
+defaults to the
+.Pa svnd0
+device.
+.Pp
+For
+.Xr fstab 5
+lines with type
+.Dq ffs ,
+the
+.Dq noauto
+option must be set to prevent a
+.Xr mount 8
+of the FFS partitions
+before the necessary vnd devices are configured.
+Also, the
+.Dq fs_passno
+field has to be set to 0 to prevent
+.Xr fsck 8
+from checking the file system for the same reasons.
+.Pp
+.Nm mount_vnd
+is invoked by
+.Xr mount 8
+when using the following syntax:
+.Bd -ragged -offset 4n
+.Nm mount Op options
+-t vnd
+.Ar image Ar node
+.Ed
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl c
+.Nm vnconfig
+only.
+Configures the device.
+If successful, references to
+.Ar vnd_dev
+will access the contents of
+.Ar image .
+This is the default operation.
+.It Fl K Ar rounds
+Associate an encryption key with the device.
+All data will be encrypted using the Blowfish cipher before it is
+written to the disk.
+The user is asked for both a passphrase and the name of a salt file.
+The salt file can also be specified on the command line using the
+.Fl S
+option.
+The passphrase and salt are combined according to PKCS #5 PBKDF2 for the
+specified number of
+rounds to generate the actual key used.
+.Ar rounds
+is a number between 1000 and
+.Dv INT_MAX .
+DO NOT LOSE THE SALT FILE.
+Encryption only works with
+.Pa svnd .
+.It Fl k
+Associate an encryption key with the device.
+All data will be encrypted using the Blowfish cipher before it is
+written to the disk.
+Encryption only works with
+.Pa svnd .
+.It Fl l
+.Nm vnconfig
+only.
+List the (s)vnd devices and indicate which ones are in use.
+If a specific
+.Ar vnd_dev
+is given, then only that one will be described.
+.It Fl o Ar options
+.Nm mount_vnd
+only.
+Options are specified with a
+.Fl o
+flag followed by a comma separated string of options.
+See the
+.Xr mount 8
+man page for possible options and their meanings.
+.Pp
+At the moment,
+.Fl o
+is only here for compatibility reasons, but no use is made of supplied
+options.
+.It Fl S Ar saltfile
+When
+.Fl K
+is used, specify the
+.Pa saltfile .
+.It Fl t Ar disktype
+Specify a
+.Ar disktype
+entry from the
+.Xr disktab 5
+database.
+The
+.Ar vnd_dev
+will have the sector size, sectors per track, and tracks per cylinder values
+of the specified
+.Ar disktype .
+The defaults are 512-byte sectors, 100 sectors per track and 1 track per
+cylinder.
+.It Fl u
+.Nm vnconfig
+only.
+Unconfigures a
+.Ar vnd_dev .
+.It Fl v
+.Nm vnconfig
+only.
+Print messages to stdout describing actions taken.
+.El
+.Sh FILES
+.Bl -tag -width /etc/rvnd?? -compact
+.It Pa /dev/{,r}{,s}vnd*
+.El
+.Sh EXAMPLES
+Configure a CD-ROM or DVD image file as vnode disk svnd0
+and mount the ISO 9660 file system contained in it:
+.Bd -literal -offset indent
+# vnconfig svnd0 /tmp/diskimage
+# mount -t cd9660 /dev/svnd0c /mnt
+.Ed
+.Pp
+Configure an encrypted image file as vnode disk svnd0 and mount the FFS
+file system contained in the
+.Sq a
+partition of the disklabel.
+The encryption key does not echo and must be entered every time
+the vnode disk is configured.
+.Bd -literal -offset indent
+# vnconfig -k svnd0 /tmp/cryptimg
+Encryption key:
+# mount /dev/svnd0a /mnt
+.Ed
+.Pp
+An equivalent
+.Xr fstab 5
+entry is:
+.Bd -literal -offset indent
+/tmp/cryptimg /dev/svnd0c vnd rw,noauto,-k       0 0
+/dev/svnd0a   /mnt        ffs rw,noauto          0 0
+.Ed
+.Pp
+Same as above, but now configure the vnode using PKCS #5 PBKDF2 and
+a salt file with 20000 rounds:
+.Bd -literal -offset indent
+# vnconfig -K 20000 svnd0 /tmp/cryptimg
+Encryption key:
+Salt file: /tmp/cryptsalt
+# mount /dev/svnd0a /mnt
+.Ed
+.Pp
+An equivalent
+.Xr fstab 5
+entry is:
+.Bd -literal -offset indent
+/tmp/cryptimg /dev/svnd0c vnd rw,noauto,-K=20000 0 0
+/dev/svnd0a   /mnt        ffs rw,noauto          0 0
+.Ed
+.Pp
+Unmount the file system and unconfigure the vnode device:
+.Bd -literal -offset indent
+# umount /mnt
+# vnconfig -u svnd0
+.Ed
+.Pp
+A sample of commands to put in
+.Xr rc.local 8
+in order to have vnd images configured at boot time is listed here:
+.Bd -literal -offset indent
+# Example for automatically configuring a vnd device on startup
+echo "configuring vnd devices:"
+mount /dev/svnd0c
+fsck -p /dev/rsvnd0a
+mount /mnt
+.Ed
+.Pp
+Mounting images during the first pass of
+.Xr fsck 8
+and
+.Xr mount 8
+is not possible, because the image to be configured to a vnd itself
+resides on a file system that first has to be checked and mounted.
+.Sh SEE ALSO
+.Xr vnd 4 ,
+.Xr disktab 5 ,
+.Xr fstab 5 ,
+.Xr mount 8 ,
+.Xr swapon 8 ,
+.Xr umount 8
+.Sh HISTORY
+The
+.Nm
+command first appeared in
+.Ox 4.2 .
+.Sh AUTHORS
+.An David Krause .
+.Sh CAVEATS
+The
+.Sq c
+partition of a vnd image should not be used.
+When a superblock becomes damaged,
+.Xr fsck_ffs 8
+needs information contained in the disklabel
+to determine the location of alternate superblocks.
+This information is not available when directly using the
+.Sq c
+partition,
+so checking the file system image will fail.

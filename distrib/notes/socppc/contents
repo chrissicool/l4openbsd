@@ -1,0 +1,46 @@
+dnl	$OpenBSD: contents,v 1.10 2010/03/16 17:23:09 miod Exp $
+TopPart
+
+OpenBSDdistsets
+
+OpenBSDbsd
+
+OpenBSDrd
+
+	bsd.bin		A RAMDISK kernel that can be loaded directly
+			by the U-Boot firmware.  Used for installation
+			on Thecus N1200.
+
+	boot		The OpenBSD/MACHINE secondary boot loader in
+			U-Boot format.
+
+	boot.elf	The secondary boot loader in ELF format, for
+			use with the RouterBOOT firmware.
+
+	miniroot{:--:}OSrev.fs	A miniroot filesystem image to be copied to
+			CompactFlash to allow installing OpenBSD OSREV on the
+			RouterBOARD RB600A.
+
+DistributionDescription(eleven)
+
+OpenBSDbase(64487064,191906776)
+
+OpenBSDcomp(114929725,292831942)
+
+OpenBSDetc(520810,1577864)
+
+OpenBSDgame(2761953,6248736)
+
+OpenBSDman(9451132,34526185)
+
+OpenBSDmisc(364800,1175282)
+
+OpenBSDxbase(18457502,52439624)
+
+OpenBSDxetc(72929,276292)
+
+OpenBSDxfont(39687332,51387549)
+
+OpenBSDxserv(6179148,16456110)
+
+OpenBSDxshare(2946146,16054055)

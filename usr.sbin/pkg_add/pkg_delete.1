@@ -1,0 +1,199 @@
+.\"	$OpenBSD: pkg_delete.1,v 1.35 2010/06/05 07:11:43 espie Exp $
+.\"
+.\" Documentation and design originally from FreeBSD. All the code has
+.\" been rewritten since. We keep the documentation's notice:
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" Jordan K. Hubbard
+.\"
+.\"
+.Dd $Mdocdate: June 5 2010 $
+.Dt PKG_DELETE 1
+.Os
+.Sh NAME
+.Nm pkg_delete
+.Nd delete software package distributions
+.Sh SYNOPSIS
+.Nm pkg_delete
+.Op Fl cIimnqsvx
+.Op Fl B Ar pkg-destdir
+.Oo Fl D Ar name
+.Ns Oo Ns = Ns Ar value
+.Oc
+.Oc
+.Ar pkg-name Op Ar ...
+.Sh DESCRIPTION
+The
+.Nm
+command is used to delete packages that have been previously installed
+with the
+.Xr pkg_add 1
+command.
+.Pp
+Package names may be specified either as the package name itself, or as a
+filename which consists of the package name plus the
+.Dq .tgz
+suffix, or as a full pathname like
+.Pa /var/db/pkg/pkgname ,
+so that shell wildcards can be used.
+.Pp
+Version numbers and flavors
+.Po
+see
+.Xr packages-specs 7
+.Pc
+can be omitted, unless the resulting specification is ambiguous.
+.Pp
+The options are as follows:
+.Bl -tag -width BB-pkg-destdir
+.It Fl B Ar pkg-destdir
+Set
+.Ar pkg-destdir
+as the prefix to prepend to any object deleted.
+.It Fl c
+Delete extra configuration file, mentioned as
+.Dl @extra file
+in the packing-list.
+.It Xo
+.Fl D
+.Ar name Ns Op = Ns Ar value
+.Xc
+Force removal of the package.
+.Ar name
+is a keyword that states what failsafe
+should be waived.
+Recognized keywords include:
+.Bl -tag -width "dependenciesXX"
+.It Ar ambiguous
+delete all packages matching ambiguous package specifications.
+.It Ar baddepend
+force the deletion of packages even if they reference inexistent dependencies.
+.It Ar dependencies
+also delete the whole set of packages that depends upon the requested packages.
+.It Ar nonroot
+uninstall even if not running as root.
+.It Ar scripts
+external scripts may fail.
+.It Ar uninstalled
+proceed even if some package names don't resolve to installed package names.
+.It Ar verbosedeps
+show detailed dependency information.
+.El
+.It Fl I
+If scripts exist for a given package, do not execute them.
+.It Fl i
+Switch on interactive mode.
+.Nm
+may ask questions to the user if faced with difficult decisions.
+.It Fl m
+Causes
+.Nm
+to always display the progress meter in cases it would not do so by default.
+.It Fl n
+Don't actually deinstall a package, just report the steps that
+would be taken if it were.
+.It Fl q
+Delete package quickly, do not bother with checksums before removing normal
+files.
+For signed packages, do not bother verifying signatures either.
+If used twice,
+it will not bother with checksums for configuration files either.
+.It Fl s
+Don't actually deinstall packages, report the disk size changes
+that would happen.
+.It Fl v
+Turn on verbose output.
+Several
+.Fl v
+turn on more verbose output.
+By default,
+.Nm
+is almost completely silent, but it reacts to keyboard status requests
+.Po
+see
+.Xr stty 1
+.Pc .
+.Fl v
+turns on basic messages,
+.Fl vv
+adds relevant system operations,
+.Fl vvv
+shows most internal computations apart from individual file/directory
+additions, and
+.Fl vvvvv
+shows everything.
+.It Fl x
+Disable progress meter.
+.El
+.Sh TECHNICAL DETAILS
+.Nm
+examines installed package records for the
+.Ar pkgname
+specified,  checks inter-dependencies between installed packages,
+deletes the package contents in an order respecting dependencies
+(e.g., packages with dependencies get removed first), and finally
+removes the package records.
+.Pp
+If a package is required by other installed packages not mentioned in
+the list of packages to remove,
+.Nm
+will list those dependent packages and refuse to delete the package.
+.Pp
+If a
+.Cm deinstall
+script exists for the package (deprecated,
+.Cm @unexec
+is more versatile),
+it is executed before any files are removed.
+Such a script can be used to remove messy dynamic files created by the
+package on installation or during usage.
+The
+.Nm deinstall
+script is called as:
+.Bd -filled -offset indent
+.Cm deinstall
+.Ar <pkg-name>
+.Ar DEINSTALL
+.Ed
+.Pp
+Passing the keyword
+.Ar DEINSTALL
+lets you potentially write only one program/script that handles all
+aspects of installation and deletion.
+.Sh ENVIRONMENT
+.Bl -tag -width PKG_DESTDIR
+.It Ev PKG_DBDIR
+Where to look for installed packages instead of
+.Pa /var/db/pkg .
+.It Ev PKG_DESTDIR
+Value for
+.Ar pkg-destdir ,
+if no
+.Fl B
+option is specified;
+value passed to any
+.Cm DEINSTALL
+or
+.Cm REQUIRE
+script invoked from the package.
+.El
+.Sh SEE ALSO
+.Xr pkg_add 1 ,
+.Xr pkg_create 1 ,
+.Xr pkg_info 1 ,
+.Xr packages-specs 7
+.Sh AUTHORS
+.Bl -tag -width indent -compact
+.It "Jordan Hubbard"
+initial design
+.It "Marc Espie"
+complete rewrite
+.El

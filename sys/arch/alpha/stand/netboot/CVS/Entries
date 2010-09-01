@@ -1,0 +1,12 @@
+/Makefile/1.9/Sun Nov 25 19:12:59 2007//TOPENBSD_4_8_BASE
+/conf.c/1.2/Mon May  5 06:01:59 1997//TOPENBSD_4_8_BASE
+/dev_net.c/1.3/Thu Mar 14 03:15:51 2002//TOPENBSD_4_8_BASE
+/dev_net.h/1.2/Thu Mar 14 01:26:27 2002//TOPENBSD_4_8_BASE
+/devopen.c/1.4/Mon Jun  2 23:27:44 2003//TOPENBSD_4_8_BASE
+/getsecs.c/1.2/Wed Nov 27 19:54:55 1996//TOPENBSD_4_8_BASE
+/if_prom.c/1.4/Sun Mar  9 12:03:03 2008//TOPENBSD_4_8_BASE
+/netboot.c/1.7/Sat Dec 17 07:31:25 2005//TOPENBSD_4_8_BASE
+/newvers.sh/1.4/Sun Mar  9 12:03:03 2008//TOPENBSD_4_8_BASE
+/rpcc.S/1.1/Wed Oct 30 22:40:59 1996//TOPENBSD_4_8_BASE
+/version/1.2/Mon May  5 06:02:02 1997//TOPENBSD_4_8_BASE
+D

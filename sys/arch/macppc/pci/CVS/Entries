@@ -1,0 +1,13 @@
+/ht.c/1.13/Sat Aug 22 02:54:50 2009//TOPENBSD_4_8_BASE
+/kauaiata.c/1.10/Fri Apr 25 14:51:35 2008//TOPENBSD_4_8_BASE
+/macobio.c/1.18/Sat Aug 22 02:54:50 2009//TOPENBSD_4_8_BASE
+/mpc106reg.h/1.3/Tue Jan 27 10:04:15 2004//TOPENBSD_4_8_BASE
+/mpcpcibus.c/1.40/Sat Aug 22 02:54:50 2009//TOPENBSD_4_8_BASE
+/pchb.c/1.11/Thu Jun 26 05:42:12 2008//TOPENBSD_4_8_BASE
+/pcibrvar.h/1.7/Sun May  3 21:30:09 2009//TOPENBSD_4_8_BASE
+/pciide_machdep.c/1.4/Mon Dec 12 18:25:47 2005//TOPENBSD_4_8_BASE
+/vgafb.c/1.36/Sun Mar 29 21:53:52 2009//TOPENBSD_4_8_BASE
+/vgafb_pci.c/1.21/Sat May 22 21:30:26 2010//TOPENBSD_4_8_BASE
+/vgafb_pcivar.h/1.5/Mon Nov  5 19:24:31 2007//TOPENBSD_4_8_BASE
+/vgafbvar.h/1.11/Sun Apr  9 12:22:56 2006//TOPENBSD_4_8_BASE
+D

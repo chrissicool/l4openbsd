@@ -1,0 +1,21 @@
+/.indent.pro/1.1.1.1/Thu Oct  1 17:19:39 1998//TOPENBSD_4_8_BASE
+/Makefile.tmpl/1.5/Tue Apr  4 11:39:28 2006//TOPENBSD_4_8_BASE
+/alloc.c/1.19/Fri May 23 08:41:48 2008//TOPENBSD_4_8_BASE
+/buff.c/1.21/Thu Feb 25 07:49:53 2010//TOPENBSD_4_8_BASE
+/fdcache.c/1.11/Wed May 14 13:47:05 2008//TOPENBSD_4_8_BASE
+/gen_test_char.c/1.6/Thu May 15 06:05:43 2008//TOPENBSD_4_8_BASE
+/gen_uri_delims.c/1.3/Thu May 15 06:05:43 2008//TOPENBSD_4_8_BASE
+/http_config.c/1.21/Wed May 14 16:11:22 2008//TOPENBSD_4_8_BASE
+/http_core.c/1.27/Mon May 10 02:00:50 2010//TOPENBSD_4_8_BASE
+/http_log.c/1.19/Wed May 14 09:25:38 2008//TOPENBSD_4_8_BASE
+/http_main.c/1.54/Thu Feb 25 07:49:53 2010//TOPENBSD_4_8_BASE
+/http_protocol.c/1.37/Thu Feb 25 07:49:53 2010//TOPENBSD_4_8_BASE
+/http_request.c/1.16/Wed May 14 09:25:38 2008//TOPENBSD_4_8_BASE
+/http_vhost.c/1.11/Wed May 21 11:28:48 2008//TOPENBSD_4_8_BASE
+/rfc1413.c/1.14/Wed May 21 11:28:48 2008//TOPENBSD_4_8_BASE
+/util.c/1.28/Fri May 23 08:41:48 2008//TOPENBSD_4_8_BASE
+/util_date.c/1.9/Thu May 15 06:05:43 2008//TOPENBSD_4_8_BASE
+/util_md5.c/1.10/Thu May 15 06:05:43 2008//TOPENBSD_4_8_BASE
+/util_script.c/1.18/Thu May 15 06:05:43 2008//TOPENBSD_4_8_BASE
+/util_uri.c/1.11/Thu May 15 06:05:44 2008//TOPENBSD_4_8_BASE
+D

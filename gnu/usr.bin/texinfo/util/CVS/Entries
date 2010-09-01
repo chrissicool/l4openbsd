@@ -1,0 +1,27 @@
+/Makefile.am/1.5/Mon Jul 17 16:12:36 2006//TOPENBSD_4_8_BASE
+/Makefile.in/1.4/Mon Jul 17 16:12:36 2006//TOPENBSD_4_8_BASE
+/README/1.1.1.4/Mon Jul 17 16:03:49 2006//TOPENBSD_4_8_BASE
+/deref.c/1.1.1.2/Wed Feb  9 01:26:22 2000//TOPENBSD_4_8_BASE
+/dir-example/1.1.1.1/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/fix-info-dir/1.1.1.2/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/fixfonts/1.1.1.1/Fri Dec 22 16:47:17 1995//TOPENBSD_4_8_BASE
+/fixref.gawk/1.1.1.1/Wed Feb  9 01:26:22 2000//TOPENBSD_4_8_BASE
+/gdoc/1.1.1.1/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/gen-dir-node/1.5/Mon Jul 17 16:12:36 2006//TOPENBSD_4_8_BASE
+/gendocs.sh/1.1.1.1/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/gendocs_template/1.1.1.1/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/infosrch/1.1.1.1/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/install-info-html/1.1.1.2/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/install-info.c/1.8/Mon Jul 17 16:12:36 2006//TOPENBSD_4_8_BASE
+/outline.gawk/1.1.1.1/Wed Feb  9 01:26:23 2000//TOPENBSD_4_8_BASE
+/prepinfo.awk/1.1.1.1/Wed Feb  9 01:26:24 2000//TOPENBSD_4_8_BASE
+/tex3patch/1.1.1.2/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/texi-docstring-magic.el/1.1.1.2/Mon Jul 17 16:03:50 2006//TOPENBSD_4_8_BASE
+/texi2dvi/1.6/Sat Dec 23 19:00:33 2006//TOPENBSD_4_8_BASE
+/texi2pdf/1.1.1.1/Mon Jul 17 16:03:51 2006//TOPENBSD_4_8_BASE
+/texindex.c/1.5/Mon Jul 17 16:12:36 2006//TOPENBSD_4_8_BASE
+/texinfo-cat.in/1.1.1.1/Mon Jul 17 16:03:51 2006//TOPENBSD_4_8_BASE
+/texinfo.dtd/1.1.1.1/Mon Jul 17 16:03:49 2006//TOPENBSD_4_8_BASE
+/texinfo.xsl/1.1.1.1/Mon Jul 17 16:03:49 2006//TOPENBSD_4_8_BASE
+/txitextest/1.1.1.1/Mon Jul 17 16:03:51 2006//TOPENBSD_4_8_BASE
+D

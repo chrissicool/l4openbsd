@@ -1,0 +1,7 @@
+/Makefile/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
+/fips_des_enc.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
+/fips_des_locl.h/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
+/fips_des_selftest.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
+/fips_desmovs.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
+/fips_set_key.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
+D/asm////

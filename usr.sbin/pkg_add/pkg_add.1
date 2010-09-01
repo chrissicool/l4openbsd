@@ -1,0 +1,744 @@
+.\"	$OpenBSD: pkg_add.1,v 1.102 2010/08/01 23:03:48 espie Exp $
+.\"
+.\" Documentation and design originally from FreeBSD. All the code has
+.\" been rewritten since. We keep the documentation's notice:
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" Jordan K. Hubbard
+.\"
+.\"
+.Dd $Mdocdate: August 1 2010 $
+.Dt PKG_ADD 1
+.Os
+.Sh NAME
+.Nm pkg_add
+.Nd install software package distributions
+.Sh SYNOPSIS
+.Nm pkg_add
+.Bk -words
+.Op Fl acIimnqrsUuvxz
+.Op Fl A Ar arch
+.Op Fl B Ar pkg-destdir
+.Oo Fl D Ar name
+.Ns Oo Ns = Ns Ar value
+.Oc
+.Oc
+.Op Fl L Ar localbase
+.Op Fl l Ar file
+.Op Fl P Ar type
+.Op Fl Q Ar quick-destdir
+.Ar pkg-name Op Ar ...
+.Ek
+.Sh DESCRIPTION
+The
+.Nm
+command is used to install packages created
+with the
+.Xr pkg_create 1
+command.
+Selected packages containing pre-compiled applications from the
+.Pa /usr/ports
+tree can be found on the
+.Ox
+FTP site or on the official
+.Ox
+CD.
+.Bd -filled -offset indent
+.Em Note :
+System distribution files, e.g., base28.tgz, comp28.tgz, are
+.Em not
+packages and may not be installed using
+.Nm .
+.Ed
+.Pp
+.Nm
+can be used to install new packages, to replace existing packages with other
+flavors
+.Po
+option
+.Fl r
+.Pc
+or to update packages to newer versions
+.Po
+option
+.Fl u
+.Pc .
+.Pp
+Details of packing-list internals are documented in
+.Xr pkg_create 1 .
+.Pp
+If a package is digitally signed:
+.Bl -bullet
+.It
+.Nm
+checks that its packing-list is not corrupted and matches the cryptographic
+signature stored within.
+.It
+.Nm
+verifies that the signature was emitted by a valid user certificate, signed
+by one of the authorities in
+.Pa /etc/ssl/pkgca.pem
+.It
+.Nm
+verifies that each file matches its sha256 checksum right after extraction,
+before doing anything with it.
+.It
+.Nm
+verifies that any dangerous mode or owner is registered in the packing-list.
+.El
+.Pp
+In normal mode,
+the package names given on the command lines are names of new packages that
+.Nm
+should install, without ever deinstalling existing packages.
+.Pp
+In replacement mode,
+the package names given on the command lines are names of new packages that
+.Nm
+should install, possibly replacing existing installed packages.
+.Pp
+In update mode,
+the package names given on the command lines are names of installed
+packages, and
+.Nm
+should figure out newer package names for these, then replace the old
+packages with the new.
+.Pp
+Each package name may be specified as a filename (which normally consists of the
+package name itself plus the
+.Dq .tgz
+suffix) or a URL referring to FTP, HTTP, HTTPS, or SCP locations.
+The following examples are valid:
+.Pp
+.Li pkg_add -v ftp://ftp.openbsd.org/pub/OpenBSD/2.7/packages/i386/m4-1.4.tgz
+.Li pkg_add -v scp://login@host/usr/ports/packages/sparc/all/tcl-8.4.7.tgz
+.Pp
+If the given package names are not found in the current working directory,
+.Nm
+will search for them in each directory named by the
+.Ev PKG_PATH
+environment variable.
+Specifying
+.Ql -
+as a package name causes
+.Nm
+to read from the standard input.
+.Pp
+.Nm
+also understands
+.Sq stems ,
+that is, package names without any version specification.
+For instance, with
+.Li pkg_add kdelibs ,
+.Nm
+will look in the current directory (or the PKG_PATH) for a kdelibs package.
+.Pp
+In case of ambiguities, for instance:
+.Li pkg_add screen
+(matches screen-4.02  and screen-4.02-static),
+.Nm
+will error out, unless it is invoked in interactive mode
+.Po
+option
+.Fl i
+.Pc .
+.Pp
+To avoid ambiguities,
+.Nm
+supports
+.Sq stems with flavors ,
+that is, a stem separated from flavors with a double dash.
+For instance, the previous ambiguity could be resolved by using
+.Li pkg_add screen--
+(matches only the normal flavor)
+or
+.Li pkg_add screen--static
+(matches only the static flavor).
+.Pp
+If the environment variable
+.Ev PKG_CACHE
+is set, every package retrieved from a distant location will also be
+copied here.
+.Pp
+Some packages may depend on other packages.
+When resolving dependencies
+.Nm
+will first look at already installed packages, then match
+dependencies with the list of packages left to install, then ask the
+user's opinion in interactive mode,
+then install default packages that satisfy the dependencies.
+.Pp
+Alternatively, it is possible to add packages interactively from within the
+.Xr ftp 1
+client,
+in which case setting
+.Ev PKG_PATH
+correctly will be necessary for any dependency to be found out and retrieved
+the same way.
+For example, the following works:
+.Bd -literal -offset indent
+$ ftp ftp://ftp.openbsd.org/pub/OpenBSD/2.7/packages/i386/
+250 CWD command successful
+ftp> ls m*
+227 Entering Passive Mode (129,128,5,191,164,73)
+150 Opening ASCII mode data connection for m*.
+m4-1.4.tgz
+metamail-2.7.tgz
+mh-6.8.4.tgz
+mm-1.0.12.tgz
+mpeg_lib-1.2.1.tgz
+mpeg_play-2.4.tgz
+mpg123-0.59q.tgz
+mutt-0.95.7i.tgz
+226 Transfer complete.
+ftp> get m4-1.4.tgz "|pkg_add -v -"
+.Ed
+.Pp
+.Sy Warning:
+Since the
+.Nm
+command may execute scripts or programs contained within a package file,
+your system may be susceptible to
+.Dq trojan horses
+or other subtle attacks from miscreants who create dangerous packages.
+Be sure the specified package(s) are from trusted sources.
+.Pp
+The options are as follows:
+.Bl -tag -width keyword
+.It Fl A Ar arch
+Assume
+.Ar arch
+as current machine architecture for any package tests.
+.It Fl a
+Automated package installation; do not record packages as installed manually.
+.It Fl B Ar pkg-destdir
+Set
+.Ar pkg-destdir
+as the prefix to prepend to any object extracted from the package.
+.It Fl c
+While replacing packages, delete extra configuration file in the old package,
+mentioned as
+.Dl @extra file
+in the packing-list.
+.It Xo
+.Fl D
+.Ar name Ns Op = Ns Ar value
+.Xc
+Force installation of the package.
+.Ar name
+is a keyword that states what failsafe
+should be waived.
+Recognized keywords include:
+.Pp
+.Bl -tag -width "updatedependsXX" -compact
+.It Ar allversions
+do not trim older p* variants of packages for updates.
+.It Ar arch
+architecture recorded in package may not match.
+.It Ar dontmerge
+by default, if dependencies are too strict,
+.Nm
+will merge updates together to make sure everything stays in synch.
+.Fl D Ar dontmerge
+disables that behavior.
+.It Ar downgrade
+don't filter out package versions older than what's currently installed.
+.It Ar installed
+in update mode, reinstall an existing package with the same signature.
+.It Ar libdepends
+library specifications may not be fulfilled.
+.It Ar nonroot
+install even if not running as root.
+.It Ar nosig
+do not check digital signatures.
+Still displays a very prominent message if a signature is found.
+.It Ar repair
+attempt to repair installed packages with missing registration data.
+.It Ar scripts
+external scripts may fail.
+.It Ar update
+unsafe update: old packing-list will run scripts that may fail.
+.It Ar updatedepends
+force update even if forward dependencies no longer match.
+.El
+.It Fl I
+If scripts exist for a given package, do not execute them.
+.It Fl i
+Switch on interactive mode.
+.Nm
+may ask questions to the user if faced with difficult decisions.
+.It Fl L Ar localbase
+Install a package under
+.Ar localbase .
+By default,
+.Ar localbase
+equals
+.Pa /usr/local ,
+and specifying it is not necessary.
+However, packages can be created using a different
+.Ar localbase
+.Po
+see
+.Xr pkg_create 1
+.Pc ,
+and those packages can only be installed by using the same
+.Ar localbase .
+See
+.Xr bsd.port.mk 5
+for a description of
+.Ev LOCALBASE .
+.It Fl l Ar file
+Installs packages from the raw output of
+.Xr pkg_info 1 ,
+as saved in
+.Ar file .
+Generally, use with
+.Li pkg_info \*(Gtfile ,
+to reproduce an installation from machine to machine.
+With
+.Fl z
+and
+.Fl l
+.Nm
+will try its best to reproduce the installation, even if the
+version numbers don't quite match and even if some packages cannot
+be found.
+.It Fl m
+Causes
+.Nm
+to always display the progress meter in cases it would not do so by default.
+.It Fl n
+Don't actually install a package, just report the steps that
+would be taken if it was.
+.It Fl P Ar type
+Check permissions for distribution, where
+.Ar type
+can be
+.Sq cdrom
+or
+.Sq ftp .
+.It Fl Q Ar quick-destdir
+Quick and dirty installation under
+.Ar quick-destdir .
+Contrary to
+.Fl B
+.Ar pkg-destdir ,
+symbolic links are resolved, and package installation stops at
+.Cm @endfake
+marker.
+.It Fl q
+Replace package quickly; do not bother with checksums before removing normal
+files.
+If used twice,
+it will not bother with checksums for configuration files either.
+.It Fl r
+Replace existing packages.
+.Nm
+will try to take every precaution to make sure the replacement can
+proceed before removing the old package and adding the new one, and it
+should also handle shared libraries correctly.
+Among other things,
+.Nm
+will refuse to replace packages as soon as it needs to run scripts that
+might fail
+.Po
+use
+.Fl D Ar update
+to force the replacement
+.Pc ;
+.Nm
+will also refuse to replace packages when the dependencies don't quite
+match
+.Po
+use
+.Fl D Ar updatedepends
+to force the replacement
+.Pc .
+.It Fl s
+Don't actually install packages, skip as many steps as needed and report
+only the disk size changes that would happen.
+Similar to
+.Fl n ,
+except it also skips fetching full packages and stops at getting the
+information it needs.
+.It Fl U
+Update dependencies if required before installing the new package(s).
+.It Fl u
+Update the given installed
+.Ar pkgname(s) ,
+and anything it depends upon.
+If no
+.Ar pkgname
+is given,
+.Nm
+will update all installed packages.
+This relies on
+.Ev PKG_PATH
+to figure out the new package names.
+.It Fl v
+Turn on verbose output.
+Several
+.Fl v
+turn on more verbose output.
+By default,
+.Nm
+is almost completely silent, but it reacts to keyboard status requests
+.Po
+see
+.Xr stty 1
+.Pc .
+.Fl v
+turns on basic messages,
+.Fl vv
+adds relevant system operations,
+.Fl vvv
+shows most internal computations apart from individual file/directory
+additions,
+.Fl vvvv
+also shows dependencies adjustments, and
+.Fl vvvvv
+shows everything.
+.It Fl x
+Disable progress meter.
+.It Fl z
+Fuzzy package addition:
+.Nm
+should do its best to match package names passed on the command line,
+even if the versions don't match and it will proceed even if
+some packages can't be found.
+.El
+.Pp
+By default, when adding packages via FTP, the
+.Xr ftp 1
+program operates in
+.Dq passive
+mode.
+If you wish to use active mode instead, set the
+.Ev FTPMODE
+environment variable to
+.Dq active .
+If
+.Nm
+consistently fails to fetch a package from a site known to work,
+it may be because the site does not support
+passive mode FTP correctly.
+This is very rare since
+.Nm
+will try active mode FTP if the server refuses a passive mode
+connection.
+.Ss Technical details
+.Nm
+deals with
+.Sq updatesets
+internally.
+An updateset is a collection of old package(s) to delete, and new package(s)
+to install, as an atomic operation.
+Under normal circumstances, an updateset contains at most one old package
+and one new package, but some situations may require
+.Nm
+to perform several installations/deletions at once.
+.Pp
+For each new package in an updateset,
+.Nm
+extracts the package's
+.Dq packing information
+(the packing-list, description, and installation/deinstallation scripts)
+into a special staging directory in
+.Pa /var/tmp
+(or
+.Ev PKG_TMPDIR
+if set \- see
+.Sx CAVEATS ,
+below)
+and then runs through the following sequence to fully extract the contents
+of the package:
+.Bl -enum
+.It
+A check is made to determine if the package is already recorded as installed.
+If it is,
+the installation is terminated.
+.It
+A check is made to determine if the package conflicts (from
+.Cm @conflict
+directives; see
+.Xr pkg_create 1 )
+with a package already recorded as installed.
+In non-replacement mode, its installation is terminated.
+.It
+For packages tagged with architecture constraints,
+.Nm
+verifies that the current machine architecture agrees with the constraints.
+.It
+All package dependencies (from
+.Cm @depend
+and
+.Cm @wantlib
+directives; see
+.Xr pkg_create 1 )
+are read from the packing-list.
+If any of these dependencies are not currently fulfilled,
+an attempt is made to find a package that meets them and install it,
+looking first in the current updateset, then in the list of packages
+to install passed to
+.Nm ;
+if no adequate package can be found and installed,
+the installation is terminated.
+.It
+.Nm
+checks for collisions with installed file names, read-only file systems,
+and enough space to store files.
+.It
+If the package contains an
+.Ar install
+script (deprecated,
+.Cm @exec
+is more versatile), it is executed with the following arguments:
+.Bl -tag -width indentindent
+.It Ar pkg-name
+The name of the package being installed.
+.It Cm PRE-INSTALL
+Keyword denoting that the script is to perform any actions needed before
+the package is installed.
+.El
+.Pp
+If the
+.Ar install
+script exits with a non-zero status code, the installation is terminated.
+.It
+The packing-list is used as a guide for extracting
+files from the package into their final locations.
+.It
+If an
+.Ar install
+script exists for the package (deprecated),
+it is executed with the following arguments:
+.Bl -tag -width indentindent
+.It Ar pkg_name
+The name of the package being installed.
+.It Cm POST-INSTALL
+Keyword denoting that the script is to perform any actions needed
+after the package has been installed.
+.El
+.It
+After installation is complete, a copy of all package files
+such as the packing-list, the
+.Ar install
+and
+.Ar deinstall
+scripts, the description file is made into
+.Pa /var/db/pkg/<pkg-name>
+for subsequent possible use by
+.Xr pkg_delete 1
+and
+.Xr pkg_info 1 .
+Any package dependencies are recorded in the other packages'
+.Pa /var/db/pkg/<other-pkg>/+REQUIRED_BY
+file
+(if the environment variable
+.Ev PKG_DBDIR
+is set, this overrides the
+.Pa /var/db/pkg/
+path shown above).
+.It
+Finally, the staging area is deleted and the program terminates.
+.El
+.Pp
+Note that it is safe to interrupt
+.Nm pkg_add
+through
+.Dv SIGINT ,
+.Dv SIGHUP ,
+and other signals, as it will safely record an interrupted install as
+.Pa partial-<pkgname>[.n] .
+.Pp
+When replacing packages, the procedure is slightly different.
+.Bl -enum
+.It
+A check is made to determine if a similar package is already installed.
+If its signature is identical to that of the new package, no replacement
+is performed (unless -D installed is specified).
+.It
+A check is made to determine what old package(s) the new package(s) should
+replace, using conflicts.
+.Nm
+will attempt to update those packages.
+If they update to the new package(s), nothing needs to be done.
+If they're part of the list of updatesets to install, the corresponding
+updatesets will be merged.
+Otherwise,
+.Nm
+will add them to the current updateset, and rerun update to find suitable
+update to those packages.
+.It
+A check is made to determine whether the old packages will be deleted without
+issue, and whether the new packages will install correctly.
+This includes refusing to run any code (unless -D update), and verifying
+that the new package still matches dependencies (unless -D updatedepends).
+.It
+Shared libraries deserve special treatment: each shared library from the old
+packages that does no longer exist in the new packages, but that is required
+from a wantlib of another package is kept along in a stub package named
+.Pa \&.libs-<pkgname> .
+.It
+The new packages are extracted to the filesystem, using temporary filenames
+of the form
+.Pa pkg.XXXXXXX
+since the old packages are still there.
+The packing-list is amended to record these names as @temp annotations,
+in cases the installation fails.
+.It
+The old packages are deleted as usual, except that some packages may still
+depend on them.
+Note also that
+.Cm @unexec-delete
+commands are not executed.
+.It
+The new packages are installed as usual, except that the files are already
+present and only need to be renamed.
+Note also that
+.Cm @exec-add
+commands are not executed.
+.It
+Dependencies from the old packages are adjusted to point to the correct new
+package.
+.El
+.Pp
+To update packages in -u mode,
+.Nm
+performs the following steps.
+.Bl -enum
+.It
+Each package name is reduced to its stem, and every package name with matching
+stem available through
+.Ev PKG_PATH
+is considered as an update candidate.
+.It
+.Nm
+searches for a
+.Sq quirks
+package first, which may contain exceptions to these rules.
+This special package contains global information, such as packages that
+can be deleted because they're now part of base, or stem changes.
+.It
+Version matching occurs: unless -D downgrade, only packages with newer
+versions will be considered as update candidates.
+Note that version matching is costly, thus
+.Ev PKG_PATH
+should point to a snapshot of packages for a given version of
+.Ox ,
+similar to the organization on the FTP sites.
+.It
+Candidates are then matched according to their source paths (the subdirectory of
+the ports dir, plus flavors and multi-packages modifiers), in order to weed
+out similar packages with distinct options.
+.It
+The signature of the candidate is compared to the signature of the already
+installed package: identical signatures mean no update needed.
+.It
+If several candidates are left,
+.Nm
+will ask the user in interactive mode, and not perform the update in
+non-interactive mode.
+.It
+Once a suitable update candidate has been found,
+.Nm
+checks the package dependencies.
+If necessary, it will install or update them first.
+Once all dependencies are up-to-date,
+.Nm
+will update the package.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width PKG_DESTDIR
+.It Ev FTPMODE
+Specifies whether
+.Xr ftp 1
+should operate in
+.Dq active
+or
+.Dq passive
+mode.
+The default is
+.Dq passive .
+.It Ev FETCH_CMD
+Override use of
+.Xr ftp 1 .
+Must point to a command that understands
+.Li ${FETCH_CMD} -o - url .
+.It Ev FTP_KEEPALIVE
+Have
+.Xr ftp 1
+send a byte after every
+.Ev FTP_KEEPALIVE
+seconds,
+so that incorrectly configured network equipment won't aggressively drop it.
+See
+.Dq ftp -k
+for more information.
+.It Ev PKG_DBDIR
+Where to register packages instead of
+.Pa /var/db/pkg .
+.It Ev PKG_DESTDIR
+Value for
+.Ar pkg-destdir ,
+if no
+.Fl B
+option is specified;
+value passed to any
+.Cm INSTALL
+or
+.Cm REQUIRE
+script invoked from the package.
+.It Ev PKG_CACHE
+If set, any package retrieved from a distant location will be copied to
+that directory as well.
+.It Ev PKG_PATH
+If a given package name cannot be found,
+the directories named by
+.Ev PKG_PATH
+are searched.
+It should contain a series of entries separated by colons.
+Each entry consists of a directory name.
+URL schemes such as FTP, HTTP, HTTPS, or SCP are also appropriate.
+The current directory may be indicated
+implicitly by an empty directory name, or explicitly by a single
+period
+.Pq Ql \&./ .
+.It Ev PKG_TMPDIR
+Temporary area where package information files will be extracted, instead of
+.Pa /var/tmp .
+.El
+.Sh SEE ALSO
+.Xr ftp 1 ,
+.Xr pkg_create 1 ,
+.Xr pkg_delete 1 ,
+.Xr pkg_info 1 ,
+.Xr OpenBSD::Intro 3p ,
+.Xr bsd.port.mk 5 ,
+.Xr package 5
+.Sh AUTHORS
+.Bl -tag -width indent -compact
+.It "Jordan Hubbard"
+Initial design.
+.It "Marc Espie"
+Complete rewrite.
+.El
+.Sh CAVEATS
+Package extraction does need a temporary area that
+can hold executable scripts.
+.Pp
+If
+.Pa /var/tmp
+is mounted noexec, you must currently set
+.Ev PKG_TMPDIR
+to a suitable area, as
+.Nm
+will refuse to install any package that contains executable scripts.

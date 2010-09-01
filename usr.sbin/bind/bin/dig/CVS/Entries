@@ -1,0 +1,15 @@
+/Makefile.in/1.6/Sun Dec  9 20:55:14 2007//TOPENBSD_4_8_BASE
+/dig.1/1.9/Sun Dec  9 13:39:42 2007//TOPENBSD_4_8_BASE
+/dig.c/1.14/Sun Aug 16 13:17:44 2009//TOPENBSD_4_8_BASE
+/dig.docbook/1.6/Sun Dec  9 13:39:42 2007//TOPENBSD_4_8_BASE
+/dig.html/1.7/Sun Dec  9 13:39:42 2007//TOPENBSD_4_8_BASE
+/dighost.c/1.13/Sat Apr 24 12:59:56 2010//TOPENBSD_4_8_BASE
+/host.1/1.6/Sun Dec  9 13:39:42 2007//TOPENBSD_4_8_BASE
+/host.c/1.8/Sun Dec  9 13:39:42 2007//TOPENBSD_4_8_BASE
+/host.docbook/1.6/Sun Dec  9 13:39:42 2007//TOPENBSD_4_8_BASE
+/host.html/1.6/Sun Dec  9 13:39:42 2007//TOPENBSD_4_8_BASE
+/nslookup.1/1.7/Sat Feb 20 19:59:52 2010//TOPENBSD_4_8_BASE
+/nslookup.c/1.11/Sun May  2 22:52:15 2010//TOPENBSD_4_8_BASE
+/nslookup.docbook/1.1.1.4/Sun Dec  9 12:33:18 2007//TOPENBSD_4_8_BASE
+/nslookup.html/1.1.1.4/Sun Dec  9 12:33:18 2007//TOPENBSD_4_8_BASE
+D/include////

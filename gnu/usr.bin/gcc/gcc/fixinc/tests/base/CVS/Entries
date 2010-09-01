@@ -1,0 +1,47 @@
+/_G_config.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/assert.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/c_asm.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/ctrl-quotes-def-1.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/ctype.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/curses.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/fcntl.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/fixinc-test-limits.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/inttypes.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/io-quotes-def-1.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/libgen.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/malloc.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/math.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/obstack.h/1.1.1.1/Fri Dec 24 23:51:47 2004//TOPENBSD_4_8_BASE
+/pthread.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/reg_types.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/regex.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/stdio.h/1.1.1.2/Fri Dec 24 23:51:47 2004//TOPENBSD_4_8_BASE
+/stdio_tag.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/stdlib.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/string.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/strings.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/sym.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/testing.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/time.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/tinfo.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/unistd.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+/widec.h/1.1.1.1/Sat Nov 29 12:35:52 2003//TOPENBSD_4_8_BASE
+D/X11////
+D/Xm////
+D/ansi////
+D/arch////
+D/arpa////
+D/bsd////
+D/hsfs////
+D/internal////
+D/machine////
+D/netdnet////
+D/netinet////
+D/pixrect////
+D/rpc////
+D/rpcsvc////
+D/sparc////
+D/sundev////
+D/sunwindow////
+D/sys////
+D/types////

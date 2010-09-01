@@ -1,0 +1,12 @@
+/Makefile/1.16/Thu Mar  4 22:13:57 2010//TOPENBSD_4_8_BASE
+/Makefile.inc/1.40/Mon Nov 26 10:26:02 2007//TOPENBSD_4_8_BASE
+D/biosboot////
+D/boot////
+D/cdboot////
+D/cdbr////
+D/etc////
+D/installboot////
+D/libsa////
+D/libz////
+D/mbr////
+D/pxeboot////

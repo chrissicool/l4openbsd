@@ -1,0 +1,109 @@
+.\"	$OpenBSD: myname.5,v 1.6 2007/05/31 19:19:58 jmc Exp $
+.\"
+.\" Copyright (c) 2003 Jason McIntyre <jmc@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: May 31 2007 $
+.Dt MYNAME 5
+.Os
+.Sh NAME
+.Nm myname , mygate
+.Nd default hostname and gateway
+.Sh SYNOPSIS
+.Nm /etc/myname
+.Nm /etc/mygate
+.Sh DESCRIPTION
+The
+.Nm myname
+and
+.Nm mygate
+files are read by
+.Xr netstart 8
+at system startup time.
+.Pp
+.Pa /etc/myname
+contains the symbolic name of the host machine.
+The file should contain a single line specifying the
+fully qualified domain name
+.Pq FQDN
+of the system
+.Pq e.g. host.example.com .
+The name must be resolvable, either by matching a hostname specified in
+.Pa /etc/hosts
+(see
+.Xr hosts 5 )
+or through DNS
+(see
+.Xr resolv.conf 5 ) .
+The hostname is set via the
+.Xr hostname 1
+utility at boot time.
+See
+.Xr hostname 7
+for a description of hostname resolution.
+.Pp
+.Pa /etc/mygate ,
+if it exists,
+contains the address of the gateway host.
+The gateway is added to the routing tables by the
+.Xr route 8
+utility.
+If
+.Pa /etc/mygate
+does not exist, no default gateway is added to the routing tables.
+The file may contain gateway addresses for both IPv4 and IPv6 networks:
+in dotted quad notation for v4
+.Pq e.g. 192.0.2.0
+or in colon notation for v6
+.Pq e.g. 2001:1234:5678::1 .
+Each address must be specified on a separate line.
+If more than one address of a specific family is found,
+only the first is used \- all other addresses of that family are ignored.
+.Pp
+.Pa /etc/mygate
+is processed after all interfaces have been configured.
+If any
+.Xr hostname.if 5
+files contain
+.Dq dhcp
+directives,
+IPv4 entries in
+.Pa /etc/mygate
+will be ignored.
+If they contain
+.Dq rtsol
+directives,
+IPv6 entries will be ignored.
+.Pp
+Empty lines and lines beginning with
+.Sq #
+in either file are ignored.
+.Sh FILES
+.Bl -tag -width "/etc/myname" -compact
+.It Pa /etc/myname
+Default hostname.
+.It Pa /etc/mygate
+Default gateway address(es).
+.El
+.Sh SEE ALSO
+.Xr hostname 1 ,
+.Xr hostname.if 5 ,
+.Xr hosts 5 ,
+.Xr resolv.conf 5 ,
+.Xr hostname 7 ,
+.Xr netstart 8 ,
+.Xr route 8
+.Sh HISTORY
+This manual page first appeared in
+.Ox 3.4 .

@@ -1,0 +1,101 @@
+/README/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/aoutos.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/dbx.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/dbxcoff.h/1.1.1.2/Thu Jun 17 21:10:50 1999//TOPENBSD_4_8_BASE
+/dbxelf.h/1.1.1.2/Thu Jun 17 21:10:51 1999//TOPENBSD_4_8_BASE
+/elfos.h/1.1.1.2/Mon Jun  5 22:16:29 2000//TOPENBSD_4_8_BASE
+/exec-stack.h/1.2/Mon Sep 23 01:35:37 2002//TOPENBSD_4_8_BASE
+/float-i128.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/float-i32.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/float-i386.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/float-i64.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/float-m68k.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/float-sh.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/float-vax.h/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/fp-bit.c/1.1.1.1/Wed May 26 13:35:11 1999//TOPENBSD_4_8_BASE
+/gnu.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/gofast.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/interix.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/libgloss.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/linux-aout.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/linux.h/1.1.1.3/Mon Jan 29 15:14:33 2001//TOPENBSD_4_8_BASE
+/lynx-ng.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/lynx.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/netbsd.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/nextstep.c/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/nextstep.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/nextstep21.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/openbsd.h/1.10/Fri Mar 28 18:35:21 2008//TOPENBSD_4_8_BASE
+/psos.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/ptx4.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/svr3.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/svr4.h/1.1.1.2/Sun Jul 18 16:36:01 1999//TOPENBSD_4_8_BASE
+/t-freebsd/1.1.1.1/Thu Jun 17 21:11:14 1999//TOPENBSD_4_8_BASE
+/t-gnu/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-install-cpp/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-libc-ok/1.2/Sun Jan  9 22:05:11 2005//TOPENBSD_4_8_BASE
+/t-libgcc-pic/1.1/Mon Oct  9 15:47:02 2000//TOPENBSD_4_8_BASE
+/t-linux/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-linux-aout/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-linux-gnulibc1/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-netbsd/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-openbsd/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-openbsd-thread/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-rtems/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/t-svr4/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/tm-dwarf2.h/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/x-interix/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/x-linux/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/x-linux-aout/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/x-lynx/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/x-openbsd/1.5/Mon Nov 24 17:12:55 2003//TOPENBSD_4_8_BASE
+/x-svr4/1.1.1.1/Wed May 26 13:35:12 1999//TOPENBSD_4_8_BASE
+/xm-alloca.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-freebsd.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-gnu.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-interix.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-linux.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-lynx.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-openbsd.h/1.2/Wed Sep 18 13:47:38 2002//TOPENBSD_4_8_BASE
+/xm-siglist.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-std32.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-svr3.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+/xm-svr4.h/1.1.1.1/Wed May 26 13:35:13 1999//TOPENBSD_4_8_BASE
+D/1750a////
+D/a29k////
+D/alpha////
+D/arc////
+D/arm////
+D/c4x////
+D/clipper////
+D/convex////
+D/dsp16xx////
+D/elxsi////
+D/fx80////
+D/gmicro////
+D/h8300////
+D/i370////
+D/i386////
+D/i860////
+D/i960////
+D/m32r////
+D/m68k////
+D/m88k////
+D/mips////
+D/mn10200////
+D/mn10300////
+D/msdos////
+D/ns32k////
+D/pa////
+D/pdp11////
+D/pyr////
+D/romp////
+D/rs6000////
+D/sh////
+D/sparc////
+D/spur////
+D/tahoe////
+D/v850////
+D/vax////
+D/we32k////
+D/winnt////

@@ -1,0 +1,19 @@
+/Makefile.inc/1.7/Tue Apr 21 09:34:50 2009//TOPENBSD_4_8_BASE
+/fabs.c/1.1/Fri Apr  1 10:54:27 2005//TOPENBSD_4_8_BASE
+/flt_rounds.c/1.1/Fri Apr  1 10:54:27 2005//TOPENBSD_4_8_BASE
+/fpclassifyl.c/1.1/Sun Sep  7 20:36:07 2008//TOPENBSD_4_8_BASE
+/fpgetmask.c/1.1/Fri Apr  1 10:54:27 2005//TOPENBSD_4_8_BASE
+/fpgetround.c/1.1/Fri Apr  1 10:54:27 2005//TOPENBSD_4_8_BASE
+/fpgetsticky.c/1.1/Fri Apr  1 10:54:27 2005//TOPENBSD_4_8_BASE
+/fpsetmask.c/1.1/Fri Apr  1 10:54:27 2005//TOPENBSD_4_8_BASE
+/fpsetround.c/1.1/Fri Apr  1 10:54:27 2005//TOPENBSD_4_8_BASE
+/fpsetsticky.c/1.1/Fri Apr  1 10:54:27 2005//TOPENBSD_4_8_BASE
+/infinity.c/1.2/Sun Aug  7 16:40:14 2005//TOPENBSD_4_8_BASE
+/isfinitel.c/1.2/Tue Dec  9 19:52:33 2008//TOPENBSD_4_8_BASE
+/isinfl.c/1.2/Tue Dec  9 19:52:33 2008//TOPENBSD_4_8_BASE
+/isnanl.c/1.2/Tue Dec  9 19:52:33 2008//TOPENBSD_4_8_BASE
+/isnormall.c/1.2/Tue Dec  9 19:52:33 2008//TOPENBSD_4_8_BASE
+/nan.c/1.1/Thu Jul 24 09:31:06 2008//TOPENBSD_4_8_BASE
+/setjmp.S/1.2/Sun Aug  7 16:40:14 2005//TOPENBSD_4_8_BASE
+/signbitl.c/1.1/Tue Dec  9 19:52:33 2008//TOPENBSD_4_8_BASE
+D

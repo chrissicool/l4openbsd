@@ -1,0 +1,106 @@
+.\"	$OpenBSD: acpi.4,v 1.39 2010/07/26 16:34:53 jmc Exp $
+.\"
+.\" Copyright (c) 2006 Alexander Yurchenko <grange@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: July 26 2010 $
+.Dt ACPI 4
+.Os
+.Sh NAME
+.Nm acpi
+.Nd Advanced Configuration and Power Interface
+.Sh SYNOPSIS
+.Cd "acpi0 at bios?"
+.Sh DESCRIPTION
+The
+.Nm
+driver provides basic support for ACPI including loading ACPI tables from
+the firmware, parsing and interpreting AML code, event handling,
+suspending and powering off, and attaching device drivers.
+Userland may access
+.Nm
+by using the
+.Xr apm 4
+device.
+.Pp
+The following devices can attach to
+.Nm :
+.Pp
+.Bl -tag -width "acpithinkpad(4)XXX" -offset indent -compact
+.It Xr acpiac 4
+ACPI AC adapter
+.It Xr acpiasus 4
+ASUS ACPI hotkeys
+.It Xr acpibat 4
+ACPI control method battery
+.It Xr acpibtn 4
+ACPI button
+.It Xr acpicpu 4
+ACPI processor power and performance state
+.It Xr acpidock 4
+ACPI docking station
+.It Xr acpiec 4
+ACPI embedded controller
+.It Xr acpihpet 4
+ACPI high precision event timer
+.It Xr acpimadt 4
+ACPI APIC configuration
+.It Xr acpiprt 4
+ACPI PCI routing table configuration
+.It Xr acpipwrres 4
+ACPI power resources
+.It Xr acpisony
+Sony ACPI control
+.It Xr acpithinkpad 4
+IBM/Lenovo ThinkPad ACPI support
+.It Xr acpitimer 4
+ACPI power management timer
+.It Xr acpitz 4
+ACPI thermal zone
+.It Xr acpivideo 4
+ACPI video
+.It Xr acpivout 4
+ACPI video output
+.It Xr aibs 4
+ASUSTeK AI Booster ACPI ATK0110 temperature, voltage, and fan sensor
+.El
+.Sh FILES
+.Bl -tag -width "/dev/apmctlXXX"
+.It /dev/apm
+Power management data device.
+May only be opened read-only.
+May be opened by multiple concurrent users.
+.It /dev/apmctl
+Power management control device.
+May be opened read-write or write-only.
+May only be opened by one user at a time.
+An attempt to open the file when in use will fail, returning
+.Er EBUSY .
+.El
+.Sh SEE ALSO
+.Xr apm 4 ,
+.Xr intro 4
+.Sh HISTORY
+The
+.Nm
+driver first appeared in
+.Ox 3.8 .
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+driver was written by
+.An Thorsten Lockert Aq tholo@sigmasoft.com
+and
+.An Jordan Hargrave Aq jordan@openbsd.org .

@@ -1,0 +1,26 @@
+/apm.c/1.3/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/bonito.c/1.15/Sun Jul 18 13:36:13 2010//TOPENBSD_4_8_BASE
+/bonito_irq.h/1.2/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/bonitoreg.h/1.7/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/bonitovar.h/1.5/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/gdiumiic.c/1.4/Wed Feb 24 22:16:18 2010//TOPENBSD_4_8_BASE
+/glx.c/1.5/Fri Feb 19 15:14:19 2010//TOPENBSD_4_8_BASE
+/glxpcib.c/1.6/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/glxreg.h/1.2/Fri Feb 12 19:37:29 2010//TOPENBSD_4_8_BASE
+/glxvar.h/1.1.1.1/Wed Nov 25 13:48:20 2009//TOPENBSD_4_8_BASE
+/kb3310.c/1.11/Sat Jul 31 16:04:46 2010//TOPENBSD_4_8_BASE
+/m41t8xclock.c/1.2/Wed Feb 24 22:14:19 2010//TOPENBSD_4_8_BASE
+/mainbus.c/1.4/Sun Feb 28 08:30:27 2010//TOPENBSD_4_8_BASE
+/mcclock.c/1.3/Fri Jan 22 21:44:00 2010//TOPENBSD_4_8_BASE
+/mcclock_isa.c/1.1.1.1/Fri Dec 25 21:04:32 2009//TOPENBSD_4_8_BASE
+/mcclockvar.h/1.1.1.1/Thu Nov 26 12:14:01 2009//TOPENBSD_4_8_BASE
+/ohci_voyager.c/1.1/Fri Feb 26 14:53:11 2010//TOPENBSD_4_8_BASE
+/pcib.c/1.2/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/sisfb.c/1.1/Sun Feb 28 22:32:50 2010//TOPENBSD_4_8_BASE
+/smfb.c/1.7/Sun Feb 28 21:35:41 2010//TOPENBSD_4_8_BASE
+/smfbreg.h/1.4/Thu Feb 18 22:45:28 2010//TOPENBSD_4_8_BASE
+/stsec.c/1.4/Mon Mar  8 20:56:20 2010//TOPENBSD_4_8_BASE
+/voyager.c/1.3/Fri Feb 26 14:53:11 2010//TOPENBSD_4_8_BASE
+/voyagerreg.h/1.2/Fri Feb 26 14:53:11 2010//TOPENBSD_4_8_BASE
+/voyagervar.h/1.2/Fri Feb 26 14:53:11 2010//TOPENBSD_4_8_BASE
+D

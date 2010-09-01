@@ -1,0 +1,52 @@
+/.cvsignore/1.1.1.2/Fri Sep 28 22:45:41 2001//TOPENBSD_4_8_BASE
+/ChangeLog/1.1.1.5/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/FAQ/1.1.1.1/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/INDEX/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/Make_vms.com/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/Makefile.b32/1.1.1.1/Fri Oct 18 03:35:03 1996//TOPENBSD_4_8_BASE
+/Makefile.bor/1.1.1.1/Fri Oct 18 03:35:03 1996//TOPENBSD_4_8_BASE
+/Makefile.dj2/1.1.1.1/Fri Oct 18 03:35:03 1996//TOPENBSD_4_8_BASE
+/Makefile.in/1.1.1.5/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/Makefile.msc/1.1.1.1/Fri Oct 18 03:35:03 1996//TOPENBSD_4_8_BASE
+/Makefile.riscos/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/Makefile.sas/1.1.1.1/Fri Oct 18 03:35:04 1996//TOPENBSD_4_8_BASE
+/Makefile.tc/1.1.1.1/Fri Oct 18 03:35:04 1996//TOPENBSD_4_8_BASE
+/Makefile.wat/1.1.1.1/Fri Oct 18 03:35:04 1996//TOPENBSD_4_8_BASE
+/README/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/adler32.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/algorithm.txt/1.1.1.1/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/compress.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/configure/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/crc32.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/deflate.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/deflate.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/descrip.mms/1.1.1.1/Fri Oct 18 03:35:04 1996//TOPENBSD_4_8_BASE
+/example.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/gzio.c/1.2/Mon Dec  9 00:45:34 2002//TOPENBSD_4_8_BASE
+/infblock.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/infblock.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/infcodes.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/infcodes.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/inffast.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/inffast.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/inffixed.h/1.1.1.1/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/inflate.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/inftrees.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/inftrees.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/infutil.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/infutil.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/maketree.c/1.1.1.1/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/minigzip.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/trees.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/trees.h/1.1.1.1/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/uncompr.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/zconf.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/zlib.3/1.1.1.1/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/zlib.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/zutil.c/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+/zutil.h/1.1.1.2/Fri Sep 28 22:45:40 2001//TOPENBSD_4_8_BASE
+D/amiga////
+D/contrib////
+D/msdos////
+D/nt////
+D/os2////

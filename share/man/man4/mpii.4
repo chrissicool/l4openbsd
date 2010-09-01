@@ -1,0 +1,78 @@
+.\"	$OpenBSD: mpii.4,v 1.6 2010/03/22 21:52:53 weerd Exp $
+.\"
+.\" Copyright (c) 2010 Marco Peereboom <marco@openbsd.org>
+.\" Copyright (c) 2009 David Gwynne <dlg@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: March 22 2010 $
+.Dt MPII 4
+.Os
+.Sh NAME
+.Nm mpii
+.Nd LSI Logic Fusion-MPT Message Passing Interface II
+.Sh SYNOPSIS
+.Cd "mpii* at pci?"
+.Cd "scsibus* at mpii?"
+.Sh DESCRIPTION
+The
+.Nm
+driver provides support for storage controllers using the
+LSI Logic Fusion-MPT Message Passing Interface II
+family of chipsets:
+.Pp
+.Bl -dash -offset indent -compact
+.It
+LSISAS2008
+.El
+.Pp
+These chipsets can be found on the following controllers:
+.Pp
+.Bl -dash -offset indent -compact
+.It
+Dell PERC H200
+.It
+LSI SAS 9200-8e, SAS 9211-4i, SAS 9211-8i
+.El
+.Pp
+Some models of these controllers have varying degrees of support for RAID 0
+and RAID 1.
+.Sh SEE ALSO
+.Xr bio 4 ,
+.Xr intro 4 ,
+.Xr pci 4 ,
+.Xr scsi 4 ,
+.Xr bioctl 8 ,
+.Xr sensorsd 8 ,
+.Xr sysctl 8
+.Sh HISTORY
+The
+.Nm
+driver first appeared in
+.Ox 4.7 .
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+driver was written by
+.An James Giannoules
+and
+.An Mike Belopuhov Aq mkb@crypt.org.ru .
+.Sh BUGS
+The chips supported by
+.Nm
+do not use a SCSI-like identifier.
+Instead they use an opaque ID and leave discovery order up to the operating
+system.
+The code to handle this is currently not implemented and therefore it is not a
+good idea to run this driver on a multi-boot machine or with more than 1 drive.

@@ -1,0 +1,10 @@
+/com_obio.c/1.3/Sun Sep  6 20:09:34 2009//TOPENBSD_4_8_BASE
+/ehci_obio.c/1.3/Sat Sep 12 21:40:45 2009//TOPENBSD_4_8_BASE
+/if_tsec.c/1.28/Mon Dec 21 19:58:57 2009//TOPENBSD_4_8_BASE
+/ipic.c/1.12/Wed Mar  3 21:52:13 2010//TOPENBSD_4_8_BASE
+/obio.c/1.5/Sun Sep  6 20:09:34 2009//TOPENBSD_4_8_BASE
+/pciide_machdep.c/1.1/Sat May 10 12:02:20 2008//TOPENBSD_4_8_BASE
+/sociic.c/1.2/Sun Sep  6 20:09:34 2009//TOPENBSD_4_8_BASE
+/socpcic.c/1.8/Wed Sep  9 20:42:41 2009//TOPENBSD_4_8_BASE
+/wdc_mainbus.c/1.1/Sun Sep  6 20:09:34 2009//TOPENBSD_4_8_BASE
+D

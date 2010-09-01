@@ -1,0 +1,20 @@
+/Makefile/1.10/Tue Mar 25 23:35:56 2008//TOPENBSD_4_8_BASE
+/bsd.README/1.41/Tue Mar  2 20:33:55 2010//TOPENBSD_4_8_BASE
+/bsd.dep.mk/1.9/Sat Mar 27 03:47:59 2010//TOPENBSD_4_8_BASE
+/bsd.doc.mk/1.8/Tue Apr  3 23:00:09 2001//TOPENBSD_4_8_BASE
+/bsd.lib.mk/1.60/Fri Jul 30 19:23:38 2010//TOPENBSD_4_8_BASE
+/bsd.lkm.mk/1.21/Sun Nov  4 00:06:19 2007//TOPENBSD_4_8_BASE
+/bsd.man.mk/1.30/Sat Apr  3 19:34:00 2010//TOPENBSD_4_8_BASE
+/bsd.nls.mk/1.7/Tue Mar 14 10:42:02 2006//TOPENBSD_4_8_BASE
+/bsd.obj.mk/1.13/Tue May  1 08:31:13 2007//TOPENBSD_4_8_BASE
+/bsd.own.mk/1.103/Thu Jul  8 20:25:40 2010//TOPENBSD_4_8_BASE
+/bsd.port.mk/1.94/Fri Mar 31 18:43:25 2000//TOPENBSD_4_8_BASE
+/bsd.port.subdir.mk/1.8/Fri Mar 31 18:43:25 2000//TOPENBSD_4_8_BASE
+/bsd.prog.mk/1.49/Fri Jun 30 19:00:29 2006//TOPENBSD_4_8_BASE
+/bsd.regress.mk/1.10/Mon Sep  2 19:56:55 2002//TOPENBSD_4_8_BASE
+/bsd.subdir.mk/1.16/Wed Sep 23 20:30:20 2009//TOPENBSD_4_8_BASE
+/bsd.sys.mk/1.9/Sat May 27 23:01:21 2006//TOPENBSD_4_8_BASE
+/bsd.xconf.mk/1.1/Tue Mar 25 23:35:56 2008//TOPENBSD_4_8_BASE
+/bsd.xorg.mk/1.2/Sun Dec 31 10:38:18 2006//TOPENBSD_4_8_BASE
+/sys.mk/1.59/Sat Jul 24 15:31:19 2010//TOPENBSD_4_8_BASE
+D

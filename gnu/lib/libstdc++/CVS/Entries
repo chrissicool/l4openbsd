@@ -1,0 +1,11 @@
+/Makefile.bsd-wrapper/1.8/Mon Nov  5 17:02:43 2007//TOPENBSD_4_8_BASE
+/config-ml.in/1.1.1.1/Mon Jan  5 15:41:50 2004//TOPENBSD_4_8_BASE
+/config.guess/1.8/Fri Apr  8 21:11:08 2005//TOPENBSD_4_8_BASE
+/config.sub/1.2/Tue Jan 25 05:31:03 2005//TOPENBSD_4_8_BASE
+/install-sh/1.1.1.1/Mon Jan  5 15:41:52 2004//TOPENBSD_4_8_BASE
+/ltcf-c.sh/1.2/Mon Jan  5 16:06:52 2004//TOPENBSD_4_8_BASE
+/ltcf-cxx.sh/1.4/Fri Mar 28 17:10:57 2008//TOPENBSD_4_8_BASE
+/ltconfig/1.2/Mon Jan  5 16:06:52 2004//TOPENBSD_4_8_BASE
+/ltmain.sh/1.1.1.1/Mon Jan  5 15:42:09 2004//TOPENBSD_4_8_BASE
+/shlib_version/1.20/Sun Jul 26 22:51:28 2009//TOPENBSD_4_8_BASE
+D/libstdc++////

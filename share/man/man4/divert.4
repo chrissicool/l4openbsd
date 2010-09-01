@@ -1,0 +1,88 @@
+.\"     $OpenBSD: divert.4,v 1.6 2009/12/06 18:32:43 jmc Exp $
+.\"
+.\" Copyright (c) 2009 Michele Marchetto <michele@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: December 6 2009 $
+.Dt DIVERT 4
+.Os
+.Sh NAME
+.Nm divert
+.Nd kernel packet diversion mechanism
+.Sh SYNOPSIS
+.Fd #include <sys/types.h>
+.Fd #include <sys/socket.h>
+.Fd #include <netinet/in.h>
+.Ft int
+.Fn socket AF_INET SOCK_RAW IPPROTO_DIVERT
+.Ft int
+.Fn socket AF_INET6 SOCK_RAW IPPROTO_DIVERT
+.Sh DESCRIPTION
+Divert sockets are part of a mechanism completely integrated with
+.Xr pf 4
+that queues raw packets from the kernel stack to userspace applications,
+and vice versa.
+.Pp
+A divert socket must be bound to a divert port through
+.Xr bind 2 ,
+which only the superuser can do.
+Divert ports have their own number space, completely separated from
+.Xr tcp 4
+and
+.Xr udp 4 .
+When
+.Xr pf 4
+processes a packet that matches a divert rule (see
+.Xr pf.conf 5
+for details) it is immediately sent to the divert socket listening on the
+port specified in the rule.
+.Xr pf 4
+reassembles TCP streams by default (if IP reassembly is not disabled)
+before sending them to the divert sockets.
+If there are no divert sockets listening, the packets are dropped.
+.Pp
+Packets can be read via
+.Xr read 2 ,
+.Xr recv 2 ,
+or
+.Xr recvfrom 2
+from the divert socket.
+The application that is processing the packets can then reinject them into the
+kernel.
+After being reinjected, inbound and outbound packets are treated differently.
+Inbound packets are added to the relevant input queue and a soft interrupt is
+scheduled to signal that a new packet is ready to be processed; outbound ones
+are processed directly by the relevant IP/IPv6 output function.
+The packets' checksums are recalculated upon reinjection.
+.Pp
+Writing to a divert socket can be achieved using
+.Xr sendto 2
+and it will skip
+.Xr pf 4
+filters to avoid loops.
+A diverted packet that is not reinjected into the kernel stack is lost.
+.Pp
+Receive and send divert socket buffer space can be tuned through
+.Xr sysctl 8 .
+.Xr netstat 1
+shows information relevant to divert sockets.
+.Sh SEE ALSO
+.Xr socket 2 ,
+.Xr ip 4 ,
+.Xr pf.conf 5
+.Sh HISTORY
+The
+.Nm
+protocol first appeared in
+.Ox 4.7 .

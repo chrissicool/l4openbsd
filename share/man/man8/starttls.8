@@ -1,0 +1,382 @@
+.\" $OpenBSD: starttls.8,v 1.16 2008/09/23 11:03:41 grunk Exp $
+.\"
+.\" Copyright (c) 2001 Jose Nazario <jose@monkey.org>
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES,
+.\" INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+.\" AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL
+.\" THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+.\" EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+.\" PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+.\" OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+.\" WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+.\" OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+.\" ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.Dd $Mdocdate: September 23 2008 $
+.Dt STARTTLS 8
+.Os
+.Sh NAME
+.Nm starttls
+.Nd ESMTP over TLS/SSL
+.Sh DESCRIPTION
+STARTTLS is an ESMTP option, defined in RFC 3207, which is used to conduct
+ESMTP transactions over TLS circuits.
+This is used to increase the security of mail server transactions.
+As of version 8.11,
+.Xr sendmail 8
+has supported the use of TLS to protect ESMTP communications.
+.Pp
+STARTTLS allows for the combination of several security solutions for MTA
+(mail transport agent) level services through the TLS suite.
+These security features include:
+.Bl -tag -width Ds
+.It Confidentiality
+Encryption is used to protect data from passive monitoring.
+An attacker would have to recover the encryption key used to
+decode the transmitted data.
+.It Integrity
+Hash algorithms are used to ensure the integrity of the
+transmitted data, and alternatively the timestamp, protecting against a
+replay attack.
+This protects data from modification in transit.
+.It Authentication
+The use of public key encryption allows for the strong authentication of
+either, or both, communicating parties.
+This can be used to allow for select features, such as relaying,
+to be controlled more securely.
+.El
+.Pp
+A new ESMTP option, STARTTLS, has been added.
+This is presented by the server when an ESMTP session is initiated.
+The client then begins the TLS portion of the ESMTP session by issuing
+the command
+.Dq STARTTLS .
+The remaining portion of the ESMTP session occurs over a TLS channel.
+.Ss Creating a private key and certificate for sendmail
+This example assumes you are creating your own self-signed certificates
+for use with sendmail and STARTTLS.
+If you have an existing private key and you simply wish to generate
+a new certificate (for example, if your old certificate has expired),
+see the section entitled
+.Sx "Creating a certificate with an existing private key" .
+.Pp
+For the purposes of this example the certificates will be stored in
+.Pa /etc/mail/certs ,
+though it is possible to use a different directory if needed.
+If this directory does not already exist, you must create it:
+.Pp
+.Dl # mkdir /etc/mail/certs
+.Pp
+Next, you must generate a
+.Ar DSA
+parameter set with a command like the following:
+.Pp
+.Dl # openssl dsaparam 1024 -out dsa1024.pem
+.Pp
+This would generate
+.Ar DSA
+parameters for 1024-bit
+.Ar DSA
+keys, and save them to the
+file
+.Pa dsa1024.pem .
+.Pp
+Once you have the
+.Ar DSA
+parameters generated, you can generate a certificate
+and unencrypted private key using the command:
+.Bd -literal -offset indent
+# openssl req -x509 -nodes -days 365 -newkey dsa:dsa1024.pem \e
+  -out /etc/mail/certs/mycert.pem -keyout /etc/mail/certs/mykey.pem
+.Ed
+.Pp
+You may adjust the lifetime of the certificate via the
+.Fl days
+parameter (one year in this example).
+.Pp
+Make sure to leave the private key files unencrypted, using the
+.Fl nodes
+option.
+Otherwise,
+.Xr sendmail 8
+will be unable to initiate TLS server functions.
+.Pp
+You can verify that the newly-generated certificate has correct information
+with the following command:
+.Pp
+.Dl # openssl x509 -in /etc/mail/certs/mycert.pem -text
+.Pp
+If you don't intend to use TLS for authentication (and if you are using
+self-signed certificates you probably don't) you can simply link
+your new certificate to
+.Pa CAcert.pem .
+.Pp
+.Dl # ln -s /etc/mail/certs/mycert.pem /etc/mail/certs/CAcert.pem
+.Pp
+If, on the other hand, you intend to use TLS for authentication
+you should install your certificate authority bundle as
+.Pa /etc/mail/certs/CAcert.pem .
+.Pp
+At this point, you no longer need the
+.Pa dsa1024.pem
+file and it can be removed.
+.Pp
+.Dl # rm dsa1024.pem
+.Pp
+Because the private key files are unencrypted,
+.Xr sendmail 8
+is picky about using tight permissions on those files.
+The certificate directory and the files therein should be
+readable and writable only by the owner (root).
+A simple way to ensure this is to run the following:
+.Pp
+.Dl # chmod -R go-rwx /etc/mail/certs
+.Ss Creating a certificate with an existing private key
+This example assumes you already have an existing private key,
+.Pa /etc/mail/certs/mykey.pem .
+You can generate a new certificate based on this key using the command:
+.Bd -literal -offset indent
+# openssl req -x509 -new -days 365 -key /etc/mail/certs/mykey.pem \e
+  -out /etc/mail/certs/mycert.pem
+# chmod 600 /etc/mail/certs/mycert.pem
+.Ed
+.Pp
+You may adjust the lifetime of the certificate via the
+.Fl days
+parameter (one year in this example).
+.Ss Configuring sendmail to utilize TLS
+The global sendmail configuration files,
+.Pa /etc/mail/sendmail.cf
+and
+.Pa /etc/mail/localhost.cf
+must be modified to support TLS functionality.
+An example .mc file which has entries for TLS options, such as certificates,
+is available as
+.Pa /usr/share/sendmail/cf/knecht.mc .
+.Pp
+The pertinent options are:
+.Pp
+.Bl -bullet -compact
+.It
+CERT_DIR
+.It
+confCACERT_PATH
+.It
+confCACERT
+.It
+confSERVER_CERT
+.It
+confSERVER_KEY
+.It
+confCLIENT_CERT
+.It
+confCLIENT_KEY
+.El
+.Pp
+By default, the directory
+.Pa /etc/mail/certs ,
+defined by CERT_DIR, is used to store certificates, and the server will
+use the same certificates both as a client (outgoing mail) and as a server
+(for incoming mail).
+This can be changed by having different entries for the respective roles.
+.Pp
+The next step is to edit the .mc files your
+.Pa sendmail.cf
+and
+.Pa localhost.cf
+files are generated from.
+First, change to the directory where your .mc files are stored.
+You will need to make TLS-enabled versions of the following files:
+.Pa openbsd-proto.mc
+and
+.Pa openbsd-localhost.mc .
+.Bd -literal -offset indent
+# cd /usr/share/sendmail/cf
+
+# cp openbsd-proto.mc openbsd-proto-tls.mc
+# cp openbsd-localhost.mc openbsd-localhost-tls.mc
+.Ed
+.Pp
+You must then edit
+.Pa openbsd-proto-tls.mc ,
+and
+.Pa openbsd-localhost-tls.mc
+to add the following lines after the
+.Dq VERSIONID
+definition (the actual placement within the file is not critical as long
+as it is after the
+.Dq divert(0)dnl
+line).
+.Bd -literal -offset indent
+define(`CERT_DIR',        `MAIL_SETTINGS_DIR`'certs')
+define(`confCACERT_PATH', `CERT_DIR')
+define(`confCACERT',      `CERT_DIR/CAcert.pem')
+define(`confSERVER_CERT', `CERT_DIR/mycert.pem')
+define(`confSERVER_KEY',  `CERT_DIR/mykey.pem')
+define(`confCLIENT_CERT', `CERT_DIR/mycert.pem')
+define(`confCLIENT_KEY',  `CERT_DIR/mykey.pem')
+.Ed
+.Pp
+Now that you have the TLS-enabled versions of the .mc files
+you must generate .cf files from them and install the .cf
+files in
+.Pa /etc/mail .
+.Bd -literal -offset indent
+# make openbsd-proto-tls.cf openbsd-localhost-tls.cf
+
+# cp openbsd-proto-tls.cf /etc/mail/sendmail.cf
+# cp openbsd-localhost-tls.cf /etc/mail/localhost.cf
+.Ed
+.Pp
+Finally, restart sendmail with the new configuration by sending
+it a
+.Dv SIGHUP .
+.Pp
+.Dl # kill -HUP `head -1 /var/run/sendmail.pid`
+.Pp
+Note that those are backticks and not single quotes in the example above.
+.Pp
+After having installed the certificates and configuration files and having
+restarted the sendmail daemon, a new option should be presented for ESMTP
+transactions, STARTTLS.
+You can test this by connecting to the local host and issuing the
+.Dq EHLO
+command.
+.Bd -literal -offset indent
+# telnet localhost 25
+Trying ::1...
+Connected to localhost.
+Escape character is '^]'.
+220 localhost ESMTP Sendmail 8.12.1/8.12.1 ready
+EHLO localhost
+.Ed
+.Pp
+After typing
+.Em EHLO localhost
+you should receive something like the following back.
+.Bd -literal -offset indent
+250-localhost Hello localhost [IPv6:::1], pleased to meet you
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-8BITMIME
+250-SIZE
+250-DSN
+250-ETRN
+250-STARTTLS
+250-DELIVERBY
+250 HELP
+.Ed
+.Pp
+You should see
+.Dq STARTTLS
+listed along with the other options.
+If so, congratulations, sendmail will now use TLS to encrypt your mail
+traffic when the remote server supports it.
+If not, check
+.Pa /var/log/maillog
+to see whether sendmail has reported any security problems or other errors.
+.Ss Uses for TLS-Equipped sendmail
+The most obvious use of a cryptographically enabled sendmail installation
+is for confidentiality of the electronic mail transaction and the
+integrity checking provided by the cipher suite.
+All traffic between the two mail servers is encrypted, including the
+sender and recipient addresses.
+TLS also allows for authentication of either or both systems in the transaction.
+.Pp
+One use of public key cryptography is for strong authentication.
+We can use this authentication to selectively relay clients, including
+other mail servers and mobile clients like laptops.
+However, there have been some problems getting some mail clients to work using
+certificate-based authentication.
+Note that your clients will have to generate certificates and have them
+signed (for trust validation) by a CA (certificate authority) you also trust,
+if you configure your server to do client certificate checking.
+.Pp
+The use of the access map (usually
+.Pa /etc/mail/access ) ,
+which is normally used to determine connections and relaying,
+can also be extended to give server level control for the use of TLS.
+Two new entries are available for TLS options:
+.Bl -tag -width Ds -offset indent
+.It VERIFY
+contains the status of the level of verification (held in the macro {verify})
+.It ENCR
+the strength of the encryption (in the macro {cipher_bits})
+.El
+.Pp
+VERIFY can also accept the argument for {cipher_bits}.
+Here are a few example entries that illustrate these features, and
+the role based granularity as well:
+.Pp
+Force strong (112-bit) encryption for communications for this server:
+.Pp
+.Dl server1.example.net	ENCR:112
+.Pp
+For a TLS client, force string verification depths to at least 80 bits:
+.Pp
+.Dl TLS_Clt:desktop.example.net VERIFY:80
+.Pp
+Much more complicated access maps are possible, and error conditions (such
+as permanent or temporary, PERM+ or TEMP+) can be set on the basis of
+various criteria.
+This allows you fine-grained control over the types of connections you
+can allow.
+.Pp
+Note that it is unwise to force all SMTP clients to use TLS, as it is not
+yet widespread.
+The RFC document notes that publicly referenced SMTP servers, such as the
+MX servers for a domain, must not refuse non-TLS connections.
+However, restricted access SMTP servers, such as those for a corporate
+intranet, can use TLS as an access control mechanism.
+.Sh LIMITATIONS
+One often forgotten limitation of using TLS on a mail server is the
+payload of the mail message and the resulting security there.
+Many virus and worm files are now distributed via electronic mail.
+While the mail may be encrypted and the servers authenticated, the payload
+can still be malicious.
+The use of a good content protection program on the desktop is
+therefore still of value even with TLS at the MTA level.
+.Pp
+Because sendmail with TLS can only authenticate at the server level, true
+end-to-end authentication of the mail message cannot be performed with
+only the use of STARTLS on the server.
+The use of S/MIME or PGP e-mail and trustworthy key hierarchies can guarantee
+full confidentiality and integrity of the entire message path.
+.Pp
+Furthermore, if a mail message traverses more than just the starting and
+ending servers, there is no way to control interactions between the intervening
+mail servers, which may use non-secure connections.
+This introduces a point of vulnerability in the chain.
+.Pp
+Additionally, SMTP over TLS is not yet widely implemented.
+The standard, in fact, doesn't require it, leaving it only as an option, though
+specific sites can configure their servers to force it for specific clients.
+As such, it is difficult to foresee the widespread use of SMTP using TLS,
+despite the fact that the standard is, at the date of this writing,
+over two years old.
+.Pp
+Lastly, interoperability problems can appear between different implementations.
+.Sh SEE ALSO
+.Xr mail 1 ,
+.Xr openssl 1 ,
+.Xr afterboot 8 ,
+.Xr sendmail 8 ,
+.Xr ssl 8
+.Pp
+.Tn DARPA
+Internet Request for Comments RFC 3207
+.Pp
+http://www.sendmail.org/~ca/email/starttls.html
+.Sh HISTORY
+TLS features first appeared in sendmail 8.11.

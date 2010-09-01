@@ -1,0 +1,546 @@
+.\"	$OpenBSD: audio.9,v 1.22 2010/07/15 03:43:11 jakemsr Exp $
+.\"	$NetBSD: audio.9,v 1.14 2000/02/11 22:56:15 kleink Exp $
+.\"
+.\" Copyright (c) 1999, 2000 The NetBSD Foundation, Inc.
+.\" All rights reserved.
+.\"
+.\" This code is derived from software contributed to The NetBSD Foundation
+.\" by Lennart Augustsson.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
+.\" ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+.\" TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+.\" PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
+.\" BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+.\" CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+.\" SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+.\" INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+.\" CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+.\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.\" POSSIBILITY OF SUCH DAMAGE.
+.\"
+.Dd $Mdocdate: July 15 2010 $
+.Dt AUDIO 9
+.Os
+.Sh NAME
+.Nm audio
+.Nd interface between low and high level audio drivers
+.Sh DESCRIPTION
+The audio device driver is divided into a high level,
+hardware independent layer, and a low level, hardware
+dependent layer.
+The interface between these is the
+.Va audio_hw_if
+structure.
+.Bd -literal
+struct audio_hw_if {
+	int	(*open)(void *, int);
+	void	(*close)(void *);
+	int	(*drain)(void *);
+
+	int	(*query_encoding)(void *, struct audio_encoding *);
+	int	(*set_params)(void *, int, int,
+		    struct audio_params *, struct audio_params *);
+	int	(*round_blocksize)(void *, int);
+
+	int	(*commit_settings)(void *);
+
+	int	(*init_output)(void *, void *, int);
+	int	(*init_input)(void *, void *, int);
+	int	(*start_output)(void *, void *, int,
+		    void (*)(void *), void *);
+	int	(*start_input)(void *, void *, int,
+		    void (*)(void *), void *);
+	int	(*halt_output)(void *);
+	int	(*halt_input)(void *);
+
+	int	(*speaker_ctl)(void *, int);
+#define SPKR_ON  1
+#define SPKR_OFF 0
+
+	int	(*getdev)(void *, struct audio_device *);
+	int	(*setfd)(void *, int);
+
+	int	(*set_port)(void *, struct mixer_ctrl *);
+	int	(*get_port)(void *, struct mixer_ctrl *);
+
+	int	(*query_devinfo)(void *, struct mixer_devinfo *);
+
+	void	*(*allocm)(void *, int, size_t, int, int);
+	void	(*freem)(void *, void *, int);
+	size_t	(*round_buffersize)(void *, int, size_t);
+	paddr_t	(*mappage)(void *, void *, off_t, int);
+
+	int 	(*get_props)(void *);
+
+	int	(*trigger_output)(void *, void *, void *, int,
+		    void (*)(void *), void *, struct audio_params *);
+	int	(*trigger_input)(void *, void *, void *, int,
+		    void (*)(void *), void *, struct audio_params *);
+	void	(*get_default_params)(void *, int, struct audio_params *);
+};
+
+struct audio_params {
+	u_long	sample_rate;		/* sample rate */
+	u_int	encoding;		/* mu-law, linear, etc */
+	u_int	precision;		/* bits/sample */
+	u_int	bps;			/* bytes/sample */
+	u_int	msb;			/* data alignment */
+	u_int	channels;		/* mono(1), stereo(2) */
+	/* Software en/decode functions, set if SW coding required by HW */
+	void	(*sw_code)(void *, u_char *, int);
+	int	factor;			/* coding space change */
+};
+.Ed
+.Pp
+The high level audio driver attaches to the low level driver
+when the latter calls
+.Fn audio_attach_mi .
+This call is:
+.Bd -literal -offset indent
+struct device *
+audio_attach_mi(struct audio_hw_if *ahwp, void *hdl,
+		struct device *dev);
+.Ed
+.Pp
+The
+.Va audio_hw_if
+struct is as shown above.
+The
+.Fa hdl
+argument is a handle to some low level data structure.
+It is sent as the first argument to all the functions in
+.Fa ahwp
+when the high level driver calls them.
+.Fa dev
+is the device struct for the hardware device.
+.Pp
+The upper layer of the audio driver allocates one buffer for playing
+and one for recording.
+It handles the buffering of data from the user processes in these.
+The data is presented to the lower level in smaller chunks, called blocks.
+During playback, if there is no data available from the user process
+when the hardware requests another block, a block of silence will be
+used instead.
+Similarly, if the user process does not read data quickly enough during
+recording, data will be thrown away.
+.Pp
+The fields of
+.Va audio_hw_if
+are described in some more detail below.
+Some fields are optional and can be set to
+.Dv NULL
+if not needed.
+.Bl -tag -width indent
+.It Fn "int (*open)" "void *hdl" "int flags"
+This function is called when the audio device is opened, with
+.Fa flags
+the kernel representation of flags passed to the
+.Xr open 2
+system call
+.Po
+see
+.Dv OFLAGS
+and
+.Dv FFLAGS
+in
+.Aq Pa sys/fcntl.h
+.Pc .
+It initializes the hardware for I/O.
+Every successful call to
+.Fn open
+is matched by a call to
+.Fn close .
+This function returns 0 on success, otherwise an error code.
+.It Fn "void (*close)" "void *hdl"
+This function is called when the audio device is closed.
+.It Fn "int (*drain)" "void *hdl"
+This function is optional.
+If supplied, it is called before the device is closed or when the
+.Dv AUDIO_DRAIN
+.Xr ioctl 2
+is called.
+It makes sure that no samples remain to be played that could
+be lost when
+.Fn close
+is called.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*query_encoding)" "void *hdl" "struct audio_encoding *ae"
+This function is used when the
+.Dv AUDIO_GETENC
+.Xr ioctl 2
+is called.
+It fills
+.Fa ae
+and returns 0 or, if there is no encoding with the given number, returns
+.Er EINVAL .
+.It Fn "int (*set_params)" "void *hdl" "int setmode" "int usemode" \
+"struct audio_params *play" "struct audio_params *rec"
+This function is called to set the audio encoding mode.
+.Fa setmode
+is a combination of the
+.Dv AUMODE_RECORD
+and
+.Dv AUMODE_PLAY
+flags to indicate which mode(s) are to be set.
+.Fa usemode
+is also a combination of these flags, but indicates the current
+mode of the device (i.e., the value of
+.Va mode
+in the
+.Va audio_info
+struct).
+The
+.Fa play
+and
+.Fa rec
+structures contain the encoding parameters that will be set.
+If the hardware requires software assistance with some encoding
+(e.g., it might be lacking mu-law support), it will fill the
+.Va sw_code
+and
+.Va factor
+fields of these structures.
+See
+.Pa /usr/src/sys/dev/auconv.h
+for available software support.
+The values of the structures may also be modified if the hardware
+cannot be set to exactly the requested mode (e.g., if the requested
+sampling rate is not supported, but one close enough is).
+If the device does not have the
+.Dv AUDIO_PROP_INDEPENDENT
+property, the same value is passed in both
+.Fa play
+and
+.Fa rec
+and the encoding parameters from
+.Fa play
+are copied into
+.Fa rec
+after the call to
+.Fn set_params .
+.Pp
+The machine independent audio driver does some preliminary parameter checking;
+it verifies that the precision is compatible with the encoding,
+and it translates
+.Dv AUDIO_ENCODING_[US]LINEAR
+to
+.Dv AUDIO_ENCODING_[US]LINEAR_{LE,BE} .
+.Pp
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*round_blocksize)" "void *hdl" "int bs"
+This function is optional.
+If supplied, it is called with the block size,
+.Fa bs ,
+which has been computed by the upper layer.
+It returns a block size, possibly changed according to the needs of the
+hardware driver.
+.It Fn "int (*commit_settings)" "void *hdl"
+This function is optional.
+If supplied, it is called after all calls to
+.Fn set_params
+and
+.Fn set_port
+are done.
+A hardware driver that needs to get the hardware in
+and out of command mode for each change can save all the changes
+during previous calls and do them all here.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*init_output)" "void *hdl" "void *buffer" "int size"
+This function is optional.
+If supplied, it is called before any output starts, but only after the total
+.Fa size
+of the output
+.Fa buffer
+has been determined.
+It can be used to initialize looping DMA for hardware that needs it.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*init_input)" "void *hdl" "void *buffer" "int size"
+This function is optional.
+If supplied, it is called before any input starts, but only after the total
+.Fa size
+of the input
+.Fa buffer
+has been determined.
+It can be used to initialize looping DMA for hardware that needs it.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*start_output)" "void *hdl" "void *block" "int bsize" \
+"void (*intr)(void *)" "void *intrarg"
+This function is called to start the transfer of
+.Fa bsize
+bytes from
+.Fa block
+to the audio hardware.
+The call returns when the data transfer
+has been initiated (normally with DMA).
+When the hardware is ready to accept more samples the function
+.Fa intr
+will be called with the argument
+.Fa intrarg .
+Calling
+.Fa intr
+will normally initiate another call to
+.Fn start_output .
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*start_input)" "void *hdl" "void *block" "int bsize" \
+"void (*intr)(void *)" "void *intrarg"
+This function is called to start the transfer of
+.Fa bsize
+bytes to
+.Fa block
+from the audio hardware.
+The call returns when the data transfer
+has been initiated (normally with DMA).
+When the hardware is ready to deliver more samples the function
+.Fa intr
+will be called with the argument
+.Fa intrarg .
+Calling
+.Fa intr
+will normally initiate another call to
+.Fn start_input .
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*halt_output)" "void *hdl"
+This function is called to abort the output transfer (started by
+.Fn start_output )
+in progress.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*halt_input)" "void *hdl"
+This function is called to abort the input transfer (started by
+.Fn start_input )
+in progress.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*speaker_ctl)" "void *hdl" "int on"
+This function is optional.
+If supplied, it is called when a half duplex device changes between
+playing and recording.
+It can, e.g., be used to turn the speaker on and off.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*getdev)" "void *hdl" "struct audio_device *ret"
+This function fills
+.Fa ret
+with relevant information about the driver and returns 0 on success,
+or it returns an error code on failure.
+.It Fn "int (*setfd)" "void *hdl" "int fd"
+This function is optional.
+If supplied, it is called when the
+.Dv AUDIO_SETFD
+.Xr ioctl 2
+is used, but only if the device has
+.Dv AUDIO_PROP_FULLDUPLEX
+set.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*set_port)" "void *hdl" "struct mixer_ctrl *mc"
+This function is called when the
+.Dv AUDIO_MIXER_WRITE
+.Xr ioctl 2
+is used.
+It takes data from
+.Fa mc
+and sets the corresponding mixer values.
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*get_port)" "void *hdl" "struct mixer_ctrl *mc"
+This function is called when the
+.Dv AUDIO_MIXER_READ
+.Xr ioctl 2
+is used.
+It fills
+.Fa mc
+and returns 0 on success, or it returns an error code on failure.
+.It Fn "int (*query_devinfo)" "void *hdl" "struct mixer_devinfo *di"
+This function is called when the
+.Dv AUDIO_MIXER_DEVINFO
+.Xr ioctl 2
+is used.
+It fills
+.Fa di
+and returns 0 on success, or it returns an error code on failure.
+.It Fn "void *(*allocm)" "void *hdl" "int direction" "size_t size" "int type" \
+"int flags"
+This function is optional.
+If supplied, it is called to allocate the device buffers.
+If not supplied,
+.Xr malloc 9
+is used instead (with the same arguments but the first two).
+The reason for using a device dependent routine instead of
+.Xr malloc 9
+is that some buses need special allocation to do DMA.
+.Fa direction
+is
+.Dv AUMODE_PLAY
+or
+.Dv AUMODE_RECORD .
+This function returns the address of the buffer on success, or 0 on failure.
+.It Fn "void (*freem)" "void *hdl" "void *addr" "int type"
+This function is optional.
+If supplied, it is called to free memory allocated by
+.Fn allocm .
+If not supplied,
+.Xr free 9
+is used instead.
+.\" XXX: code passes int instead of size_t, but decl is size_t
+.It Fn "size_t (*round_buffersize)" "void *hdl" "int direction" \
+"size_t bufsize"
+This function is optional.
+If supplied, it is called at startup to determine the audio buffer size.
+The upper layer supplies the suggested size in
+.Fa bufsize ,
+which the hardware driver can then change if needed.
+E.g., DMA on the ISA bus cannot exceed 65536 bytes.
+Note that the buffer size is always a multiple of the block size, so
+.Fn round_blocksize
+and
+.Fn round_buffersize
+must be consistent.
+.It Fn "paddr_t (*mappage)" "void *hdl" "void *addr" "off_t offs" "int prot"
+This function is optional.
+If supplied, it is called for
+.Xr mmap 2 .
+It returns the map value for the page at offset
+.Fa offs
+from address
+.Fa addr
+mapped with protection
+.Fa prot .
+This function returns \-1 on failure, or a machine dependent opaque
+value on success.
+.It Fn "int (*get_props)" "void *hdl"
+This function returns the device properties, as per
+.Xr audio 4
+.Dv AUDIO_GETPROPS
+.Xr ioctl 2 ,
+i.e., a combination of
+.Dv AUDIO_PROP_xxx
+properties.
+.It Fn "int (*trigger_output)" "void *hdl" "void *start" "void *end" "int blksize" \
+"void (*intr)(void *)" "void *intrarg" "struct audio_params *param"
+This function is optional.
+If supplied, it is called to start the transfer of data from the circular
+buffer delimited by
+.Fa start
+and
+.Fa end
+to the audio hardware, parameterized as in
+.Fa param .
+The call returns when the data transfer
+has been initiated (normally with DMA).
+When the hardware is finished transferring each
+.Fa blksize
+sized block, the function
+.Fa intr
+will be called with the argument
+.Fa intrarg
+(typically from the audio hardware interrupt service routine).
+Once started, the transfer may be stopped using
+.Fn halt_output .
+This function returns 0 on success, otherwise an error code.
+.It Fn "int (*trigger_input)" "void *hdl" "void *start" "void *end" "int blksize" \
+"void (*intr)(void *)" "void *intrarg" "struct audio_params *param"
+This function is optional.
+If supplied, it is called to start the transfer of data from the audio
+hardware, parameterized as in
+.Fa param ,
+to the circular buffer delimited by
+.Fa start
+and
+.Fa end .
+The call returns when the data transfer
+has been initiated (normally with DMA).
+When the hardware is finished transferring each
+.Fa blksize
+sized block, the function
+.Fa intr
+will be called with the argument
+.Fa intrarg
+(typically from the audio hardware interrupt service routine).
+Once started, the transfer may be stopped using
+.Fn halt_input .
+This function returns 0 on success, otherwise an error code.
+.It Fn "void (*get_default_params)" "void *hdl" "int direction" \
+"struct audio_params *param"
+This function is optional.
+If supplied, it is called to retrieve the default configuration
+for the given
+.Fa direction ,
+parameterized in
+.Fa param .
+.Fa direction
+is
+.Dv AUMODE_PLAY
+or
+.Dv AUMODE_RECORD .
+The default configuration should not include emulated formats, and should
+reflect the optimal operating configuration for the underlying hardware.
+.El
+.Pp
+The
+.Fn query_devinfo
+method should define certain mixer controls for
+.Dv AUDIO_SETINFO
+to be able to change the port and gain.
+.Pp
+If the audio hardware is capable of input from more
+than one source it should define
+.Dv AudioNsource
+in class
+.Dv AudioCrecord .
+This mixer control should be of type
+.Dv AUDIO_MIXER_ENUM
+or
+.Dv AUDIO_MIXER_SET
+and enumerate the possible input sources.
+For each of the named sources there should be
+a control in the
+.Dv AudioCinputs
+class of type
+.Dv AUDIO_MIXER_VALUE
+if recording level of the source can be set.
+If the overall recording level can be changed (i.e., regardless
+of the input source) then this control should be named
+.Dv AudioNrecord
+and be of class
+.Dv AudioCinputs .
+.Pp
+If the audio hardware is capable of output to more than
+one destination it should define
+.Dv AudioNoutput
+in class
+.Dv AudioCmonitor .
+This mixer control should be of type
+.Dv AUDIO_MIXER_ENUM
+or
+.Dv AUDIO_MIXER_SET
+and enumerate the possible destinations.
+For each of the named destinations there should be
+a control in the
+.Dv AudioCoutputs
+class of type
+.Dv AUDIO_MIXER_VALUE
+if output level of the destination can be set.
+If the overall output level can be changed (i.e., regardless
+of the destination) then this control should be named
+.Dv AudioNmaster
+and be of class
+.Dv AudioCoutputs .
+.Sh SEE ALSO
+.Xr ioctl 2 ,
+.Xr mmap 2 ,
+.Xr open 2 ,
+.Xr sio_open 3 ,
+.Xr audio 4 ,
+.Xr free 9 ,
+.Xr malloc 9
+.Sh HISTORY
+This
+.Nm
+interface first appeared in
+.Ox 1.2 .

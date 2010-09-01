@@ -1,0 +1,33 @@
+/Makefile/1.37/Wed Feb  3 20:49:00 2010//TOPENBSD_4_8_BASE
+/dir.c/1.14/Tue Oct 27 23:59:31 2009//TOPENBSD_4_8_BASE
+/dir.h/1.2/Mon Jun  2 19:38:24 2003//TOPENBSD_4_8_BASE
+/dl_prebind.c/1.9/Wed Apr  9 21:45:26 2008//TOPENBSD_4_8_BASE
+/dl_prebind.h/1.2/Wed May 10 03:26:50 2006//TOPENBSD_4_8_BASE
+/dl_printf.c/1.16/Sat Jan  2 00:59:01 2010//TOPENBSD_4_8_BASE
+/dlfcn.c/1.82/Thu Jul  1 19:25:44 2010//TOPENBSD_4_8_BASE
+/ld.so.1/1.17/Sun Aug 24 20:43:53 2008//TOPENBSD_4_8_BASE
+/library.c/1.58/Thu Oct  2 20:12:08 2008//TOPENBSD_4_8_BASE
+/library_mquery.c/1.36/Thu Oct  2 20:12:08 2008//TOPENBSD_4_8_BASE
+/library_subr.c/1.31/Thu Jul  1 19:25:44 2010//TOPENBSD_4_8_BASE
+/loader.c/1.119/Thu Jul  1 19:25:44 2010//TOPENBSD_4_8_BASE
+/prebind.h/1.2/Fri May 12 22:14:04 2006//TOPENBSD_4_8_BASE
+/resolve.c/1.50/Thu Jul  1 19:25:44 2010//TOPENBSD_4_8_BASE
+/resolve.h/1.60/Thu Jul  1 19:25:44 2010//TOPENBSD_4_8_BASE
+/sod.c/1.23/Thu Oct  2 20:12:08 2008//TOPENBSD_4_8_BASE
+/sod.h/1.1/Fri Jul 12 20:18:30 2002//TOPENBSD_4_8_BASE
+/strtol.c/1.1/Sun Jul  6 20:03:58 2003//TOPENBSD_4_8_BASE
+/util.c/1.20/Thu Oct  2 20:12:08 2008//TOPENBSD_4_8_BASE
+/util.h/1.21/Mon May 18 20:20:01 2009//TOPENBSD_4_8_BASE
+D/alpha////
+D/amd64////
+D/arm////
+D/hppa////
+D/hppa64////
+D/i386////
+D/ldconfig////
+D/ldd////
+D/mips64////
+D/powerpc////
+D/sh////
+D/sparc////
+D/sparc64////

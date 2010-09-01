@@ -1,0 +1,15 @@
+/c-torture.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/chill.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/f-torture.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/g++-dg.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/g++.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/g77.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/gcc-dg.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/gcc.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/mike-g++.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/mike-g77.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/mike-gcc.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/objc-torture.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/objc.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+/old-dejagnu.exp/1.1.1.1/Wed May 26 13:36:26 1999//TOPENBSD_4_8_BASE
+D

@@ -1,0 +1,10 @@
+/Makefile/1.14/Thu Jul 31 15:56:51 2003//TOPENBSD_4_8_BASE
+D/csu////
+D/libc////
+D/libevent////
+D/libm////
+D/libpthread////
+D/libskey////
+D/libsndio////
+D/libssl////
+D/libutil////

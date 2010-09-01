@@ -1,0 +1,17 @@
+/algorithm/1.1.1.1/Mon Jan  5 15:45:42 2004//TOPENBSD_4_8_BASE
+/enc_filebuf.h/1.1.1.2/Fri Dec 24 22:41:43 2004//TOPENBSD_4_8_BASE
+/functional/1.1.1.1/Mon Jan  5 15:45:45 2004//TOPENBSD_4_8_BASE
+/hash_map/1.1.1.1/Mon Jan  5 15:45:45 2004//TOPENBSD_4_8_BASE
+/hash_set/1.1.1.2/Fri Dec 24 22:41:43 2004//TOPENBSD_4_8_BASE
+/iterator/1.1.1.1/Mon Jan  5 15:45:45 2004//TOPENBSD_4_8_BASE
+/memory/1.1.1.1/Mon Jan  5 15:45:45 2004//TOPENBSD_4_8_BASE
+/numeric/1.1.1.1/Mon Jan  5 15:45:45 2004//TOPENBSD_4_8_BASE
+/rb_tree/1.1.1.1/Mon Jan  5 15:45:45 2004//TOPENBSD_4_8_BASE
+/rope/1.1.1.1/Mon Jan  5 15:45:45 2004//TOPENBSD_4_8_BASE
+/ropeimpl.h/1.1.1.1/Mon Jan  5 15:45:47 2004//TOPENBSD_4_8_BASE
+/slist/1.1.1.1/Mon Jan  5 15:45:47 2004//TOPENBSD_4_8_BASE
+/stdio_filebuf.h/1.1.1.1/Mon Jan  5 15:45:47 2004//TOPENBSD_4_8_BASE
+/stl_hash_fun.h/1.1.1.1/Mon Jan  5 15:45:47 2004//TOPENBSD_4_8_BASE
+/stl_hashtable.h/1.1.1.1/Mon Jan  5 15:45:49 2004//TOPENBSD_4_8_BASE
+/stl_rope.h/1.1.1.1/Mon Jan  5 15:45:52 2004//TOPENBSD_4_8_BASE
+D

@@ -1,0 +1,346 @@
+.\"	$OpenBSD: resolv.conf.5,v 1.34 2010/04/15 09:52:58 jmc Exp $
+.\"	$NetBSD: resolv.conf.5,v 1.7 1996/03/06 18:22:16 scottr Exp $
+.\"
+.\" Copyright (c) 1986, 1991 The Regents of the University of California.
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. Neither the name of the University nor the names of its contributors
+.\"    may be used to endorse or promote products derived from this software
+.\"    without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\"     @(#)resolver.5	5.12 (Berkeley) 5/10/91
+.\"
+.Dd $Mdocdate: April 15 2010 $
+.Dt RESOLV.CONF 5
+.Os
+.Sh NAME
+.Nm resolv.conf , resolv.conf.tail
+.Nd resolver configuration files
+.Sh DESCRIPTION
+The
+.Nm
+file specifies how the
+.Xr resolver 3
+routines in the C library
+(which provide access to the Internet Domain Name System) should operate.
+The resolver configuration file contains information that is read
+by the resolver routines the first time they are invoked by a process.
+If the
+.Nm resolv.conf
+file does not exist, only the local host file
+.Pa /etc/hosts
+will be consulted,
+i.e. the Domain Name System will not be used to resolve hosts.
+.Pp
+The file is designed to be human readable and contains a list of
+keywords with values that provide various types of resolver information.
+A resolv.conf file is not required for some setups, so this file is optional.
+It can be created manually, and is also created as part of the
+.Ox
+install process
+if use of the DHCP protocol is specified for any interface
+or if any DNS nameservers are configured.
+.Pp
+If
+.Xr dhclient 8
+is used to configure the network,
+the DHCP client back-end
+.Xr dhclient-script 8
+will normally overwrite the
+.Nm resolv.conf
+file with updated information such as nameserver addresses,
+losing any previous values the file contained.
+In order to force options to be passed to the
+.Xr resolver 3
+routines, the file
+.Nm resolv.conf.tail
+may be created manually.
+This file will be appended to the generated
+.Nm resolv.conf
+file by
+.Xr dhclient-script 8 ,
+ensuring options remain.
+.Pp
+On a machine whose network connection does not change frequently (such as a desktop
+machine on a local-area network), the
+.Nm resolv.conf.tail
+file should not be necessary.
+However the
+.Nm resolv.conf.tail
+file may be useful on notebooks, to search multiple domains,
+to refer to hard-coded information in local files, or otherwise
+override the defaults.
+.Pp
+A hash mark
+.Ql #
+or semicolon
+.Ql \&;
+in the file indicates the beginning of a comment;
+subsequent characters up to the end of the line are not interpreted by
+the routines that read the file.
+.Pp
+The configuration options (which may be placed in either file) are:
+.Bl -tag -width nameserver
+.It Sy nameserver
+IPv4 address (in dot notation)
+or IPv6 address (in hex-and-colon notation)
+of a name server that the resolver should query.
+Scoped IPv6 address notation is accepted as well
+(see
+.Xr inet6 4
+for details).
+A non-standard port may be specified using
+.Bo Ar host Bc : Ns Ar port
+syntax.
+When a non-standard port is specified the host
+address must be enclosed in square brackets.
+For example:
+.Bd -literal -offset indent
+nameserver [10.0.0.1]:5353
+nameserver [::1]:5353
+.Ed
+.Pp
+Up to
+.Dv MAXNS
+(currently 3) name servers may be listed, one per line.
+If there are multiple servers, the resolver library queries them in the
+order listed.
+If no
+.Sy nameserver
+entries are present, the default is to use the name server on the local machine.
+(The algorithm used is to try a name server, and if the query times out,
+try the next, until out of name servers, then repeat trying all name servers
+until a maximum number of retries are performed.)
+.It Sy domain
+Local domain name.
+Most queries for names within this domain can use short names
+relative to the local domain.
+If no
+.Sy domain
+entry is present, the domain is determined
+from the local host name returned by
+.Xr gethostname 3 ;
+the domain part is taken to be everything after the first
+.Dq \&. .
+Finally, if the host name does not contain a domain part, the root
+domain is assumed.
+.It Sy lookup
+This keyword is used by the library routines
+.Xr gethostbyname 3
+and
+.Xr gethostbyaddr 3 .
+It specifies which databases should be searched, and the order to do so.
+The legal space-separated values are:
+.Pp
+.Bl -tag -width bind -compact
+.It Sy bind
+Use the Domain Name server by querying
+.Xr named 8 .
+.It Sy file
+Search for entries in
+.Pa /etc/hosts .
+.It Sy yp
+Talk to the YP system if
+.Xr ypbind 8
+is running.
+.El
+.Pp
+If the
+.Sy lookup
+keyword is not used in the system's
+.Pa resolv.conf
+file then the assumed order is
+.Sy bind file .
+Furthermore, if the system's
+.Pa resolv.conf
+file does not exist, then the only database used is
+.Sy file .
+.Pp
+.It Sy search
+Search list for hostname lookup.
+The search list is normally determined from the local domain name;
+by default, it begins with the local domain name, then successive
+parent domains that have at least two components in their names.
+This may be changed by listing the desired domain search path following the
+.Sy search
+keyword with spaces or tabs separating the names.
+Most resolver queries will be attempted using each component
+of the search path in turn until a match is found.
+Note that this process may be slow and will generate a lot of network
+traffic if the servers for the listed domains are not local,
+and that queries will time out if no server is available
+for one of the domains.
+.Pp
+The search list is currently limited to six domains
+with a total of 1024 characters.
+Only one
+.Nm search
+line should appear; if more than one is present, the last one found
+overwrites any values found in earlier lines.
+So if such a line appears in the
+.Nm resolv.conf.tail
+file, it should include all the domains that need to be searched.
+.It Sy sortlist
+Allows addresses returned by
+.Xr gethostbyname 3
+to be sorted.
+A
+.Sy sortlist
+is specified by IP address netmask pairs.
+The netmask is optional and defaults to the natural netmask of the net.
+The IP address and optional network pairs are separated by slashes.
+Up to 10 pairs may be specified, e.g.:
+.Pp
+.Sy sortlist 130.155.160.0/255.255.240.0 130.155.0.0
+.It Sy family
+Specify which type of Internet protocol family to prefer,
+if a host is reachable using different address families.
+By default IPv4 addresses are queried first,
+and then IPv6 addresses.
+The syntax is:
+.Pp
+.D1 family family1 [family2]
+.Pp
+A maximum of two families can be specified,
+where family can be any of:
+.Pp
+.Bl -tag -width "inet4XXX" -offset indent -compact
+.It inet4
+IPv4 queries.
+.It inet6
+IPv6 queries.
+.El
+.It Sy options
+Allows certain internal resolver variables to be modified.
+The syntax is:
+.Pp
+.Sy options option ...
+.Pp
+where option is one of the following:
+.Bl -tag -width insecure1
+.It Sy debug
+Sets RES_DEBUG in _res.options.
+.It Sy edns0
+Attach OPT pseudo-RR for EDNS0 extension specified in RFC 2671,
+to inform DNS server of our receive buffer size.
+The option will allow DNS servers to take advantage of non-default receive
+buffer size, and to send larger replies.
+DNS query packets with EDNS0 extension are not compatible with
+non-EDNS0 DNS servers.
+The option must be used only when all the DNS servers listed in
+.Sy nameserver
+lines are able to handle EDNS0 extension.
+.It Sy inet6
+Enables support for IPv6-only applications, by setting RES_USE_INET6 in
+_res.options (see
+.Xr resolver 3 ) .
+Use of this option is discouraged, and meaningless on
+.Ox .
+.It Sy insecure1
+Do not require IP source address on the reply packet to be equal to the
+server's address.
+.It Sy insecure2
+Do not check if the query section of the reply packet is equal
+to that of the query packet.
+For testing purposes only.
+.It Sy ndots:n
+Sets a threshold for the number of dots which
+must appear in a name given to res_query (see
+.Xr resolver 3 )
+before an initial absolute query will be made.
+The default for
+.Ar n
+is 1, meaning that if there are any dots in a name, the name will be tried
+first as an absolute name before any search list elements are appended to it.
+.It Sy tcp
+Forces the use of TCP for queries.
+Normal behaviour is to query via UDP but fall back to TCP on failure.
+.El
+.El
+.Pp
+The
+.Sy domain
+and
+.Sy search
+keywords are mutually exclusive.
+If more than one instance of these keywords is present, the last instance
+will override.
+.Pp
+The
+.Sy search
+keyword of a system's
+.Nm resolv.conf
+or
+.Nm resolv.conf.tail
+file can be overridden on a per-process basis by setting the
+environment variable
+.Ev LOCALDOMAIN
+to a space-separated list of search domains.
+.Pp
+The
+.Sy options
+keyword of a system's
+.Nm resolv.conf
+or
+.Nm resolv.conf.tail
+file can be amended on a per-process basis by setting the
+environment variable
+.Ev RES_OPTIONS
+to a space-separated list of resolver options as explained above.
+.Pp
+The keyword and value must appear on a single line, and the keyword (e.g.\&
+.Sy nameserver )
+must start the line.
+The value follows the keyword, separated by whitespace.
+.Sh FILES
+.Bl -tag -width "/etc/resolv.conf.tailXX" -compact
+.It Pa /etc/resolv.conf
+.It Pa /etc/resolv.conf.tail
+.El
+.Sh SEE ALSO
+.Xr gethostbyname 3 ,
+.Xr resolver 3 ,
+.Xr hosts 5 ,
+.Xr hostname 7 ,
+.Xr dhclient-script 8 ,
+.Xr dhcp 8 ,
+.Xr named 8
+.Rs
+.%T "Name Server Operations Guide for BIND"
+.Re
+.Sh HISTORY
+The
+.Nm
+file format appeared in
+.Bx 4.3 .
+.Sh BUGS
+Due to resolver internal issues,
+.Xr getaddrinfo 3
+may not behave as
+.Sy lookup
+suggests.
+Consequently, userland programs that use
+.Xr getaddrinfo 3
+may behave differently from what
+.Sy lookup
+says.

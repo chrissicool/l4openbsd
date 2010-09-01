@@ -1,0 +1,19 @@
+/Makefile/1.3/Sun Oct  7 17:58:50 2007//TOPENBSD_4_8_BASE
+/ccconfig.h/1.5/Sun Aug 17 18:40:12 2008//TOPENBSD_4_8_BASE
+/config.h/1.6/Sun Aug 17 18:40:12 2008//TOPENBSD_4_8_BASE
+/f77config.h/1.1/Sun Oct  7 17:58:50 2007//TOPENBSD_4_8_BASE
+D/arm////
+D/cc////
+D/ccom////
+D/cpp////
+D/f77////
+D/hppa////
+D/i386////
+D/m16c////
+D/mip////
+D/mips////
+D/nova////
+D/pdp10////
+D/powerpc////
+D/sparc64////
+D/vax////

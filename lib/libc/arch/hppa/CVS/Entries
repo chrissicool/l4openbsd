@@ -1,0 +1,8 @@
+/DEFS.h/1.1/Fri Aug 28 20:59:40 1998//TOPENBSD_4_8_BASE
+/Makefile.inc/1.7/Tue May 25 20:44:50 2004//TOPENBSD_4_8_BASE
+/SYS.h/1.15/Thu Jan  5 22:13:55 2006//TOPENBSD_4_8_BASE
+D/gdtoa////
+D/gen////
+D/net////
+D/string////
+D/sys////

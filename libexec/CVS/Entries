@@ -1,0 +1,37 @@
+/Makefile/1.44/Fri May 18 16:08:12 2007//TOPENBSD_4_8_BASE
+/Makefile.inc/1.2/Sun Jan 28 19:34:26 2001//TOPENBSD_4_8_BASE
+D/comsat////
+D/fingerd////
+D/ftpd////
+D/getNAME////
+D/getty////
+D/identd////
+D/ld.so////
+D/lockspool////
+D/login_chpass////
+D/login_krb5////
+D/login_krb5-or-pwd////
+D/login_lchpass////
+D/login_passwd////
+D/login_radius////
+D/login_reject////
+D/login_skey////
+D/login_tis////
+D/login_token////
+D/mail.local////
+D/makewhatis////
+D/rpc.rquotad////
+D/rpc.rstatd////
+D/rpc.rusersd////
+D/rpc.rwalld////
+D/rpc.sprayd////
+D/rpc.yppasswdd////
+D/rshd////
+D/spamd////
+D/spamd-setup////
+D/spamlogd////
+D/talkd////
+D/tcpd////
+D/tftp-proxy////
+D/tftpd////
+D/uucpd////

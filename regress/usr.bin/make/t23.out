@@ -1,0 +1,2 @@
+Problem with variable expansion chain: A -> B -> C -> A
+	Variable A is recursive.

@@ -1,0 +1,50 @@
+dnl	$OpenBSD: contents,v 1.20 2010/03/07 14:07:07 miod Exp $
+TopPart
+
+OpenBSDdistsets
+
+OpenBSDbsd
+
+OpenBSDbsdmp
+
+OpenBSDrd
+
+	installboot	The OpenBSD/MACHINE boot loader installation
+			program.
+	bootxx		The OpenBSD/MACHINE boot block.
+	bootsd		The OpenBSD/MACHINE disk boot loader.
+	bootst		The OpenBSD/MACHINE tape boot loader.
+	netboot		The OpenBSD/MACHINE Sun-compatible network boot
+			loader.
+	stboot		A VID tape block.
+	tftpboot	The OpenBSD/MACHINE tftp-compatible network boot
+			loader.
+
+These files can be used to make a bootable tape suitable for installation.
+They can also be used to configure an NFS server to support installation
+over the network. See the section "Getting the OpenBSD system onto Useful
+Media" for more information.
+
+DistributionDescription(eleven)
+
+OpenBSDbase(98225864,250099534)
+
+OpenBSDcomp(44528998,159071371)
+
+OpenBSDetc(520365,1414374)
+
+OpenBSDgame(7470697,15820092)
+
+OpenBSDman(8943018,32544085)
+
+OpenBSDmisc(364841,1175282)
+
+OpenBSDxbase(84008254,169047294)
+
+OpenBSDxetc(983696,2021991)
+
+OpenBSDxfont(35583966,43705666)
+
+OpenBSDxserv(5450524,16155272)
+
+OpenBSDxshare(2746787,14575968)

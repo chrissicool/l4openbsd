@@ -1,0 +1,19 @@
+/autoconf.c/1.5/Tue Feb 16 21:31:36 2010//TOPENBSD_4_8_BASE
+/bus_dma.c/1.5/Sat Jun 26 23:24:43 2010//TOPENBSD_4_8_BASE
+/bus_space.c/1.1.1.1/Fri Dec 11 17:05:08 2009//TOPENBSD_4_8_BASE
+/conf.c/1.8/Wed Jul 28 21:44:41 2010//TOPENBSD_4_8_BASE
+/disksubr.c/1.1.1.1/Mon Aug 17 06:34:30 2009//TOPENBSD_4_8_BASE
+/gdium_machdep.c/1.6/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/genassym.cf/1.3/Sun Jan  3 14:17:27 2010//TOPENBSD_4_8_BASE
+/generic2e_machdep.c/1.1/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/isa_machdep.c/1.1/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/locore.S/1.2/Sun Feb 14 22:39:33 2010//TOPENBSD_4_8_BASE
+/loongson2_machdep.c/1.10/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/machdep.c/1.22/Sun Jun 27 13:24:39 2010//TOPENBSD_4_8_BASE
+/mutex.c/1.1.1.1/Thu Nov 19 19:23:35 2009//TOPENBSD_4_8_BASE
+/pciide_machdep.c/1.2/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+/pmon.c/1.4/Tue Feb 16 21:29:54 2010//TOPENBSD_4_8_BASE
+/pmon32.S/1.4/Thu Feb 18 18:53:33 2010//TOPENBSD_4_8_BASE
+/wscons_machdep.c/1.8/Sun Jul 18 13:36:14 2010//TOPENBSD_4_8_BASE
+/yeeloong_machdep.c/1.12/Sat May  8 21:59:56 2010//TOPENBSD_4_8_BASE
+D

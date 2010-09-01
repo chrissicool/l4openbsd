@@ -1,0 +1,13 @@
+/.cvsignore/1.1.1.1/Thu Jan 15 23:34:08 2004//TOPENBSD_4_8_BASE
+/Makefile.bsd-wrapper/1.6/Mon May 10 18:20:31 2010//TOPENBSD_4_8_BASE
+/config.guess/1.7/Fri Apr  8 21:11:08 2005//TOPENBSD_4_8_BASE
+/config.sub/1.2/Tue Jan 25 05:31:03 2005//TOPENBSD_4_8_BASE
+/install-sh/1.1.1.1/Thu Jan 15 23:34:10 2004//TOPENBSD_4_8_BASE
+/libtool.m4/1.1.1.1/Thu Jan 15 23:34:11 2004//TOPENBSD_4_8_BASE
+/ltcf-c.sh/1.1.1.1/Thu Jan 15 23:34:11 2004//TOPENBSD_4_8_BASE
+/ltcf-cxx.sh/1.1.1.1/Thu Jan 15 23:34:13 2004//TOPENBSD_4_8_BASE
+/ltcf-gcj.sh/1.1.1.1/Thu Jan 15 23:34:13 2004//TOPENBSD_4_8_BASE
+/ltconfig/1.1.1.1/Thu Jan 15 23:34:18 2004//TOPENBSD_4_8_BASE
+/ltmain.sh/1.1.1.1/Thu Jan 15 23:34:22 2004//TOPENBSD_4_8_BASE
+/shlib_version/1.4/Mon Jul 23 17:24:06 2007//TOPENBSD_4_8_BASE
+D/libobjc////

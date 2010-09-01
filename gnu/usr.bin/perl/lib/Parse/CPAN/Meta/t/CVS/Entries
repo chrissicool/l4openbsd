@@ -1,0 +1,16 @@
+/01_compile.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/02_basic.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/03_regression.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/04_scalar.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/05_export.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/11_meta_yml.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/12_plagger.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/13_perl_smith.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/14_yaml_org.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/15_multibyte.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/16_nullrefs.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/17_toolbar.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/18_tap.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/19_errors.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+/21_bom.t/1.1.1.1/Mon Oct 12 18:11:07 2009//TOPENBSD_4_8_BASE
+D/data////

@@ -1,0 +1,4 @@
+# Test rule order processing: should pass with require-order defaulting to no.
+pass in on lo1000000 all
+match out on lo0 all nat-to lo0
+

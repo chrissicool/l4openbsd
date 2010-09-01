@@ -1,0 +1,69 @@
+dnl	$OpenBSD: contents,v 1.14 2010/03/16 17:23:09 miod Exp $
+TopPart
+
+OpenBSDdistsets
+
+dnl three flavours of OpenBSDbsd
+	bsd.IP27	A stock GENERIC-IP27 MACHINE kernel for IP27 and IP35
+			class machines, which will be installed on such
+			systems during the install.
+
+	bsd.IP30	A stock GENERIC-IP30 MACHINE kernel for IP30 class
+			machines, which will be installed on such systems
+			during the install.
+
+	bsd.IP32	A stock GENERIC-IP32 MACHINE kernel for IP32 class
+			machines, which will be installed on such systems
+			during the install.
+
+dnl one flavour of OpenBSDbsdmp so far...
+	bsd.IP30.mp	A stock GENERIC-IP30.MP MACHINE kernel for IP30 class
+			machines, with support for multiprocessor systems,
+			which can be used instead of the GENERIC-IP30 kernel
+			after the install.
+
+dnl three flavours of OpenBSDrd
+	bsd.rd.IP27	A compressed RAMDISK-IP27 kernel; the embedded
+			filesystem contains the installation tools.
+			Used for simple installation from a pre-existing
+			system.
+
+	bsd.rd.IP30	A compressed RAMDISK-IP30 kernel; the embedded
+			filesystem contains the installation tools.
+			Used for simple installation from a pre-existing
+			system.
+
+	bsd.rd.IP32	A compressed RAMDISK-IP32 kernel; the embedded
+			filesystem contains the installation tools.
+			Used for simple installation from a pre-existing
+			system.
+
+dnl can't use OpenBSDcd because of the multiple bsd.rd
+	cd{:--:}OSrev.iso	A miniroot filesystem image suitable to be used
+			as a bootable CD-ROM image, but will require the base
+			and X sets be found via another media or network;
+			otherwise similar to the bsd.rd* images above.
+
+DistributionDescription(eleven)
+
+OpenBSDbase(57812231,199409896)
+
+OpenBSDcomp(80391925,269302068)
+
+OpenBSDetc(522296,1582807)
+
+OpenBSDgame(2802507,6681864)
+
+OpenBSDman(9463394,34570283)
+
+OpenBSDmisc(364791,1175282)
+
+OpenBSDxbase(14689775,52232809)
+
+OpenBSDxetc(71782,278151)
+
+OpenBSDxfont(39687135,51387549)
+
+OpenBSDxserv(5313289,16861856)
+
+OpenBSDxshare(2946827,16054084)

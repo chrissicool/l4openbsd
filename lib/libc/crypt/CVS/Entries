@@ -1,0 +1,13 @@
+/Makefile.inc/1.17/Wed Feb  3 20:49:00 2010//TOPENBSD_4_8_BASE
+/arc4random.3/1.27/Tue Dec 23 18:31:02 2008//TOPENBSD_4_8_BASE
+/arc4random.c/1.21/Tue Dec 15 18:19:06 2009//TOPENBSD_4_8_BASE
+/bcrypt.c/1.24/Wed Apr  2 19:54:05 2008//TOPENBSD_4_8_BASE
+/blowfish.3/1.20/Thu May 31 19:19:27 2007//TOPENBSD_4_8_BASE
+/blowfish.c/1.18/Tue Nov  2 17:23:26 2004//TOPENBSD_4_8_BASE
+/cast.c/1.3/Wed Nov  3 10:38:50 2004//TOPENBSD_4_8_BASE
+/crypt.3/1.27/Mon Oct  8 11:55:27 2007//TOPENBSD_4_8_BASE
+/crypt.c/1.20/Mon Aug  8 08:05:33 2005//TOPENBSD_4_8_BASE
+/crypt2.c/1.3/Mon Aug  8 08:05:33 2005//TOPENBSD_4_8_BASE
+/md5crypt.c/1.15/Sat Oct 31 13:29:07 2009//TOPENBSD_4_8_BASE
+/skipjack.c/1.3/Fri Oct  1 04:08:45 2004//TOPENBSD_4_8_BASE
+D

@@ -1,0 +1,8 @@
+/Makefile.bsd-wrapper/1.12/Mon Oct 12 22:32:19 2009//TOPENBSD_4_8_BASE
+/config.guess/1.13/Tue May 27 18:52:40 2008//TOPENBSD_4_8_BASE
+/config.sub/1.6/Tue May 27 18:52:40 2008//TOPENBSD_4_8_BASE
+/install-sh/1.4/Tue May 27 18:52:40 2008//TOPENBSD_4_8_BASE
+/move-if-change/1.2/Tue May 27 18:52:40 2008//TOPENBSD_4_8_BASE
+/shlib_version/1.8/Mon Oct 12 22:32:19 2009//TOPENBSD_4_8_BASE
+D/include////
+D/src////

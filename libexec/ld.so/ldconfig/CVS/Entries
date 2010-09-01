@@ -1,0 +1,15 @@
+/Makefile/1.7/Fri May 12 23:20:52 2006//TOPENBSD_4_8_BASE
+/debug.c/1.4/Thu May 18 17:00:06 2006//TOPENBSD_4_8_BASE
+/dl_prebind.c/1.2/Wed Apr  9 21:45:26 2008//TOPENBSD_4_8_BASE
+/etc.c/1.7/Fri May 12 23:35:16 2006//TOPENBSD_4_8_BASE
+/ld.h/1.7/Sat May 13 05:59:28 2006//TOPENBSD_4_8_BASE
+/ldconfig.8/1.25/Thu May 31 19:19:39 2007//TOPENBSD_4_8_BASE
+/ldconfig.c/1.27/Tue Mar 30 17:42:50 2010//TOPENBSD_4_8_BASE
+/library.c/1.3/Wed Dec 30 04:30:01 2009//TOPENBSD_4_8_BASE
+/prebind.c/1.12/Tue Mar 30 17:42:50 2010//TOPENBSD_4_8_BASE
+/prebind.h/1.2/Mon Jun 26 23:26:12 2006//TOPENBSD_4_8_BASE
+/prebind_delete.c/1.10/Tue Mar 30 17:42:50 2010//TOPENBSD_4_8_BASE
+/prebind_struct.h/1.3/Thu Jun 15 22:09:32 2006//TOPENBSD_4_8_BASE
+/shlib.c/1.9/Sat May 13 16:33:40 2006//TOPENBSD_4_8_BASE
+/sod.c/1.1/Fri May 12 23:20:53 2006//TOPENBSD_4_8_BASE
+D

@@ -1,0 +1,210 @@
+# $OpenBSD: Makefile.bsd-wrapper,v 1.82 2010/05/10 18:20:31 drahn Exp $
+#
+# Build wrapper for Perl 5.10.0
+#
+
+# For ``NOMAN'' and ``COMPILER_VERSION''
+.include <bsd.own.mk>
+
+# There is no point in building a profiled libperl that is never used.
+NOPROFILE=
+
+TARGET_MACHINE_ARCH?=	$(MACHINE_ARCH)
+# To build a threaded perl, uncomment this.  Not stable on all platforms...
+#THREADED_PERL=true
+
+# Perl builds with -fno-strict-aliasing, we want libperl to do the same
+CFLAGS+= -fno-strict-aliasing
+.if ${COMPILER_VERSION:L} == "gcc3" || ${COMPILER_VERSION:L} == "gcc4"
+CFLAGS+= -fno-delete-null-pointer-checks
+.endif
+
+CONFIGURE_ARGS= -dsE -Dopenbsd_distribution=defined
+.if defined(THREADED_PERL) && ($(THREADED_PERL) == true)
+CONFIGURE_ARGS+= -Dusethreads
+CFLAGS+= -pthread
+.endif
+.if !exists(${.OBJDIR}/config.over)
+CONFIGURE_ARGS+= -Dmksymlinks
+.endif
+
+H2PH=		/usr/bin/h2ph
+
+LIB=	perl
+
+SRCS1=	gv.c toke.c perly.c pad.c regcomp.c dump.c util.c mg.c reentr.c \
+	mro.c hv.c av.c run.c pp_hot.c sv.c pp.c scope.c pp_ctl.c \
+	pp_sys.c doop.c doio.c regexec.c utf8.c taint.c deb.c universal.c \
+	xsutils.c globals.c perlio.c perlapi.c numeric.c mathoms.c locale.c \
+	pp_pack.c pp_sort.c
+SRCS=	${SRCS1} op.c perl.c
+
+# We must not try to mkdep DynaLoader.c as it requires miniperl
+OBJS+=	DynaLoader.o
+
+# For generating DynaLoader.c
+.if defined(NOPIC)
+DYNALOADER=ext/DynaLoader/dl_none.xs
+.else
+DYNALOADER=ext/DynaLoader/dl_dlopen.xs
+.endif
+
+# Arguments passed to Configure...
+
+CPPFLAGS+= -DPERL_CORE -DPERL_RANDOM_DEVICE=\"/dev/arandom\" -I.
+
+.if defined (INSTALL_STRIP) && ${INSTALL_STRIP} == "-s"
+STRIPFLAGS='-s'
+.endif
+
+GEN_AFTER= 	config.h uudmap.h cflags makeaperl makedepend makedir \
+		myconfig writemain Makefile Policy.sh pod/Makefile \
+		x2p/Makefile x2p/cflags
+
+GENERATED=	config.sh ${GEN_AFTER}
+
+${GEN_AFTER}: config.sh
+
+CLEANFILES=	config.sh Policy.sh DynaLoader.c ${MANALL} ${PSALL} ${MANSRCALL} stamp-mansrc.build
+
+all:	perl.build man.build
+
+
+man.build: perl.build
+	cd ${.CURDIR} && exec ${MAKE} -f Makefile.bsd-wrapper1 $@
+
+beforedepend: config.sh config.h uudmap.h Makefile makedepend x2p/Makefile writemain 
+	cd ${.OBJDIR} && exec ${MAKE} depend
+
+perl.build:	perl.lib
+	cd ${.OBJDIR} && exec ${MAKE}
+
+config.sh:	${.CURDIR}/config.over
+	cd ${.OBJDIR} && PATH="/bin:/usr/bin:/sbin:/usr/sbin" \
+	    exec /bin/sh ${.CURDIR}/Configure ${CONFIGURE_ARGS}
+
+Makefile cflags makeaperl makedepend makedir myconfig writemain:
+	cd ${.OBJDIR} && exec /bin/sh $@.SH
+
+Policy.sh:
+	cd ${.OBJDIR} && exec /bin/sh Policy_sh.SH
+
+config.h: 
+	cd ${.OBJDIR} && exec /bin/sh config_h.SH
+
+uudmap.h: generate_uudmap
+	./generate_uudmap > uudmap.h
+
+generate_uudmap: generate_uudmap.o
+	${CC} -o generate_uudmap generate_uudmap.o
+
+pod/Makefile:
+	cd ${.OBJDIR}/pod && exec /bin/sh Makefile.SH
+
+x2p/Makefile:
+	cd ${.OBJDIR}/x2p && exec /bin/sh Makefile.SH
+
+x2p/cflags:
+	cd ${.OBJDIR}/x2p && exec /bin/sh cflags.SH
+
+# Never try to regenerate perly.c or perly.h
+perly.c perly.h: perly.y
+	-@true
+
+install: install.lib install.perl maninstall
+	-mkdir -p ${DESTDIR}/usr/libdata/perl5/site_perl/${MACHINE_ARCH}-openbsd
+	(cd ${DESTDIR}/usr/include; ${H2PH} \
+		-d ${DESTDIR}/usr/libdata/perl5/site_perl/${MACHINE_ARCH}-openbsd \
+		`find . -name '*.h'`; \
+		pax -rw `find . -type l \! -name '*.h' | sed 's/^..//'` \
+		${DESTDIR}/usr/libdata/perl5/site_perl/${MACHINE_ARCH}-openbsd)
+	-chmod -R a+rX ${DESTDIR}/usr/libdata/perl5
+
+install.perl:
+	cd ${.OBJDIR}; INSTALL=${INSTALL} INSTALL_COPY=${INSTALL_COPY} \
+	 STRIPFLAGS=${STRIPFLAGS} INSTALLFLAGS=-o NOLIBINSTALL=1 \
+	 LD_LIBRARY_PATH=${.OBJDIR} exec ./perl installperl --destdir=${DESTDIR} -o STRIPFLAGS=${STRIPFLAGS}
+
+test:
+	-@if [ -e Makefile ]; then ${MAKE} test; fi
+
+clean:
+	-@if [ -e Makefile ]; then ${MAKE} realclean; fi
+
+cleandir:
+	-@if [ ${.CURDIR} != ${.OBJDIR} ]; then \
+	    rm -rf *; \
+	else \
+	    test -e Makefile && ${MAKE} distclean; \
+	    rm -f ${CLEANFILES}; \
+	fi
+	@cd ${.CURDIR} && ${MAKE} -f Makefile.bsd-wrapper1 cleandir
+
+maninstall:
+.ifdef NOMAN
+	@echo NOMAN is set
+.else
+	@cd ${.CURDIR} && exec ${MAKE} -f Makefile.bsd-wrapper1 maninstall
+.endif
+
+.include <bsd.lib.mk>
+
+# These have to come after the inclusion of <bsd.lib.mk>
+
+# Need -fPIC, not -fpic on sparc
+.if ($(TARGET_MACHINE_ARCH) == sparc)
+PICFLAG=-fPIC
+.endif
+
+# The DynaLoader extension is now compiled statically into libperl
+miniperl: ${GENERATED} ${SRCS1:S/.c/.o/g} opmini.o miniperl.o miniperlmain.o
+	${CC} -o miniperl ${SRCS1:S/.c/.o/g} opmini.o miniperl.o miniperlmain.o -lm
+
+opmini.c: op.c
+	rm -f opmini.c
+	cp op.c opmini.c
+
+opmini.o: opmini.c
+	${CC} ${CPPFLAGS} ${CFLAGS} -DPERL_EXTERNAL_GLOB -c  $> -o $@
+
+miniperl.o: perl.c
+	${CC} ${CPPFLAGS} ${CFLAGS} -DPERL_EXTERNAL_GLOB -DPERL_IS_MINIPERL -c  $> -o $@
+
+lib/Config.pm: miniperl config.sh
+	cd ${.OBJDIR} && exec ${MAKE} preplibrary
+
+DynaLoader.c: miniperl ${DYNALOADER} lib/Config.pm
+	./miniperl -Ilib lib/ExtUtils/xsubpp -noprototypes -typemap \
+	    ../../lib/ExtUtils/typemap ${DYNALOADER} | \
+	    sed -f ${.CURDIR}/DynaLoader.sed > $@
+
+perl.lib:	${GENERATED} ${_LIBS}
+
+install.lib:
+	${INSTALL} ${INSTALL_COPY} -o ${LIBOWN} -g ${LIBGRP} -m 600 lib${LIB}.a \
+	    ${DESTDIR}${LIBDIR}
+.if (${INSTALL_COPY} != "-p")
+	${RANLIB} -t ${DESTDIR}${LIBDIR}/lib${LIB}.a
+.endif
+	chmod ${LIBMODE} ${DESTDIR}${LIBDIR}/lib${LIB}.a
+.if !defined(NOPROFILE)
+	${INSTALL} ${INSTALL_COPY} -o ${LIBOWN} -g ${LIBGRP} -m 600 \
+	    lib${LIB}_p.a ${DESTDIR}${LIBDIR}
+.if (${INSTALL_COPY} != "-p")
+	${RANLIB} -t ${DESTDIR}${LIBDIR}/lib${LIB}_p.a
+.endif
+	chmod ${LIBMODE} ${DESTDIR}${LIBDIR}/lib${LIB}_p.a
+.endif
+.if !defined(NOPIC) && (${MACHINE_CPU} != "mips64") 
+	${INSTALL} ${INSTALL_COPY} -o ${LIBOWN} -g ${LIBGRP} -m 600 \
+	    lib${LIB}_pic.a ${DESTDIR}${LIBDIR}
+.if (${INSTALL_COPY} != "-p")
+	${RANLIB} -t ${DESTDIR}${LIBDIR}/lib${LIB}_pic.a
+.endif
+	chmod ${LIBMODE} ${DESTDIR}${LIBDIR}/lib${LIB}_pic.a
+.endif
+.if !defined(NOPIC) && defined(major) && defined(minor)
+	${INSTALL} ${INSTALL_COPY} -o ${LIBOWN} -g ${LIBGRP} -m ${LIBMODE} \
+	    lib${LIB}.so.${major}.${minor} ${DESTDIR}${LIBDIR}
+.endif
+.PHONY: perl.lib install.lib perl.build install.perl man.build mansrc.build

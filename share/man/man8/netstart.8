@@ -1,0 +1,159 @@
+.\"	$OpenBSD: netstart.8,v 1.16 2007/05/31 19:19:59 jmc Exp $
+.\"
+.\" Copyright (c) 2002, Miodrag Vallat.
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+.\" OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+.\" IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+.\" NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+.\" DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+.\" THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+.\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+.\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\"     @(#)rc.8	8.2 (Berkeley) 12/11/93
+.\"
+.Dd $Mdocdate: May 31 2007 $
+.Dt NETSTART 8
+.Os
+.Sh NAME
+.Nm netstart
+.Nd command scripts for network startup
+.Sh SYNOPSIS
+.Pa /etc/netstart
+.Op Ar interface ...
+.Sh DESCRIPTION
+.Nm
+is the command script that is invoked by
+.Xr rc 8
+during an automatic reboot and after single user mode is exited;
+it performs network initialization.
+.Pp
+The
+.Nm
+script can also be used to start newly created bridges or interfaces,
+or reset existing interfaces to their default state.
+The behaviour of this script is (or can be) controlled to some
+extent by variables defined in
+.Pa /etc/rc.conf ,
+which specifies which daemons and services are to be run.
+.Pp
+During the system boot,
+.Nm
+is executed.
+.Nm
+performs the following operations, in the sequence given:
+.Pp
+.Bl -bullet -compact -offset indent
+.It
+Set the machine's name.
+.It
+Configure the loopback interface.
+.It
+Configure all the physical interfaces.
+.It
+Configure the following non-physical interfaces:
+.Xr trunk 4 ,
+.Xr vlan 4 ,
+.Xr pfsync 4 ,
+and
+.Xr carp 4 .
+.It
+Initialize the routing table and set up the default routes.
+.It
+Configure the remaining non-physical interfaces:
+.Xr pppoe 4 ,
+.Xr gif 4 ,
+and
+.Xr gre 4 .
+.It
+Configure all
+.Xr bridge 4
+interfaces.
+.El
+.Pp
+After the system is completely initialized, it is possible to start a
+newly created interface or
+.Xr bridge 4 ,
+or reset an existing interface to its default state, by invoking
+the following, where
+.Ar foo0
+is the interface or bridge name:
+.Pp
+.D1 # sh /etc/netstart foo0
+.Sh MULTICAST ROUTING
+To enable
+.Xr multicast 4
+routing, the
+.Va net.inet.ip.mforwarding
+and/or
+.Va net.inet.ip6.mforwarding
+.Xr sysctl 8
+variables should be set to 1.
+Routing to the 224.0.0.0/4 net is set up using values from
+.Pa /etc/rc.conf
+according to these rules:
+.Bl -bullet
+.It
+The default.
+If the multicast settings are as follows
+then multicast routing will not be enabled.
+.Bd -literal -offset indent
+multicast_host=NO
+multicast_router=NO
+.Ed
+.It
+If the multicast settings are as follows
+then multicast routing will be enabled,
+but no multicast route will be set up.
+It is expected that a routing daemon, such as
+.Xr mrouted 8 ,
+will be started as well.
+.Bd -literal -offset indent
+multicast_host=NO
+multicast_router=YES
+.Ed
+.It
+If the multicast settings are as follows
+then multicast routing will be enabled,
+using the default interface,
+or the interface name specified by
+.Va multicast_host .
+.Bd -literal -offset indent
+multicast_host=YES
+multicast_router=NO
+.Ed
+or:
+.Bd -literal -offset indent -compact
+multicast_host=foo0	# interface name
+multicast_router=NO
+.Ed
+.It
+Other cases are configuration errors and will cause multicast routing not to be
+enabled.
+.El
+.Sh SEE ALSO
+.Xr multicast 4 ,
+.Xr defaultdomain 5 ,
+.Xr hostname.if 5 ,
+.Xr myname 5 ,
+.Xr ifconfig 8 ,
+.Xr rc 8 ,
+.Xr rc.conf 8
+.Sh HISTORY
+The
+.Nm
+command first appeared in
+.Bx 4.0 .

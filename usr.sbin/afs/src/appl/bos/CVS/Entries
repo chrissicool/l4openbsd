@@ -1,0 +1,15 @@
+/Makefile.in/1.2/Fri Jun  7 04:28:42 2002//TOPENBSD_4_8_BASE
+/bos.8/1.12/Tue Aug  2 04:00:49 2005//TOPENBSD_4_8_BASE
+/bos.c/1.4/Tue Aug  5 09:05:48 2003//TOPENBSD_4_8_BASE
+/bos_addhost.c/1.1.1.1/Tue Aug  5 08:20:58 2003//TOPENBSD_4_8_BASE
+/bos_adduser.c/1.3/Tue Aug  5 09:05:48 2003//TOPENBSD_4_8_BASE
+/bos_getrestart.c/1.3/Tue Aug  5 09:05:48 2003//TOPENBSD_4_8_BASE
+/bos_listhosts.c/1.3/Tue Aug  5 09:05:48 2003//TOPENBSD_4_8_BASE
+/bos_listusers.c/1.3/Tue Aug  5 09:05:48 2003//TOPENBSD_4_8_BASE
+/bos_local.h/1.3/Tue Aug  5 09:05:48 2003//TOPENBSD_4_8_BASE
+/bos_removehost.c/1.1.1.1/Tue Aug  5 08:20:59 2003//TOPENBSD_4_8_BASE
+/bos_restart.c/1.1.1.1/Tue Aug  5 08:20:59 2003//TOPENBSD_4_8_BASE
+/bos_start.c/1.1.1.1/Tue Aug  5 08:20:59 2003//TOPENBSD_4_8_BASE
+/bos_status.c/1.4/Tue Aug  5 09:05:48 2003//TOPENBSD_4_8_BASE
+/bos_stop.c/1.1.1.1/Tue Aug  5 08:20:59 2003//TOPENBSD_4_8_BASE
+D

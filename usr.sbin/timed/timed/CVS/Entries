@@ -1,0 +1,17 @@
+/Makefile/1.7/Tue Jun 18 00:40:30 2002//TOPENBSD_4_8_BASE
+/acksend.c/1.7/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/byteorder.c/1.6/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/candidate.c/1.7/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/cksum.c/1.6/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/correct.c/1.9/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/globals.h/1.8/Tue Aug 19 19:41:21 2003//TOPENBSD_4_8_BASE
+/master.c/1.10/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/measure.c/1.14/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/networkdelta.c/1.8/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/pathnames.h/1.4/Mon Jun  2 23:36:55 2003//TOPENBSD_4_8_BASE
+/readmsg.c/1.16/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/slave.c/1.12/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+/timed-extern.h/1.4/Mon Jun  2 23:36:55 2003//TOPENBSD_4_8_BASE
+/timed.8/1.16/Thu Apr  1 17:06:55 2010//TOPENBSD_4_8_BASE
+/timed.c/1.29/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
+D

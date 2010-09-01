@@ -1,0 +1,291 @@
+.\"	$OpenBSD: tzset.3,v 1.17 2007/05/31 19:19:34 jmc Exp $
+.Dd $Mdocdate: May 31 2007 $
+.Dt TZSET 3
+.Os
+.Sh NAME
+.Nm tzset
+.Nd initialize time conversion information
+.Sh SYNOPSIS
+.Fd #include <time.h>
+.Ft void
+.Fn tzset "void"
+.Sh DESCRIPTION
+.Fn tzset
+uses the value of the environment variable
+.Ev TZ
+to set time conversion information used by
+.Xr localtime 3 .
+If
+.Ev TZ
+does not appear in the environment,
+the best available approximation to local wall clock time, as specified
+by the
+.Xr tzfile 5
+format file
+.Em localtime
+in the system time conversion information directory, is used by
+.Xr localtime 3 .
+.Pp
+If
+.Ev TZ
+appears in the environment but its value is a null string,
+Coordinated Universal Time (UTC) is used (without leap second
+correction).
+.Pp
+If
+.Ev TZ
+appears in the environment and its value begins with a colon,
+it is used as a pathname of a file
+from which to read the time conversion information.
+.Pp
+If
+.Ev TZ
+appears in the environment and its value does not begin with a colon,
+it is first used as the
+pathname of a file from which to read the time conversion information,
+and, if that file cannot be read, is used directly as a specification of
+the time conversion information.
+.Pp
+When
+.Ev TZ
+is used as a pathname, if it begins with a slash,
+it is used as an absolute pathname; otherwise,
+it is used as a pathname relative to a system time conversion information
+directory.
+The file must be in the format specified in
+.Xr tzfile 5 .
+.Pp
+When
+.Ev TZ
+is used directly as a specification of the time conversion information,
+it must have the following syntax (spaces inserted for clarity):
+.Bd -ragged -offset indent
+.Ar std
+.Ar offset
+.Op Ar dst Op Ar offset
+.Op , Ar rule
+.Ed
+.Pp
+Where:
+.Bl -tag -width "std and dst"
+.It Ar std No and Ar dst
+Three or more bytes that are the designation for the standard
+.Pq Ar std
+or summer
+.Pq Ar dst
+time zone.
+Only
+.Ar std
+is required; if
+.Ar dst
+is missing, then summer time does not apply in this locale.
+Upper and lowercase letters are explicitly allowed.
+Any characters except a leading colon
+.Pq Sq \&: ,
+digits, comma
+.Pq Sq \&, ,
+minus
+.Pq Sq \&- ,
+plus
+.Pq Sq \&+ ,
+and
+.Tn ASCII
+.Tn NUL
+are allowed.
+.It Ar offset
+Indicates the value one must add to the local time to arrive at
+Coordinated Universal Time.
+.Ar offset
+has the form
+.Pq spaces inserted for clarity :
+.Bd -ragged -offset indent
+.Ar hh
+.Op : Ar mm Op : Ar ss
+.Ed
+.Pp
+The minutes
+.Pq Ar mm
+and seconds
+.Pq Ar ss
+are optional.
+The hour
+.Pq Ar hh
+is required and may be a single digit.
+The
+.Ar offset
+following
+.Ar std
+is required.
+If no
+.Ar offset
+follows
+.Ar dst ,
+summer time is assumed to be one hour ahead of standard time.
+One or more digits may be used; the value is always interpreted as a
+decimal number.
+The hour must be between zero and 24, and the minutes (and
+seconds) -- if present -- between zero and 59.
+If preceded by a
+.Dq \&- ,
+the time zone shall be east of the Prime Meridian; otherwise it shall be
+west (which may be indicated by an optional preceding
+.Dq \&+ ) .
+.It Ar rule
+Indicates when to change to and back from summer time.
+.Ar rule
+has the form (spaces added for clarity):
+.Bd -ragged -offset indent
+.Ar date
+/
+.Ar time ,
+.Ar date
+/
+.Ar time
+.Ed
+.Pp
+where the first
+.Ar date
+describes when the change from standard to summer time occurs and the
+second
+.Ar date
+describes when the change back happens.
+Each
+.Ar time
+field describes when, in current local time, the change to the other
+time is made.
+.Pp
+The format of
+.Ar date
+is one of the following (spaces added for clarity):
+.Bl -tag -width "M m . n . d"
+.It J Ar n
+The Julian day
+.Ar n
+.Po
+1 \&<\&=
+.Ar n
+\&<\&= 365
+.Pc .
+Leap days are not counted; that is, in all years -- including leap
+years -- February 28 is day 59 and March 1 is day 60.
+It is impossible to explicitly refer to the occasional February 29.
+.It Ar n
+The zero-based Julian day
+.Po
+0 \&<\&=
+.Ar n
+\&<\&= 365
+.Pc .
+Leap days are counted, and it is possible to refer to February 29.
+.It Xo M Ar m No . Ar n
+.No . Ar d
+.Xc
+Day
+.Ar d
+.Po
+1 \&<\&=
+.Ar d
+\&<\&= 6
+.Pc
+of week
+.Ar n
+.Po
+1 \&<\&=
+.Ar n
+\&<\&= 5
+.Pc
+of month
+.Ar m
+.Po
+1 \&<\&=
+.Ar m
+\&<\&= 12
+.Pc ,
+where week 5 means
+.Do
+the last
+.Ar d
+day in month
+.Ar m
+.Dc
+which may occur in either the fourth or the fifth week.
+Week 1 is the first week in which the
+.Ar d Ns th
+day occurs.
+Day zero is Sunday.
+.El
+.Pp
+The
+.Ar time
+has the same format as
+.Ar offset
+except that no leading sign
+.Po
+.Dq \&-
+or
+.Dq \&+
+.Pc
+is allowed.
+The default, if
+.Ar time
+is not given, is
+.Cm 02:00:00 .
+.El
+.Pp
+If no
+.Ar rule
+is present in
+.Ev TZ ,
+the rules specified
+by the
+.Xr tzfile 5
+format
+file
+.Cm posixrules
+in the system time conversion information directory are used, with the
+standard and summer time offsets from UTC replaced by those specified by
+the
+.Ar offset
+values in
+.Ev TZ .
+.Pp
+For compatibility with System V Release 3.1, a semicolon
+.Pq Sq \&;
+may be used to separate the
+.Ar rule
+from the rest of the specification.
+.Pp
+If the
+.Ev TZ
+environment variable does not specify a
+.Xr tzfile 5
+format file
+and cannot be interpreted as a direct specification,
+UTC is used.
+.Sh FILES
+.Bl -tag -width "/usr/share/zoneinfo/posixrules" -compact
+.It Pa /usr/share/zoneinfo
+time zone information directory
+.It Pa /etc/localtime
+local time zone file
+.It Pa /usr/share/zoneinfo/posixrules
+used with POSIX-style
+.Ev TZ Ns s
+.It Pa /usr/share/zoneinfo/GMT
+for UTC leap seconds
+.El
+.Pp
+If
+.Pa /usr/share/zoneinfo/GMT
+is absent,
+UTC leap seconds are loaded from
+.Pa /usr/share/zoneinfo/posixrules .
+.Sh SEE ALSO
+.Xr ctime 3 ,
+.Xr getenv 3 ,
+.Xr strftime 3 ,
+.Xr time 3 ,
+.Xr tzfile 5
+.\" @(#)newtzset.3	8.1
+.\" This file is in the public domain, so clarified as of
+.\" 2003-02-14 by Arthur David Olson.

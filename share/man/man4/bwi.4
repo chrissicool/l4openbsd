@@ -1,0 +1,194 @@
+.\" $OpenBSD: bwi.4,v 1.29 2010/04/29 09:21:45 jmc Exp $
+.\"
+.\" Copyright (c) 2007 Marcus Glocker <mglocker@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: April 29 2010 $
+.Dt BWI 4
+.Os
+.Sh NAME
+.Nm bwi
+.Nd Broadcom AirForce IEEE 802.11b/g wireless network device
+.Sh SYNOPSIS
+.Cd "bwi* at cardbus?"
+.Cd "bwi* at pci?"
+.Sh DESCRIPTION
+The
+.Nm
+driver provides support for Broadcom AirForce based
+PCI/Cardbus network adapters.
+.Pp
+These are the modes the
+.Nm
+driver can operate in:
+.Bl -tag -width "IBSS-masterXX"
+.It BSS mode
+Also known as
+.Em infrastructure
+mode, this is used when associating with an access point, through
+which all traffic passes.
+This mode is the default.
+.\" .It IBSS mode
+.\" Also known as
+.\" .Em IEEE ad-hoc
+.\" mode or
+.\" .Em peer-to-peer
+.\" mode.
+.\" This is the standardized method of operating without an access point.
+.\" Stations associate with a service set.
+.\" However, actual connections between stations are peer-to-peer.
+.\" .It Host AP
+.\" In this mode the driver acts as an access point (base station)
+.\" for other cards.
+.It monitor mode
+In this mode the driver is able to receive packets without
+associating with an access point.
+This disables the internal receive filter and enables the card to
+capture packets from networks which it wouldn't normally have access to,
+or to scan for access points.
+.El
+.Pp
+The
+.Nm
+driver can be configured to use
+Wired Equivalent Privacy (WEP) or
+Wi-Fi Protected Access (WPA-PSK and WPA2-PSK).
+WPA is the de facto encryption standard for wireless networks.
+It is strongly recommended that WEP
+not be used as the sole mechanism
+to secure wireless communication,
+due to serious weaknesses in it.
+The
+.Nm
+driver relies on the software 802.11 stack for both encryption and decryption
+of data frames.
+.Pp
+The transmit speed is user-selectable or can be adapted automatically by the
+driver depending on the received signal strength and on the number of hardware
+transmission retries.
+.Pp
+The
+.Nm
+driver can be configured at runtime with
+.Xr ifconfig 8
+or on boot with
+.Xr hostname.if 5 .
+.Sh FILES
+The driver needs a firmware file which is loaded when an interface is
+brought up:
+.Pp
+.Bl -tag -width Ds -offset indent -compact
+.It Pa /etc/firmware/bwi-airforce
+.El
+.\".Pp
+.\"These firmware files are not free because Broadcom refuses
+.\"to grant distribution rights.
+.\"As a result, even though
+.\".Ox
+.\"includes the driver, the firmware files cannot be included and
+.\"users have to download these files on their own.
+.Pp
+A prepackaged version of the firmware, designed to be used with
+.Xr pkg_add 1 ,
+can be found at:
+.Bd -literal -offset 3n
+http://www.nazgul.ch/bwi/bwi-firmware-1.4.tgz
+.Ed
+.Sh HARDWARE
+The following cards are among those supported by the
+.Nm
+driver:
+.Pp
+.Bl -column -compact "Apple Airport Extreme" "BCM4306" "CardBus" "a/b/g" -offset 6n
+.It Em "Card	Chip	Bus	Standard"
+.It Apple Airport Extreme	BCM4306	PCI	b/g
+.It Apple Airport Extreme	BCM4318	PCI	b/g
+.It ASUS WL-138g	BCM4318	PCI	b/g
+.It Buffalo WLI-CB-G54	BCM4306	CardBus	b/g
+.It Compaq R4035 onboard	BCM4306	PCI	b/g
+.It HP nx6125	BCM4319	PCI	b/g
+.It Linksys WPC54G Ver 3	BCM4318	CardBus	b/g
+.It Linksys WPC54GS Ver 2	BCM4318	CardBus	b/g
+.It TRENDnet TEW-401PCplus	BCM4306	CardBus	b/g
+.It US Robotics 5411	BCM4318	CardBus	b/g
+.El
+.Sh EXAMPLES
+The following
+.Xr hostname.if 5
+example configures bwi0 to join whatever network is available on boot,
+using WEP key
+.Dq 0x1deadbeef1 ,
+channel 11, obtaining an IP address using DHCP:
+.Bd -literal -offset indent
+dhcp NONE NONE NONE nwkey 0x1deadbeef1 chan 11
+.\".Ed
+.\".Pp
+.\"The following
+.\".Xr hostname.if 5
+.\"example creates a host-based access point on boot:
+.\".Bd -literal -offset indent
+.\"inet 192.168.1.1 255.255.255.0 NONE media autoselect \e
+.\"	mediaopt hostap nwid my_net chan 11
+.Ed
+.Pp
+Configure bwi0 to join network
+.Dq my_net
+using WPA-PSK with passphrase
+.Dq my_passphrase :
+.Bd -literal -offset indent
+# ifconfig bwi0 nwid my_net wpa wpapsk \e
+	`wpa-psk my_net my_passphrase`
+.Ed
+.Pp
+Return bwi0 to its default settings:
+.Bd -literal -offset indent
+# ifconfig bwi0 -bssid -chan media autoselect \e
+	nwid "" -nwkey -wpa -wpapsk
+.Ed
+.Pp
+Join an existing BSS network,
+.Dq my_net :
+.Bd -literal -offset indent
+# ifconfig bwi0 192.168.1.1 netmask 0xffffff00 nwid my_net
+.Ed
+.Sh SEE ALSO
+.Xr arp 4 ,
+.Xr cardbus 4 ,
+.Xr ifmedia 4 ,
+.Xr intro 4 ,
+.Xr netintro 4 ,
+.Xr pci 4 ,
+.Xr hostname.if 5 ,
+.\".Xr hostapd 8 ,
+.Xr ifconfig 8 ,
+.Xr wpa-psk 8
+.Sh HISTORY
+The
+.Nm
+driver first appeared in
+.Ox 4.3 .
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+driver was written for DragonFlyBSD by Sepherosa Ziehau and ported to
+.Ox
+by
+.An Jonathan Gray
+and
+.An Marcus Glocker .
+.Sh CAVEATS
+Some chips are incorrectly calibrated due to the lack of documentation,
+which can slow the amount of traffic to the point of being unusable.
+Furthermore this driver only supports firmware version 3.

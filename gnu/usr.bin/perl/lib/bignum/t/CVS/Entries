@@ -1,0 +1,22 @@
+/big_e_pi.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/bigexp.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/bigint.t/1.1.1.3/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/bignum.t/1.1.1.3/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/bigrat.t/1.1.1.3/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/bii_e_pi.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/biinfnan.t/1.1.1.1/Wed Dec  3 02:44:00 2003//TOPENBSD_4_8_BASE
+/bir_e_pi.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/bn_lite.t/1.1.1.1/Wed Dec  3 02:44:00 2003//TOPENBSD_4_8_BASE
+/bninfnan.t/1.1.1.2/Tue Mar 28 18:48:40 2006//TOPENBSD_4_8_BASE
+/br_lite.t/1.1.1.1/Wed Dec  3 02:44:00 2003//TOPENBSD_4_8_BASE
+/brinfnan.t/1.1.1.1/Wed Dec  3 02:44:00 2003//TOPENBSD_4_8_BASE
+/in_effect.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/infnan.inc/1.1.1.1/Wed Dec  3 02:44:00 2003//TOPENBSD_4_8_BASE
+/option_a.t/1.1.1.2/Tue Mar 28 18:48:40 2006/-ko/TOPENBSD_4_8_BASE
+/option_l.t/1.1.1.3/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/option_p.t/1.1.1.2/Tue Mar 28 18:48:40 2006/-ko/TOPENBSD_4_8_BASE
+/ratopt_a.t/1.1.1.1/Tue Mar 28 18:48:40 2006//TOPENBSD_4_8_BASE
+/scope_f.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/scope_i.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/scope_r.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+D

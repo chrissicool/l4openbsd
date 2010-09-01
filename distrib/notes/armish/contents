@@ -1,0 +1,34 @@
+dnl	$OpenBSD: contents,v 1.7 2010/03/07 14:07:07 miod Exp $
+TopPart
+
+OpenBSDdistsets
+
+OpenBSDbsd
+
+OpenBSDrd
+dnl not yet...
+dnl OpenBSDcd
+
+DistributionDescription(eleven)
+
+OpenBSDbase(56389686,167758358)
+
+OpenBSDcomp(88675105,252176109)
+
+OpenBSDetc(525342,1595961)
+
+OpenBSDgame(2668047,5974672)
+
+OpenBSDman(9463622,34570289)
+
+OpenBSDmisc(364831,1175282)
+
+OpenBSDxbase(16448303,47676560)
+
+OpenBSDxetc(70388,269310)
+
+OpenBSDxfont(39687385,51387549)
+
+OpenBSDxserv(5339706,13900698)
+
+OpenBSDxshare(2947726,16054084)

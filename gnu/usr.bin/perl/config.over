@@ -1,0 +1,66 @@
+#
+# Override default paths when building in the OpenBSD src tree
+#
+# $OpenBSD: config.over,v 1.14 2008/10/12 19:15:31 millert Exp $
+#
+
+# We use a different architecture name than the default
+archname="`arch -s`-${osname}"
+myarchname="$archname"
+
+# Use correct paths for a distribution
+prefix='/usr'
+prefixexp='/usr'
+
+# But site binaries go in /usr/local/bin for ports
+siteprefix='/usr/local'
+siteprefixexp='/usr/local'
+installsitebin='/usr/local/bin'
+
+installarchlib="/usr/libdata/perl5/${archname}/${version}"
+archlib="${installarchlib}:/usr/local/libdata/perl5/${archname}/${version}"
+archlibexp="${archlib}"
+
+test $useshrplib = "true" && ccdlflags="-Wl,-R${installarchlib}/CORE"   
+
+installprivlib="/usr/libdata/perl5"
+privlib="${installprivlib}:/usr/local/libdata/perl5"
+privlibexp="${privlib}"
+
+# NOTE: primary dir for sitearch lives in /usr/local
+installsitearch="/usr/local/libdata/perl5/site_perl/${archname}"
+sitearch="${installsitearch}:/usr/libdata/perl5/site_perl/${archname}"
+sitearchexp="${sitearch}"
+
+# NOTE: primary dir for sitelib lives in /usr/local
+installsitelib="/usr/local/libdata/perl5/site_perl"
+sitelib="${installsitelib}:/usr/libdata/perl5/site_perl"
+sitelibexp="${sitelib}"
+
+# We install the man pages ourselves until installman gets smarter
+man1dir='/usr/share/man/man1'
+man1direxp='/usr/share/man/man1'
+installman1dir='/usr/share/man/man1'
+man1ext='1'
+man3dir='/usr/share/man/man3p'
+man3direxp='/usr/share/man/man3p'
+installman3dir='/usr/share/man/man3p'
+man3ext='3p'
+siteman1dir='/usr/local/man/man1'
+siteman1direxp='/usr/local/man/man1'
+installsiteman1dir='/usr/local/man/man1'
+siteman3dir='/usr/local/man/man3p'
+siteman3direxp='/usr/local/man/man3p'
+installsiteman3dir='/usr/local/man/man3p'
+
+# Never hardcode developer info into a distribution
+cf_by='root'
+cf_email='root@localhost'
+cf_time='Thu Jan  1  0:00:00 UTC 1970'
+perladmin='root@localhost'
+mydomain=''
+myhostname=''
+myuname='openbsd'
+
+# force to use ranlib
+ranlib='ranlib'

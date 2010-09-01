@@ -1,0 +1,15 @@
+/Makefile/1.1/Tue Feb 11 19:39:30 2003//TOPENBSD_4_8_BASE
+/devlist2h.awk/1.4/Thu Aug 10 23:44:16 2006//TOPENBSD_4_8_BASE
+/files.hil/1.6/Thu Aug 10 23:41:16 2006//TOPENBSD_4_8_BASE
+/hil.c/1.23/Sat Dec 16 20:07:13 2006//TOPENBSD_4_8_BASE
+/hildevs/1.3/Thu Aug 10 23:44:16 2006//TOPENBSD_4_8_BASE
+/hildevs.h/1.4/Fri May 13 14:54:44 2005//TOPENBSD_4_8_BASE
+/hildevs_data.h/1.4/Thu Aug 10 23:48:06 2006//TOPENBSD_4_8_BASE
+/hilid.c/1.4/Sun Jan  9 23:49:36 2005//TOPENBSD_4_8_BASE
+/hilkbd.c/1.14/Wed Jan 21 21:53:59 2009//TOPENBSD_4_8_BASE
+/hilkbdmap.c/1.7/Sat May  7 22:42:30 2005//TOPENBSD_4_8_BASE
+/hilkbdmap.h/1.3/Sat May  7 22:42:30 2005//TOPENBSD_4_8_BASE
+/hilms.c/1.5/Tue Apr 10 22:37:17 2007//TOPENBSD_4_8_BASE
+/hilreg.h/1.6/Thu Aug 10 23:43:45 2006//TOPENBSD_4_8_BASE
+/hilvar.h/1.10/Sun Nov  5 14:39:32 2006//TOPENBSD_4_8_BASE
+D

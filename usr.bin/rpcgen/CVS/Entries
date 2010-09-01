@@ -1,0 +1,16 @@
+/Makefile/1.4/Sat Oct 11 21:10:40 1997//TOPENBSD_4_8_BASE
+/rpc_clntout.c/1.14/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_cout.c/1.20/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_hout.c/1.18/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_main.c/1.24/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_parse.c/1.17/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_parse.h/1.8/Sun May  9 22:22:45 2004//TOPENBSD_4_8_BASE
+/rpc_sample.c/1.16/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_scan.c/1.14/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_scan.h/1.4/Fri Jul  5 05:39:42 2002//TOPENBSD_4_8_BASE
+/rpc_svcout.c/1.25/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_tblout.c/1.12/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_util.c/1.14/Tue Oct 27 23:59:42 2009//TOPENBSD_4_8_BASE
+/rpc_util.h/1.14/Wed Oct  3 15:12:13 2007//TOPENBSD_4_8_BASE
+/rpcgen.1/1.13/Sat Nov 17 11:50:00 2007//TOPENBSD_4_8_BASE
+D

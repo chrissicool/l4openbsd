@@ -1,0 +1,280 @@
+.\"	$OpenBSD: sysmerge.8,v 1.32 2010/07/05 08:30:28 ajacoutot Exp $
+.\"
+.\" Copyright (c) 2008 Antoine Jacoutot <ajacoutot@openbsd.org>
+.\"
+.\" Permission to use, copy, modify, and distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: July 5 2010 $
+.Dt SYSMERGE 8
+.Os
+.Sh NAME
+.Nm sysmerge
+.Nd update system configuration files
+.Sh SYNOPSIS
+.Nm
+.Bk -words
+.Op Fl bd
+.Op Fl s Ar src \*(Ba etcXX.tgz
+.Op Fl x Ar xetcXX.tgz
+.Ek
+.Sh DESCRIPTION
+.Nm
+is a
+.Xr ksh 1
+script designed to help the administrator update configuration files
+after upgrading to a new release or snapshot.
+The configuration files are typically those held in
+.Pa /etc ,
+though
+.Nm
+is also able to update files held in
+.Pa /dev ,
+.Pa /root ,
+and
+.Pa /var .
+.Pp
+It is
+.Sy HIGHLY
+recommended to back up the
+.Pa /etc
+directory before running this script.
+.Pp
+.Nm
+works by comparing a temporary reference root directory
+against currently installed files.
+The reference files are created from a
+.Xr cvs 1
+source tree or a
+.Dq .tgz
+release or snapshot file.
+The default, if no source is specified on the command line,
+is to use
+.Pa /usr/src .
+All work is done under
+.Pa ${TMPDIR}/sysmerge.XXXXX
+(known as the
+.Em work directory ) .
+The temporary root directory
+.Pa temproot
+is created under the work directory.
+Each modified and/or replaced file is saved under the
+.Pa backup
+directory inside the work directory.
+.Pp
+To make sure configuration files are in sync with the actual binaries,
+use the same source as was used to upgrade the system:
+.Pa /usr/src
+when upgrading from source;
+.Pa etcXX.tgz
+and
+.Pa xetcXX.tgz
+when upgrading from binary sets.
+.Pp
+.Nm
+will work through the fileset,
+offering the chance to merge any differences using ${MERGE_CMD}.
+Merged files may be edited using a default editor,
+or one defined by the ${VISUAL} or ${EDITOR} environment variables.
+Files may also be left to deal with at a later date.
+Should any problems occur,
+such as a failure to upgrade a file,
+the user will be notified and have to deal with the issue by hand.
+.Pp
+By default (if
+.Fl d
+is not used)
+.Nm
+only compares files whose reference sources have changed since the last run
+and attempts to automatically upgrade them to the newest version,
+provided that they have no local changes.
+It automatically installs missing files and binaries,
+and updates files differing only by CVS Id.
+Files whose reference sources have matching CVS Id are skipped from comparison.
+.Pa /etc/fbtab ,
+.Pa /etc/login.conf ,
+.Pa /etc/sysctl.conf ,
+and
+.Pa /etc/ttys
+are created using helper scripts and are
+.Sy always
+compared.
+Users and groups that are missing from the current installation but
+present in the new
+.Xr master.passwd 5
+and
+.Xr group 5
+files will be automatically created.
+.Pp
+.Nm
+will finish by running
+.Xr mtree 8
+to make sure the directory structure has correct permissions.
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl b
+Batch mode.
+.Nm
+runs non-interactively,
+saving differing files for later manual processing.
+.It Fl d
+Diff mode.
+In this mode,
+.Nm
+will not take any automatic action, allowing for a full diff comparison.
+.It Fl s Ar src \*(Ba etcXX.tgz
+Specify a path to an
+.Ox
+top src directory or an etcXX.tgz tarball.
+A tarball path specified as an FTP or HTTP URL will be passed
+to ${FETCH_CMD}.
+.It Fl x Ar xetcXX.tgz
+Specify a path to an
+xetcXX.tgz tarball.
+A tarball path specified as an FTP or HTTP URL will be passed
+to ${FETCH_CMD}.
+.El
+.Pp
+Files and directories can be excluded from comparison
+by listing them in the file
+.Pa /etc/sysmerge.ignore ,
+each entry separated by white space or a new line.
+The following files will always be skipped from comparison:
+.Pa /etc/*.db ,
+.Pa /etc/mail/*.db ,
+.Pa /etc/passwd ,
+.Pa /etc/motd ,
+.Pa /etc/myname ,
+.Pa /var/db/locate.database ,
+.Pa /var/db/sysmerge/etcsum ,
+.Pa /var/db/sysmerge/xetcsum ,
+.Pa /var/games/tetris.scores ,
+.Pa /var/mail/root .
+.Pp
+The
+.Xr sendmail 8
+configuration files
+.Pa /etc/mail/localhost.cf ,
+.Pa /etc/mail/sendmail.cf
+and
+.Pa /etc/mail/submit.cf
+will always differ because they include their build date and directories.
+A special test was added to handle this
+and they are offered for comparison only if they really differ.
+.Sh ENVIRONMENT
+.Bl -tag -width "DESTDIRXXX"
+.It Ev DBDIR
+Directory in which checksum files are stored.
+If unset, this defaults to
+.Pa /var/db/sysmerge .
+.It Ev DESTDIR
+Directory in which to merge and install files.
+If unset, this defaults to
+.Pa / .
+.It Ev EDITOR , VISUAL
+Specifies an editor to use.
+If both
+.Ev EDITOR
+and
+.Ev VISUAL
+are set,
+.Ev VISUAL
+takes precedence.
+If neither
+.Ev EDITOR
+nor
+.Ev VISUAL
+are set,
+the default is
+.Xr vi 1 .
+.It Ev FETCH_CMD
+Command used to fetch remote files.
+Defaults to
+.Xr ftp 1 .
+.It Ev FTP_KEEPALIVE
+Have
+.Xr ftp 1
+send a byte after every
+.Ev FTP_KEEPALIVE
+seconds,
+so that incorrectly configured network equipment won't aggressively drop it.
+See
+.Dq ftp -k
+for more information.
+.It Ev MERGE_CMD
+Command used to merge diffs.
+This will be called with three arguments: the first argument is the
+output file to create, the second argument is the currently installed
+file and the third argument is the reference file.
+If unset, this defaults to
+.Dq sdiff -as -w ${SWIDTH} -o .
+.It Ev PAGER
+Specifies the pagination program to use.
+.It Ev REPORT
+Log summary which may contain information for further, manual,
+updating.
+Defaults to
+.Pa ${WRKDIR}/sysmerge.log .
+.It Ev TMPDIR
+Directory in which the work directory is created.
+If unset, this defaults to
+.Pa /var/tmp .
+.El
+.Sh FILES
+.Bl -tag -width "${TMPDIR}/sysmerge.XXXXXXXX" -compact
+.It ${TMPDIR}/sysmerge.XXXXX
+Default work directory.
+The
+.Sy temproot
+and
+.Sy backup
+directories are created relative to this.
+.It ${WRKDIR}/sysmerge.log
+Default log file.
+.It /etc/sysmerge.ignore
+Files and directories to ignore from comparison.
+.El
+.Sh SEE ALSO
+.Xr cap_mkdb 1 ,
+.Xr chpass 1 ,
+.Xr diff 1 ,
+.Xr mktemp 1 ,
+.Xr more 1 ,
+.Xr sdiff 1 ,
+.Xr groupadd 8 ,
+.Xr MAKEDEV 8 ,
+.Xr makemap 8 ,
+.Xr mtree 8 ,
+.Xr newaliases 8 ,
+.Xr pwd_mkdb 8
+.Pp
+.Pa /usr/src/etc/Makefile
+.Pp
+.Pa http://www.openbsd.org/faq/current.html
+.Pa http://www.openbsd.org/faq/upgradeXX.html
+.Sh HISTORY
+The
+.Nm
+script first appeared in
+.Ox 4.4 .
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+shell script was written by
+.An Antoine Jacoutot Aq ajacoutot@openbsd.org
+using
+.Fx
+mergemaster written by
+.An Douglas Barton Aq DougB@FreeBSD.org
+as a base.

@@ -1,0 +1,248 @@
+#! /usr/bin/perl
+# Copyright (c) 2005-2010 Marc Espie <espie@openbsd.org>
+# $OpenBSD: pkg_mklocatedb,v 1.29 2010/07/28 12:19:54 espie Exp $
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+use strict;
+use warnings;
+
+use OpenBSD::PackageInfo;
+use OpenBSD::PackingList;
+use OpenBSD::Getopt;
+use OpenBSD::Error;
+use OpenBSD::Paths;
+use OpenBSD::AddCreateDelete;
+use File::Path;
+
+package OpenBSD::Pkgmklocatedb::State;
+our @ISA = qw(OpenBSD::AddCreateDelete::State);
+
+sub handle_options
+{
+	my $state = shift;
+	$state->{no_exports} = 1;
+	$state->SUPER::handle_options('ad:nqs:x:r:p:P', 
+	    '[-anPq] [-d repository] [-p portsdir] [-r release] [-s src] ',
+	    '[-x X11src] [pkg-name [...]]');
+	$state->{srcdir} = $state->opt('s');
+	$state->{xdir} = $state->opt('x');
+	$state->{releasedir} = $state->opt('r');
+	$state->{portsdir} = $state->opt('p');
+	$state->{pkgdir} = $state->opt('d');
+	$state->{quiet} = $state->opt('q');
+	$state->{pkgpath} = $state->opt('P');
+	$state->{allinfo} = $state->opt('a');
+	$state->{nopipe} = $state->opt('n');
+}
+
+
+package OpenBSD::PackingElement;
+sub print_name {}
+
+package OpenBSD::PackingElement::Name;
+sub print_name
+{
+	my ($self, $state) = @_;
+	$state->{currentheader} = $self->{name}.':';
+}
+
+package OpenBSD::PackingElement::ExtraInfo;
+sub print_name
+{
+	my ($self, $state) = @_;
+	if ($state->{allinfo}) {
+		$state->{currentheader} .=  $self->{subdir}.':';
+	} elsif ($state->{pkgpath}) {
+		$state->{currentheader} = $self->{subdir}.':';
+	}
+	$state->errsay($state->{currentheader}) unless $state->{quiet};
+}
+
+package OpenBSD::PackingElement::FileObject;
+sub print_name
+{
+	my ($self, $state) = @_;
+	print {$state->{out}} $state->{currentheader}, $self->fullname, "\n";
+}
+
+package main;
+
+sub tag
+{
+	my ($state, $dir, $set, $rev) = @_;
+	my $r;
+	if ($state->{allinfo}) {
+		$r = "$dir/$set:$set$rev";
+	} elsif ($state->{pkgpath}) {
+		$r = "$dir/$set";
+	} else {
+		$r = "$set$rev";
+	}
+	$state->errsay($r) unless $state->{quiet};
+	return $r;
+}
+
+my ($rev, $arch);
+sub findos
+{
+	my $cmd = OpenBSD::Paths->uname." -mr";
+	($rev, $arch) = split(/\s+/o, `$cmd`);
+	chomp $arch;
+	$rev =~ s/\.//;
+}
+
+sub open_output
+{
+	my $state = shift;
+
+
+	if ($state->{nopipe} or -t STDOUT) {
+		$state->{out} = \*STDOUT;
+	} else {
+		my $MKLOCATEDB = OpenBSD::Paths->mklocatedb;
+
+		open $state->{out}, "|-", $MKLOCATEDB, $MKLOCATEDB or 
+		    $state->fatal("couldn't open pipe to mklocatedb: #1", $!);
+	}
+}
+
+sub do_src
+{
+	my ($state, $src, $tag, @sets) = @_;
+	findos() if !defined $arch;
+	my $dir = "$src/distrib/sets/lists";
+	for my $set (@sets) {
+		my $tag = tag($state, $tag, $set, $rev);
+		my $output = 0;
+		for my $f ("$dir/$set/mi", "$dir/$set/md.$arch") {
+			open my $l, '<', $f or next;
+			while (my $e = <$l>) {
+				chomp $e;
+				$e =~ s/^\.//;
+				print {$state->{out}} "$tag:$e\n";
+				$output = 1;
+			}
+		}
+		if (!$output) {
+			$state->fatal("Couldn't find set #1", $set);
+		}
+	}
+}
+
+sub do_release
+{
+	my $state = shift;
+
+	require OpenBSD::Ustar;
+
+	opendir(my $dir, $state->{releasedir}) or return;
+	while (my $e = readdir $dir) {
+		if ($e =~ m/^(\w+\d\d)\.tgz$/o) {
+			my $set = $1;
+			open my $arc, '-|', OpenBSD::Paths->gzip, '-c', '-d', 
+			    "--", $state->{releasedir}."/".$e or
+			$state->fatal("couldn't open pipe from gzip: #1", $!);
+
+			my $u = OpenBSD::Ustar->new($arc, $state, '/');
+			while (my $f = $u->next) {
+				my $name = $f->{name};
+				$name =~ s/^\.//o;
+				print {$state->{out}} "$set:$name\n";
+			}
+			close $arc;
+		}
+	}
+	closedir($dir);
+}
+
+sub do_portsdir
+{
+	my $state = shift;
+	my $make = $ENV{MAKE} || 'make';
+	open my $in, "cd $state->{portsdir} && $make print-plist-all |";
+	my $done = 0;
+	while (!$done) {
+		my $plist = OpenBSD::PackingList->read($in,
+		    sub {
+			my ($fh, $cont) = @_;
+			my $_;
+			while (<$fh>) {
+				return if m/^\=\=\=\> /o;
+				next unless m/^\@(?:bin|cwd|name|info|man|file|lib|shell|comment\s+subdir\=)\b/o || !m/^\@/o;
+				&$cont($_);
+			}
+			$done = 1;
+		    });
+		if (defined $plist && defined $plist->pkgname) {
+			$plist->print_name($state);
+		}
+	}
+	close($in);
+}
+
+sub do_pkgdir
+{
+	my $state = shift;
+
+	require File::Find;
+	no warnings qw(once);
+	$state->fatal("Bad argument: #1 is not a directory", $state->{pkgdir})
+	    unless -d $state->{pkgdir};
+	File::Find::find(
+	    sub {
+		return unless -f $_;
+		my $plist = $state->repo->grabPlist($File::Find::name);
+		return unless defined $plist;
+		$plist->print_name($state);
+	    }, $state->{pkgdir});
+}
+
+my $state = OpenBSD::Pkgmklocatedb::State->new("pkg_mklocatedb");
+$state->handle_options;
+
+open_output($state);
+
+if ($state->{srcdir}) {
+	do_source($state, $state->{srcdir}, 'src', 
+	    qw(base comp etc game misc));
+}
+if ($state->{xdir}) {
+	do_source($state, $state->{xdir}, 'xenocara', 
+	    qw(xbase xetc xfont xserv xshare));
+}
+if ($state->{releasedir}) {
+	do_release($state);
+}
+
+if ($state->{portsdir}) {
+	do_portsdir($state);
+} elsif ($state->{pkgdir}) {
+	do_pkgdir($state);
+} elsif (@ARGV == 0) {
+	$state->progress->for_list("Scanning installation",
+	    [installed_packages()], sub {
+	    	my $pkgname = shift;
+		my $plist = OpenBSD::PackingList->from_installation($pkgname);
+		return unless defined $plist;
+		$plist->print_name($state);
+	    });
+} else {
+	$state->progress->for_list("Scanning packages", \@ARGV,
+	    sub {
+	    	my $pkgname = shift;
+		my $plist = $state->repo->grabPlist($pkgname);
+		next unless $plist;
+		$plist->print_name($state);
+	    });
+}

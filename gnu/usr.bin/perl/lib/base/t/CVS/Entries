@@ -1,0 +1,11 @@
+/base.t/1.1.1.2/Mon Sep 29 17:18:46 2008//TOPENBSD_4_8_BASE
+/compile-time.t/1.1.1.1/Mon Oct 12 18:10:54 2009//TOPENBSD_4_8_BASE
+/fields-5.6.0.t/1.1.1.1/Mon Oct 12 18:10:54 2009//TOPENBSD_4_8_BASE
+/fields-5.8.0.t/1.1.1.1/Mon Oct 12 18:10:54 2009//TOPENBSD_4_8_BASE
+/fields-base.t/1.1.1.5/Mon Oct 12 18:10:54 2009//TOPENBSD_4_8_BASE
+/fields.t/1.1.1.2/Mon Sep 29 17:18:46 2008//TOPENBSD_4_8_BASE
+/isa.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+/sigdie.t/1.1.1.2/Mon Oct 12 18:10:54 2009/-ko/TOPENBSD_4_8_BASE
+/version.t/1.1.1.2/Mon Oct 12 18:10:54 2009/-ko/TOPENBSD_4_8_BASE
+/warnings.t/1.1.1.1/Mon Sep 29 17:18:46 2008/-ko/TOPENBSD_4_8_BASE
+D/lib////

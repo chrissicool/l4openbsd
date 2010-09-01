@@ -1,0 +1,16 @@
+/common.c/1.1.1.2/Fri Apr 14 07:32:00 2006//TOPENBSD_4_8_BASE
+/gss_common.c/1.1.1.2/Fri Apr 14 07:32:00 2006//TOPENBSD_4_8_BASE
+/gss_common.h/1.1.1.2/Fri Apr 14 07:32:00 2006//TOPENBSD_4_8_BASE
+/gssapi_client.c/1.1.1.2/Fri Apr 14 07:32:00 2006//TOPENBSD_4_8_BASE
+/gssapi_server.c/1.1.1.2/Fri Apr 14 07:32:01 2006//TOPENBSD_4_8_BASE
+/http_client.c/1.2/Tue Mar 20 03:44:18 2007//TOPENBSD_4_8_BASE
+/nt_gss_client.c/1.1.1.1/Fri May 25 07:45:30 2001//TOPENBSD_4_8_BASE
+/nt_gss_common.c/1.1.1.1/Fri May 25 07:45:30 2001//TOPENBSD_4_8_BASE
+/nt_gss_common.h/1.1.1.1/Fri May 25 07:45:30 2001//TOPENBSD_4_8_BASE
+/nt_gss_server.c/1.1.1.2/Fri Apr 14 07:32:01 2006//TOPENBSD_4_8_BASE
+/tcp_client.c/1.1.1.1/Fri May 25 07:45:31 2001//TOPENBSD_4_8_BASE
+/tcp_server.c/1.1.1.1/Fri May 25 07:45:31 2001//TOPENBSD_4_8_BASE
+/test_locl.h/1.1.1.2/Fri Apr 14 07:32:01 2006//TOPENBSD_4_8_BASE
+/uu_client.c/1.1.1.2/Fri Apr 14 07:32:01 2006//TOPENBSD_4_8_BASE
+/uu_server.c/1.1.1.1/Fri May 25 07:45:31 2001//TOPENBSD_4_8_BASE
+D

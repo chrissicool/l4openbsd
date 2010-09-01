@@ -1,0 +1,409 @@
+.\"	$OpenBSD: wi.4tbl,v 1.92 2009/09/02 07:00:24 jmc Exp $
+.\"
+.\" Copyright (c) 1997, 1998, 1999
+.\"	Bill Paul <wpaul@ctr.columbia.edu>. All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. All advertising materials mentioning features or use of this software
+.\"    must display the following acknowledgement:
+.\"	This product includes software developed by Bill Paul.
+.\" 4. Neither the name of the author nor the names of any co-contributors
+.\"    may be used to endorse or promote products derived from this software
+.\"   without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY Bill Paul AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL Bill Paul OR THE VOICES IN HIS HEAD
+.\" BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+.\" CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+.\" SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+.\" INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+.\" CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+.\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+.\" THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\"	$FreeBSD: wi.4,v 1.3 1999/05/22 16:12:43 wpaul Exp $
+.\"
+.Dd $Mdocdate: September 2 2009 $
+.Dt WI 4
+.Os
+.Sh NAME
+.Nm wi
+.Nd "WaveLAN/IEEE, PRISM 2-3, and Spectrum24 IEEE 802.11b wireless network device"
+.Sh SYNOPSIS
+.Cd "# all architectures"
+.Cd "wi* at pci?"
+.Cd "wi* at pcmcia? function ?"
+.Cd "wi* at uhub? port ?"
+.Pp
+.Cd "# macppc extra attachment"
+.Cd "wi* at macobio?"
+.Sh DESCRIPTION
+The
+.Nm
+driver provides support for wireless network adapters based around
+the Lucent Hermes, Intersil PRISM-2, Intersil PRISM-2.5, Intersil PRISM-3,
+and Symbol Spectrum24 chipsets.
+All five chipsets provide a similar interface to the driver.
+.Pp
+The
+.Nm
+driver encapsulates all IP and ARP traffic as 802.11 frames, though
+it can receive either 802.11 or 802.3 frames.
+Transmit speed is selectable between 1Mbps fixed, 2Mbps fixed, 2Mbps
+with auto fallback, 5.5Mbps, 8Mbps, or 11Mbps, depending on hardware.
+.Pp
+These are the modes the
+.Nm
+driver can operate in:
+.Bl -tag -width "IBSS-masterXX"
+.It BSS mode
+Also known as
+.Em infrastructure
+mode, this is used when associating with an access point, through
+which all traffic passes.
+This mode is the default.
+.It IBSS mode
+Also known as
+.Em IEEE ad-hoc
+mode or
+.Em peer-to-peer
+mode.
+This is the standardized method of operating without an access point.
+Stations associate with a service set.
+However, actual connections between stations are peer-to-peer
+as in ad-hoc mode.
+Cards with very old firmware revisions do not support this mode.
+.It IBSS master
+Also know as
+.Em Host IBSS
+mode.
+In this mode the station takes on part of the role of an access point,
+though traffic does not pass through it to reach the other stations.
+When a group of stations are operating in IBSS mode, one of them must be
+the master, specifying the network name of the service set.
+.It Host AP
+In this mode the driver acts as an access point (base station)
+for other cards.
+Only cards based on the Intersil chipsets support this mode.
+Furthermore, this mode is not supported on USB devices.
+.It ad-hoc mode
+More accurately known as
+.Em ad-hoc demo mode .
+This mode does not require an access point; the adapter communicates with
+other ad-hoc stations within range on a peer-to-peer basis.
+This mode is not specified by the IEEE 802.11 standard and there
+may be problems interoperating with adapters manufactured by different vendors.
+.El
+.Pp
+The
+.Nm
+driver can be configured to use both software and hardware
+Wired Equivalent Privacy (WEP).
+It is strongly recommended that WEP
+not be used as the sole mechanism
+to secure wireless communication,
+due to serious weaknesses in it.
+.Pp
+The Lucent WaveLAN/IEEE Silver and Gold cards as well as the Intersil
+and Symbol cards have support for WEP encryption.
+The WaveLAN Gold as well as newer Intersil and Symbol cards support
+104-bit keys, the others only accept 40-bit keys.
+The Lucent WaveLAN/IEEE Bronze cards do not support WEP at all.
+See also
+.Sx CAVEATS
+below.
+.Pp
+The
+.Nm
+driver can be configured at runtime with
+.Xr ifconfig 8
+or on boot with
+.Xr hostname.if 5 .
+.Sh HARDWARE
+Cards supported by the
+.Nm
+driver come in a variety of packages, though the most common
+are of the PCMCIA type.
+In many cases, the PCI version of a wireless card is simply
+a PCMCIA card bundled with a PCI adapter.
+The PCI adapters come in two flavors: true PCMCIA bridges and
+dumb PCMCIA bridges.
+A true PCMCIA bridge (such as those sold by Lucent) will attach
+as a real PCMCIA controller.
+The wireless card will then attach to the PCMCIA bus.
+Wireless cards in PCMCIA slots may be inserted and ejected on the fly.
+A dumb bridge, on the other hand, does not show up as a true PCMCIA bus.
+The wireless card will simply appear to the host as a normal PCI
+device and will not require any PCMCIA support.
+Cards in this type of adapter should only be removed when the
+machine is powered down.
+.Pp
+The following cards are among those supported by the
+.Nm
+driver:
+.Pp
+.in +\n(dIu
+.TS
+tab (:) nokeep ;
+l l l
+_ _ _
+l l l .
+Card:Chip:Bus
+3Com AirConnect 3CRWE737A:Spectrum24:PCMCIA
+3Com AirConnect 3CRWE777A:Prism-2:PCI
+Acer Warplink USB-400:Prism-3:USB
+Actiontec HWC01170:Prism-2.5:PCMCIA
+Actiontec HWU01170:Prism-3:USB
+Adaptec AWN-8030:Prism-2.5:PCMCIA
+Addtron AWA-100:Prism-2:PCI
+Addtron AWP-100:Prism-2:PCMCIA
+Agere ORiNOCO:Hermes:PCMCIA
+AirVast WM168b:Prism-3:USB
+AmbiCom WL1100C-CF:Prism-3:CF
+Ambit WLAN:Prism-3:USB
+Apacer Wireless Steno MB112:Prism-3:USB
+Apple Airport:Hermes:macobio
+ARtem Onair:Hermes:PCMCIA
+ASUS SpaceLink WL-100:Prism-2.5:PCMCIA
+ASUS SpaceLink WL-110:Prism-2.5:CF
+ASUS WL-140:Prism-3:USB
+Belkin F5D6020 (version 1 only):Prism-2:PCMCIA
+Belkin F5D6001 (version 1 only):Prism-2:PCI
+Belkin F5D6060 (version 1 only):Prism-2.5:CF
+Buffalo AirStation:Prism-2:PCMCIA
+Buffalo AirStation:Prism-2:CF
+Cabletron RoamAbout:Hermes:PCMCIA
+Compaq Agency NC5004:Prism-2:PCMCIA
+Compaq W100:Prism-3:USB
+Contec FLEXLAN/FX-DS110-PCC:Prism-2:PCMCIA
+Corega PCC-11:Prism-2:PCMCIA
+Corega PCCA-11:Prism-2:PCMCIA
+Corega PCCB-11:Prism-2:PCMCIA
+Corega CGWLPCIA11:Prism-2:PCI
+Corega WLUSB-11:Prism-3:USB
+Corega WLUSB-11 Key:Prism-3:USB
+D-Link DCF-660W:Prism-2:CF
+D-Link DWL-120 (rev F):Prism-3:USB
+D-Link DWL-122:Prism-3:USB
+D-Link DWL-520 (rev A and B only):Prism-2.5:PCI
+D-Link DWL-650 (rev A1-J3 only):Prism-2.5:PCMCIA
+ELSA XI300:Prism-2:PCMCIA
+ELSA XI325:Prism-2.5:PCMCIA
+ELSA XI325H:Prism-2.5:PCMCIA
+ELSA XI800:Prism-2:CF
+EMTAC A2424i:Prism-2:PCMCIA
+Ericsson Wireless LAN CARD C11:Spectrum24:PCMCIA
+Gemtek WL-311:Prism-2.5:PCMCIA
+Hawking Technology WE110P:Prism-2.5:PCMCIA
+I-O DATA WN-B11/PCM:Prism-2:PCMCIA
+I-O DATA WN-B11/USB:Prism-3:USB
+Intel PRO/Wireless 2011:Spectrum24:PCMCIA
+Intel PRO/Wireless 2011B:Prism-3:USB
+Intersil Prism II:Prism-2:PCMCIA
+Intersil Mini PCI:Prism-2.5:PCI
+Intersil ISL3872:Prism-3:PCI
+Intersil Prism 2X:Prism-3:USB
+JVC MP-XP7250:Prism-3:USB
+Linksys WCF12:Prism-3:CF
+Linksys Instant Wireless WPC11:Prism-2:PCMCIA
+Linksys Instant Wireless WPC11 2.5:Prism-2.5:PCMCIA
+Linksys Instant Wireless WPC11 3.0:Prism-3:PCMCIA
+Linksys WUSB11 v3.0:Prism-3:USB
+Linksys WUSB12:Prism-3:USB
+Longshine 8301:Prism-2:PCI
+Lucent WaveLAN:Hermes:PCMCIA
+Melco WLI-USB-KB11:Prism-3:USB
+Melco WLI-USB-KS11G:Prism-3:USB
+Melco WLI-USB-S11:Prism-3:USB
+Microsoft MN510:Prism-3:USB
+Microsoft MN520:Prism-2.5:PCMCIA
+NANOSPEED ROOT-RZ2000:Prism-2:PCMCIA
+NDC/Sohoware NCP130:Prism-2:PCI
+NEC CMZ-RT-WP:Prism-2:PCMCIA
+Netgear MA111 (version 1 only):Prism-3:USB
+Netgear MA311:Prism-2.5:PCI
+Netgear MA401:Prism-2:PCMCIA
+Netgear MA401RA:Prism-2.5:PCMCIA
+Netgear MA701:Prism-2.5:CF
+Nokia C020 Wireless LAN:Prism-I:PCMCIA
+Nokia C110/C111 Wireless LAN:Prism-2:PCMCIA
+Nortel E-mobility 211818-A:Spectrum24:PCI
+NTT-ME 11Mbps Wireless LAN:Prism-2:PCMCIA
+Pheenet WL-503IA:Prism-3:USB
+Planex GW-NS11H:Prism-3:PCMCIA
+Planex GW-US11H:Prism-3:USB
+Pretec Compact WLAN OC-WLBXX-A:Prism-2.5:CF
+Proxim Harmony:Prism-2:PCMCIA
+Proxim RangeLAN-DS:Prism-2:PCMCIA
+Samsung MagicLAN SWL-2000N:Prism-2:PCMCIA
+Samsung MagicLAN SWL-2210P:Prism-2:PCI
+Senao NL-2511CF:Prism-3:CF
+Senao NL-2511MP:Prism-2.5:PCI
+Siemens SpeedStream SS1021:Prism-2:PCMCIA
+Siemens SpeedStream SS1022:Prism-3:USB
+Sitecom WL-022:Prism-3:USB
+SMC 2632 EZ Connect:Prism-2:PCMCIA
+Symbol Spectrum24:Spectrum24:PCMCIA
+Symbol LA4123:Spectrum24:PCI
+Syntax USB-400:Prism-3:USB
+TDK LAK-CD011WL:Prism-2:PCMCIA
+US Robotics 1120:Prism-3:USB
+US Robotics 2410:Prism-2:PCMCIA
+US Robotics 2445:Prism-2:PCMCIA
+ViewSonic Airsync:Prism-2.5:USB
+Z-Com XI-725/726:Prism-2.5:USB
+Z-Com XI-735:Prism-3:USB
+ZyXEL ZyAIR B-200:Prism-3:USB
+.TE
+.in -\n(dIu
+.Pp
+Note that some of the PRISM-II adapters only work at 3.3V, hence
+.Xr cardbus 4
+support is required for those cards to set VCC correctly, even
+though they are really 16-bit cards.
+.Pp
+USB support is still experimental and the device may stop functioning
+during normal use.
+Resetting the device by configuring the interface down and back up again will
+normally reactivate it.
+.Pp
+Several vendors sell PCI adapters built around the PLX Technology 9050
+or 9052 chip.
+The following such adapters are supported or expected to work:
+.Pp
+.Bl -tag -width Ds -offset indent -compact
+.It 3Com AirConnect 3CRWE777A (3.3V)
+.It Addtron AWA-100
+.It Belkin F5D6000 (a rebadged WL11000P)
+.It Eumitcom WL11000P
+.It Global Sun Technology GL24110P (untested)
+.It Global Sun Technology GL24110P02
+.It Linksys WDT11 (a rebadged GL24110P02)
+.It Longshine 8031
+.It Netgear MA301
+.It Siemens/Efficient Networks SpeedStream 1023
+.It US Robotics 2415 (rebadged WL11000P)
+.El
+.Sh EXAMPLES
+The following
+.Xr hostname.if 5
+example configures wi0 to join whatever network is available on boot,
+using WEP key
+.Dq 0x1deadbeef1 ,
+channel 11, obtaining an IP address using DHCP:
+.Bd -literal -offset indent
+dhcp NONE NONE NONE nwkey 0x1deadbeef1 chan 11
+.Ed
+.Pp
+The following
+.Xr hostname.if 5
+example creates a host-based access point on boot:
+.Bd -literal -offset indent
+inet 192.168.1.1 255.255.255.0 NONE media autoselect \e
+	mediaopt hostap nwid my_net chan 11
+.Ed
+.Pp
+Configure wi0 for WEP, using hex key
+.Dq 0x1deadbeef1 :
+.Bd -literal -offset indent
+# ifconfig wi0 nwkey 0x1deadbeef1
+.Ed
+.Pp
+Return wi0 to its default settings:
+.Bd -literal -offset indent
+# ifconfig wi0 -chan media autoselect nwid "" \e
+	-nwkey -powersave -txpower
+.Ed
+.Pp
+Join an existing BSS network,
+.Dq my_net :
+.Bd -literal -offset indent
+# ifconfig wi0 192.168.1.1 netmask 0xffffff00 nwid my_net
+.Ed
+.Sh DIAGNOSTICS
+.Bl -diag
+.It "wi%d: init failed"
+The WaveLAN card failed to come ready after an initialization command
+was issued.
+.It "wi%d: failed to allocate %d bytes on NIC"
+The driver was unable to allocate memory for transmit frames in the
+NIC's on-board RAM.
+.It "wi%d: device timeout"
+The WaveLAN failed to generate an interrupt to acknowledge a transmit
+command.
+.El
+.Sh SEE ALSO
+.Xr arp 4 ,
+.Xr ifmedia 4 ,
+.Xr intro 4 ,
+.Xr netintro 4 ,
+.Xr pci 4 ,
+.Xr pcmcia 4 ,
+.Xr usb 4 ,
+.Xr hostname.if 5 ,
+.Xr ifconfig 8
+.Rs
+.%T HCF Light programming specification
+.Re
+.Sh HISTORY
+The
+.Nm
+device driver first appeared in
+.Fx 3.0 .
+.Ox
+support was added in
+.Ox 2.6 .
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+driver was written by
+.An Bill Paul Aq wpaul@ctr.columbia.edu
+and ported to
+.Ox
+by
+.An Niklas Hallqvist Aq niklas@appli.se .
+.Sh CAVEATS
+The original Lucent WaveLAN cards usually default to channel 3;
+newer cards use channel 10 by default.
+Non-Lucent cards vary, for instance the Addtron cards use channel
+11 by default.
+See
+.Xr ifconfig 8
+for information on how to change the channel.
+.Pp
+Not all 3.3V
+.Nm
+PCMCIA cards work.
+.Pp
+IBSS creation does not currently work with Symbol cards.
+.Pp
+The host-based access point mode on the Intersil PRISM cards has
+bugs when used with firmware versions prior to 0.8.3 and is completely
+unusable with firmware versions prior to 0.8.0 and 1.4.0-1.4.2.
+.Pp
+Software WEP is currently only supported in Host AP and BSS modes.
+Furthermore, software WEP is currently incapable of decrypting
+fragmented frames.
+Lucent-based cards using firmware 8.10 and above fragment encrypted
+frames sent at 11Mbps.
+To work around this, Lucent clients with this firmware revision
+connecting to a Host AP server should use a 2Mbps connection or
+upgrade their firmware to version 8.72.
+.Pp
+Host AP mode doesn't support WDS or power saving.
+Clients attempting to use power saving mode may experience
+significant packet loss
+(disabling power saving on the client will fix this).
+.Pp
+Support for USB devices is buggy.
+Host AP mode and AP scanning are not currently supported with USB devices.

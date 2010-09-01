@@ -1,0 +1,8 @@
+/files.vesa/1.1/Mon Nov 27 18:04:28 2006//TOPENBSD_4_8_BASE
+/vbe.h/1.2/Sun Nov 25 16:43:39 2007//TOPENBSD_4_8_BASE
+/vesabios.c/1.4/Sun Feb 18 19:19:02 2007//TOPENBSD_4_8_BASE
+/vesabiosreg.h/1.1/Mon Nov 27 18:04:28 2006//TOPENBSD_4_8_BASE
+/vesabiosvar.h/1.2/Sun Jan 28 20:28:50 2007//TOPENBSD_4_8_BASE
+/vesafb.c/1.7/Wed Nov 11 00:01:34 2009//TOPENBSD_4_8_BASE
+/vesafbvar.h/1.1/Mon Nov 27 18:04:28 2006//TOPENBSD_4_8_BASE
+D

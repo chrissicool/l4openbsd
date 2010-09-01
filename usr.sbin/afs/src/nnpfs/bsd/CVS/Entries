@@ -1,0 +1,20 @@
+/Info.plist.in/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_common-bsd.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_common.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_deb.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_dev-bsd.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_dev-common.c/1.2/Sun Apr 30 14:20:08 2006//TOPENBSD_4_8_BASE
+/nnpfs_info.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_message.c/1.2/Wed Apr 11 16:08:50 2007//TOPENBSD_4_8_BASE
+/nnpfs_node-bsd.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_node.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_syscalls-common.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_syscalls-wrap-bsd.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_vfsops-bsd.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_vfsops-common.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_vfsops-openbsd.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_vnodeops-bsd.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+/nnpfs_vnodeops-common.c/1.2/Wed Apr 11 16:08:50 2007//TOPENBSD_4_8_BASE
+/nnpfs_wrap-bsd.c/1.1.1.1/Tue Aug  5 08:21:02 2003//TOPENBSD_4_8_BASE
+D/bin////
+D/nnpfs////

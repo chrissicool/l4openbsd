@@ -1,0 +1,120 @@
+.\"	$OpenBSD: getrpcent.3,v 1.11 2007/05/31 19:19:30 jmc Exp $
+.\"
+.\" Sun RPC is a product of Sun Microsystems, Inc. and is provided for
+.\" unrestricted use provided that this legend is included on all tape
+.\" media and as a part of the software program in whole or part.  Users
+.\" may copy or modify Sun RPC without charge, but are not authorized
+.\" to license or distribute it to anyone else except as part of a product or
+.\" program developed by the user.
+.\"
+.\" SUN RPC IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
+.\" WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
+.\" PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
+.\"
+.\" Sun RPC is provided with no support and without any obligation on the
+.\" part of Sun Microsystems, Inc. to assist in its use, correction,
+.\" modification or enhancement.
+.\"
+.\" SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
+.\" INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY SUN RPC
+.\" OR ANY PART THEREOF.
+.\"
+.\" In no event will Sun Microsystems, Inc. be liable for any lost revenue
+.\" or profits or other special, indirect and consequential damages, even if
+.\" Sun has been advised of the possibility of such damages.
+.\"
+.\" Sun Microsystems, Inc.
+.\" 2550 Garcia Avenue
+.\" Mountain View, California  94043
+.\"
+.Dd $Mdocdate: May 31 2007 $
+.Dt GETRPCENT 3
+.Os
+.Sh NAME
+.Nm getrpcent ,
+.Nm getrpcbyname ,
+.Nm getrpcbynumber ,
+.Nm endrpcent ,
+.Nm setrpcent
+.Nd get RPC entry
+.Sh SYNOPSIS
+.Fd #include <rpc/rpc.h>
+.Ft struct rpcent *
+.Fn getrpcent void
+.Ft struct rpcent *
+.Fn getrpcbyname "char *name"
+.Ft struct rpcent *
+.Fn getrpcbynumber "int number"
+.Ft void
+.Fn setrpcent "int stayopen"
+.Ft void
+.Fn endrpcent void
+.Sh DESCRIPTION
+.Fn getrpcent ,
+.Fn getrpcbyname ,
+and
+.Fn getrpcbynumber ,
+each return a pointer to an object with the
+following structure
+containing the broken-out
+fields of a line in the rpc program number database,
+.Pa /etc/rpc :
+.Bd -literal -offset 2n
+struct rpcent {
+	char	*r_name;	/* name of server for this rpc program */
+	char	**r_aliases;	/* alias list */
+	int	r_number;	/* rpc program number */
+};
+.Ed
+.Pp
+The members of this structure are:
+.Bl -tag -width r_aliases -offset indent
+.It r_name
+The name of the server for this rpc program.
+.It r_aliases
+A zero terminated list of alternate names for the rpc program.
+.It r_number
+The rpc program number for this service.
+.El
+.Pp
+.Fn getrpcent
+reads the next line of the file, opening the file if necessary.
+.Pp
+.Fn setrpcent
+opens and rewinds the file.
+If the
+.Fa stayopen
+flag is non-zero,
+the net database will not be closed after each call to
+.Fn getrpcent
+(either directly, or indirectly through one of
+the other
+.Dq getrpc
+calls).
+.Pp
+.Fn endrpcent
+closes the file.
+.Pp
+.Fn getrpcbyname
+and
+.Fn getrpcbynumber
+sequentially search from the beginning
+of the file until a matching rpc program name or
+program number is found, or until end-of-file is encountered.
+.Sh FILES
+.Pa /etc/rpc
+.Sh DIAGNOSTICS
+A
+.Dv NULL
+pointer is returned on
+.Dv EOF
+or error.
+.Sh SEE ALSO
+.Xr rpc 5 ,
+.Xr rpcinfo 8 ,
+.Xr ypserv 8
+.Sh BUGS
+All information
+is contained in a static area
+so it must be copied if it is
+to be saved.

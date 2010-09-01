@@ -1,0 +1,25 @@
+# $OpenBSD: mk11,v 1.2 2001/09/07 12:35:19 espie Exp $
+
+
+V=text
+A=
+B=zoinx42->=hop
+
+a:
+# we want empty substitutions to work correctly
+	@echo ${V:C/^$A//}
+	@echo ${V:C/$A$//}
+	@echo ${V:C/^${A}//}
+	@echo ${V:C/${A}$//}
+# with replacement text too
+	@echo ${V:C/^$A/1/}
+	@echo ${V:C/$A$/1/}
+	@echo ${V:C/^${A}/1/}
+	@echo ${V:C/${A}$/1/}
+# and with substituted text...
+	@echo ${V:C/^$A/1&/}
+	@echo ${V:C/$A$/1&/}
+	@echo ${V:C/^${A}/1&/}
+	@echo ${V:C/${A}$/1&/}
+# Yet another check
+	@echo "${B:C/([a-z]*)/\1&/}"

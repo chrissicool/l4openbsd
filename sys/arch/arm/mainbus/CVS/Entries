@@ -1,0 +1,6 @@
+/cpu_mainbus.c/1.1/Sun Feb  1 05:09:49 2004//TOPENBSD_4_8_BASE
+/mainbus.c/1.4/Tue Apr 27 16:43:23 2010//TOPENBSD_4_8_BASE
+/mainbus.h/1.1/Sun Feb  1 05:09:49 2004//TOPENBSD_4_8_BASE
+/mainbus_io.c/1.4/Sun Jul 26 18:48:55 2009//TOPENBSD_4_8_BASE
+/mainbus_io_asm.S/1.1/Sun Feb  1 05:09:49 2004//TOPENBSD_4_8_BASE
+D

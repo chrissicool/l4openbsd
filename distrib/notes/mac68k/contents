@@ -1,0 +1,50 @@
+dnl	$OpenBSD: contents,v 1.51 2009/05/12 21:06:50 miod Exp $
+TopPart
+
+OpenBSDdistsets
+
+OpenBSDbsd
+
+	bsdsbc		A slightly different GENERIC MACHINE kernel, using
+			a different SCSI driver for some MACHINE models, which
+			may allow some otherwise incompatible SCSI devices to
+			function with OpenBSD/MACHINE.
+
+OpenBSDrd
+
+	bsdsbc.rd	A slightly different RAMDISK kernel, using
+			a different SCSI driver for some MACHINE models, which
+			may allow some otherwise incompatible SCSI devices to
+			function with OpenBSD/MACHINE.
+
+	utils/		The OpenBSD/MACHINE boot program for Mac OS.
+
+DistributionDescription(eleven)
+
+OpenBSDbase(49888006,160478255)
+
+OpenBSDcomp(59123843,199085530)
+
+OpenBSDetc(511799,1522575)
+
+OpenBSDgame(2650734,6304930)
+
+OpenBSDman(7716948,28069759)
+
+OpenBSDmisc(2935671,9912406)
+
+OpenBSDxbase(8764728,26625934)
+
+OpenBSDxetc(75961,302749)
+
+OpenBSDxfont(35585999,43728442)
+
+OpenBSDxserv(3007361,8684510)
+
+OpenBSDxshare(2769658,14738551)
+
+The directory '../OSREV/MACHINE/utils' contains the OpenBSD/MACHINE boot
+program, used to load the OpenBSD kernel. This program is distributed
+as a self-extracting archive in Macintosh BinHex format. If there is no
+BSD/Mac68k booter already installed on your Mac OS system, you will need to
+download this file.

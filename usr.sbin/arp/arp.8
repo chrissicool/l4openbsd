@@ -1,0 +1,180 @@
+.\"	$OpenBSD: arp.8,v 1.26 2009/06/05 06:47:12 jmc Exp $
+.\"	$NetBSD: arp.8,v 1.7 1995/03/01 11:50:59 chopps Exp $
+.\"
+.\" Copyright (c) 1985, 1991, 1993
+.\"	The Regents of the University of California.  All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. Neither the name of the University nor the names of its contributors
+.\"    may be used to endorse or promote products derived from this software
+.\"    without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\"	from: @(#)arp.8	8.1 (Berkeley) 6/6/93
+.\"
+.Dd $Mdocdate: June 5 2009 $
+.Dt ARP 8
+.Os
+.Sh NAME
+.Nm arp
+.Nd address resolution display and control
+.Sh SYNOPSIS
+.Nm arp
+.Op Fl adn
+.Op Fl V Ar rdomain
+.Ar hostname
+.Nm arp
+.Op Fl F
+.Op Fl f Ar file
+.Op Fl V Ar rdomain
+.Fl s Ar hostname ether_addr
+.Op Cm temp | permanent
+.Op Cm pub
+.Sh DESCRIPTION
+The
+.Nm
+program displays and modifies the Internet-to-Ethernet address translation
+tables used by the address resolution protocol (ARP).
+.Pp
+.Nm
+displays the current ARP entry for
+.Ar hostname
+when no optional parameters are supplied.
+.Ar hostname
+may be specified by name or by number,
+using Internet dot notation.
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl a
+Display all of the current ARP entries.
+See also the
+.Fl d
+option below.
+.It Fl d
+Delete an entry for the host called
+.Ar hostname .
+Alternatively, the
+.Fl d
+flag may be combined with the
+.Fl a
+flag to delete all entries, with hostname lookups automatically
+disabled.
+Only the superuser may delete entries.
+.It Fl F
+Force existing entries for the given host to be overwritten
+(only relevant to the
+.Fl f
+and
+.Fl s
+options).
+.It Fl f Ar file
+Process entries from
+.Ar file
+to be set in the ARP tables.
+Any entries in the file that already exist for a given host
+will not be overwritten unless
+.Fl F
+is given.
+Entries in the file should be of the form:
+.Bd -filled -offset indent
+.Ar hostname ether_addr
+.Op Cm temp | permanent
+.Op Cm pub
+.Ed
+.Pp
+The entry will be static (will not time out) unless the word
+.Cm temp
+is given in the command.
+A static ARP entry can be overwritten by network traffic, unless the word
+.Cm permanent
+is given.
+If the word
+.Cm pub
+is given, the entry will be
+.Dq published ;
+that is, this system will act as an ARP server,
+responding to requests for
+.Ar hostname
+even though the host address is not its own.
+This behavior has traditionally been called
+.Em proxy ARP .
+.It Fl n
+Show network addresses as numbers (normally
+.Nm
+attempts to display addresses symbolically).
+.It Xo
+.Fl s Ar hostname ether_addr
+.Op Cm temp | permanent
+.Op Cm pub
+.Xc
+Create an ARP entry for the host called
+.Ar hostname
+with the Ethernet address
+.Ar ether_addr .
+The Ethernet address is given as six hexadecimal bytes separated by
+colons.
+.Pp
+The
+.Cm permanent , pub ,
+or
+.Cm temp
+modifiers may be specified with meanings as given above.
+.Pp
+If the entry already exists for the given host, it will not
+be replaced unless
+.Fl F
+is given.
+.It Fl V Ar rdomain
+Select the routing domain.
+The default is 0.
+.El
+.Sh EXAMPLES
+View the current
+.Xr arp 4
+table,
+showing network addresses symbolically:
+.Pp
+.Dl $ arp -a
+.Pp
+Create a permanent
+entry (one that cannot be overwritten by other network traffic):
+.Pp
+.Dl # arp -s 10.0.0.2 00:90:27:bb:cc:dd permanent
+.Pp
+Create proxy ARP
+entries on interface fxp0
+(MAC address 00:90:27:bb:cc:dd),
+for IP addresses 204.1.2.3 and 204.1.2.4:
+.Bd -literal -offset indent
+# arp -s 204.1.2.3 00:90:27:bb:cc:dd pub
+# arp -s 204.1.2.4 00:90:27:bb:cc:dd pub
+.Ed
+.Sh SEE ALSO
+.Xr inet 3 ,
+.Xr arp 4 ,
+.Xr ifconfig 8 ,
+.Xr ndp 8
+.Sh HISTORY
+The
+.Nm
+command appeared in
+.Bx 4.3 .

@@ -1,0 +1,9 @@
+/httpd.conf/1.26/Wed Jun  3 18:28:21 2009//TOPENBSD_4_8_BASE
+/httpd.conf-dist/1.20/Wed Apr  1 06:47:34 2009//TOPENBSD_4_8_BASE
+/magic/1.1.1.2/Fri Jul 19 21:27:16 2002//TOPENBSD_4_8_BASE
+/mime.types/1.18/Tue Feb 23 20:35:44 2010//TOPENBSD_4_8_BASE
+D/ssl.crl////
+D/ssl.crt////
+D/ssl.csr////
+D/ssl.key////
+D/ssl.prm////

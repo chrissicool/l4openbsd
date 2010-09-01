@@ -1,0 +1,12 @@
+/Makefile/1.9/Sun Apr 27 20:56:47 1997//TOPENBSD_4_8_BASE
+/concatdb.sh/1.10/Sun Jun 29 21:59:28 2003//TOPENBSD_4_8_BASE
+/fastfind.c/1.10/Thu Jun  4 07:19:45 2009//TOPENBSD_4_8_BASE
+/locate.1/1.28/Thu Jul 15 20:51:38 2010//TOPENBSD_4_8_BASE
+/locate.c/1.24/Tue Oct 27 23:59:39 2009//TOPENBSD_4_8_BASE
+/locate.h/1.10/Mon Sep 29 16:03:16 2003//TOPENBSD_4_8_BASE
+/locate.updatedb.8/1.18/Thu Dec 10 00:45:43 2009//TOPENBSD_4_8_BASE
+/mklocatedb.sh/1.13/Sun Mar 18 20:13:49 2007//TOPENBSD_4_8_BASE
+/pathnames.h/1.5/Tue Jun  3 02:56:10 2003//TOPENBSD_4_8_BASE
+/updatedb.sh/1.12/Thu Mar 15 22:24:18 2007//TOPENBSD_4_8_BASE
+/util.c/1.10/Sun Sep  2 15:19:33 2007//TOPENBSD_4_8_BASE
+D

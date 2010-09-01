@@ -1,0 +1,39 @@
+/nm-bsd.h/1.2/Mon Dec 27 14:00:45 2004//TOPENBSD_4_8_BASE
+/nm-gnu.h/1.4/Mon Dec 27 14:00:45 2004//TOPENBSD_4_8_BASE
+/nm-linux.h/1.1.1.2/Mon Dec 27 13:13:34 2004//TOPENBSD_4_8_BASE
+/nm-lynx.h/1.4/Mon Dec 27 14:00:45 2004//TOPENBSD_4_8_BASE
+/nm-nbsd.h/1.5/Mon Dec 27 14:00:45 2004//TOPENBSD_4_8_BASE
+/nm-nbsdaout.h/1.1.1.1/Fri May 21 19:15:23 2004//TOPENBSD_4_8_BASE
+/nm-sysv4.h/1.4/Mon Dec 27 14:00:45 2004//TOPENBSD_4_8_BASE
+/tm-linux.h/1.1.1.2/Mon Dec 27 13:13:34 2004//TOPENBSD_4_8_BASE
+/tm-lynx.h/1.3/Fri May 21 20:23:17 2004//TOPENBSD_4_8_BASE
+/tm-nto.h/1.1.1.2/Mon Dec 27 13:13:33 2004//TOPENBSD_4_8_BASE
+/tm-sysv4.h/1.3/Fri May 21 20:23:17 2004//TOPENBSD_4_8_BASE
+/tm-vxworks.h/1.1.1.1/Fri May 21 19:15:23 2004//TOPENBSD_4_8_BASE
+D/alpha////
+D/arm////
+D/avr////
+D/cris////
+D/d10v////
+D/djgpp////
+D/frv////
+D/h8300////
+D/i386////
+D/ia64////
+D/m32r////
+D/m68hc11////
+D/m68k////
+D/m88k////
+D/mcore////
+D/mips////
+D/mn10300////
+D/ns32k////
+D/pa////
+D/powerpc////
+D/rs6000////
+D/s390////
+D/sh////
+D/sparc////
+D/v850////
+D/vax////
+D/xstormy16////

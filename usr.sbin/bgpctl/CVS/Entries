@@ -1,0 +1,13 @@
+/Makefile/1.11/Wed May 26 16:44:32 2010//TOPENBSD_4_8_BASE
+/bgpctl.8/1.54/Mon May 10 18:46:05 2010//TOPENBSD_4_8_BASE
+/bgpctl.c/1.160/Wed May 26 13:56:07 2010//TOPENBSD_4_8_BASE
+/irr_asset.c/1.8/Tue Apr 14 21:10:54 2009//TOPENBSD_4_8_BASE
+/irr_output.c/1.13/Mon Mar  5 17:28:21 2007//TOPENBSD_4_8_BASE
+/irr_parser.c/1.9/Tue Sep  8 15:40:25 2009//TOPENBSD_4_8_BASE
+/irr_prefix.c/1.18/Mon May 10 02:00:50 2010//TOPENBSD_4_8_BASE
+/irrfilter.c/1.4/Mon May 28 23:31:53 2007//TOPENBSD_4_8_BASE
+/irrfilter.h/1.9/Tue Sep  8 16:11:36 2009//TOPENBSD_4_8_BASE
+/parser.c/1.62/Mon May  3 13:11:41 2010//TOPENBSD_4_8_BASE
+/parser.h/1.22/Mon May  3 13:11:41 2010//TOPENBSD_4_8_BASE
+/whois.c/1.4/Tue Sep  8 15:40:25 2009//TOPENBSD_4_8_BASE
+D

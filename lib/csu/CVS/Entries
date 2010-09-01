@@ -1,0 +1,18 @@
+/Makefile/1.15/Wed Feb  3 20:49:00 2010//TOPENBSD_4_8_BASE
+/common.c/1.14/Tue Jan 29 13:02:31 2008//TOPENBSD_4_8_BASE
+/common.h/1.8/Mon Jan  5 09:02:03 2004//TOPENBSD_4_8_BASE
+D/alpha////
+D/amd64////
+D/arm////
+D/common_elf////
+D/hppa////
+D/hppa64////
+D/i386////
+D/m68k////
+D/m88k////
+D/mips64////
+D/powerpc////
+D/sh////
+D/sparc////
+D/sparc64////
+D/vax////

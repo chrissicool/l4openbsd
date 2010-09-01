@@ -1,0 +1,532 @@
+.\"	$OpenBSD: sysctl.8,v 1.155 2010/06/29 16:54:49 tedu Exp $
+.\"	$NetBSD: sysctl.8,v 1.4 1995/09/30 07:12:49 thorpej Exp $
+.\"
+.\" Copyright (c) 1993
+.\"	The Regents of the University of California.  All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\" 3. Neither the name of the University nor the names of its contributors
+.\"    may be used to endorse or promote products derived from this software
+.\"    without specific prior written permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\"	@(#)sysctl.8	8.2 (Berkeley) 5/9/95
+.\"
+.Dd $Mdocdate: June 29 2010 $
+.Dt SYSCTL 8
+.Os
+.Sh NAME
+.Nm sysctl
+.Nd get or set kernel state
+.Sh SYNOPSIS
+.Nm sysctl
+.Op Fl Aan
+.Nm sysctl
+.Op Fl n
+.Ar name ...
+.Nm sysctl
+.Op Fl nq
+.Ar name Ns = Ns Ar value ...
+.Sh DESCRIPTION
+The
+.Nm
+utility retrieves kernel state and allows processes with
+appropriate privilege to set kernel state.
+The state to be retrieved or set is described using a
+.Dq Management Information Base
+.Pq MIB
+style name, described as a dotted set of components.
+.Pp
+When retrieving a variable,
+a subset of the MIB name may be specified to retrieve a list of
+variables in that subset.
+For example, to list all the machdep variables:
+.Pp
+.Dl $ sysctl machdep
+.Pp
+When setting a variable,
+the MIB name should be followed by an equal sign and the new value.
+.Pp
+The options are as follows:
+.Bl -tag -width xxx
+.It Fl A
+List all the known MIB names including tables.
+Those with string or integer values will be printed as with the
+.Fl a
+flag; for the table values, the name of the utility to retrieve them is given.
+.It Fl a
+List all the currently available string or integer values.
+This is the default, if no parameters are given to
+.Nm .
+.It Fl n
+Suppress printing of the field name, only output the field value.
+Useful for setting shell variables.
+For example, to set the psize shell variable to the pagesize of the hardware:
+.Pp
+.Dl # set psize=`sysctl -n hw.pagesize`
+.Pp
+.It Fl q
+Suppress all output when setting a variable.
+This option overrides the behaviour of
+.Fl n .
+.It Ar name Ns = Ns Ar value
+Attempt to set the specified variable
+.Ar name
+to
+.Ar value .
+.El
+.Pp
+The information available from
+.Nm
+consists of integers, strings, and tables.
+The tabular information can only be retrieved by special
+purpose programs such as
+.Xr ps 1 ,
+.Xr systat 1 ,
+and
+.Xr netstat 1 .
+The string and integer information is summarized below.
+For a detailed description of these variables, see
+.Xr sysctl 3 .
+The changeable column indicates whether a process with appropriate
+privilege can change the value.
+.Pp
+Note:
+not all of the variables are relevant to all architectures,
+and a few require a kernel compiled with non-standard
+.Xr options 4 .
+.Bl -column net.inet.ip.ipsec-expire-acquirexxxx integerxxx
+.It Sy Name	Type	Changeable
+.It kern.ostype	string	no
+.It kern.osrelease	string	no
+.It kern.osrevision	integer	no
+.It kern.version	string	no
+.It kern.maxvnodes	integer	yes
+.It kern.maxproc	integer	yes
+.It kern.maxfiles	integer	yes
+.It kern.argmax	integer	no
+.It kern.securelevel	integer	raise only
+.It kern.hostname	string	yes
+.It kern.hostid	u_int	yes
+.It kern.clockrate	struct	no
+.It kern.posix1version	integer	no
+.It kern.ngroups	integer	no
+.It kern.job_control	integer	no
+.It kern.saved_ids	integer	no
+.It kern.boottime	struct	no
+.It kern.domainname	string	yes
+.It kern.maxpartitions	integer	no
+.It kern.rawpartition	integer	no
+.It kern.osversion	string	no
+.It kern.somaxconn	integer	yes
+.It kern.sominconn	integer	yes
+.It kern.usermount	integer	yes
+.It kern.random	struct	no
+.It kern.nosuidcoredump	integer	yes
+.It kern.fsync	integer	no
+.It kern.sysvmsg	integer	no
+.It kern.sysvsem	integer	no
+.It kern.sysvshm	integer	no
+.It kern.arandom	u_int	no
+.It kern.msgbufsize	integer	no
+.It kern.malloc.buckets	string	no
+.It kern.malloc.bucket.<sz>	string	no
+.It kern.malloc.kmemnames	string	no
+.It kern.malloc.kmemstat.<name>	string	no
+.It kern.cp_time	struct	no
+.It kern.nchstats	struct	no
+.It kern.forkstat	struct	no
+.It kern.nselcoll	integer	no
+.It kern.tty.tk_nin	int64_t	no
+.It kern.tty.tk_nout	int64_t	no
+.It kern.tty.tk_rawcc	int64_t	no
+.It kern.tty.tk_cancc	int64_t	no
+.It kern.tty.ttyinfo	struct	no
+.It kern.tty.maxptys	integer	yes
+.It kern.tty.nptys	integer	no
+.It kern.ccpu	u_int	no
+.It kern.fscale	integer	no
+.It kern.nprocs	integer	no
+.It kern.stackgap_random	integer	yes
+.It kern.usercrypto	integer	yes
+.It kern.cryptodevallowsoft	integer	yes
+.It kern.splassert	integer	yes
+.It kern.nfiles	integer	no
+.It kern.ttycount	integer	no
+.It kern.numvnodes	integer	no
+.It kern.userasymcrypto	integer	yes
+.It kern.seminfo.semmni	integer	yes
+.It kern.seminfo.semmns	integer	yes
+.It kern.seminfo.semmnu	integer	yes
+.It kern.seminfo.semmsl	integer	yes
+.It kern.seminfo.semopm	integer	yes
+.It kern.seminfo.semume	integer	no
+.It kern.seminfo.semusz	integer	no
+.It kern.seminfo.semvmx	integer	no
+.It kern.seminfo.semaem	integer	no
+.It kern.shminfo.shmmax	integer	yes
+.It kern.shminfo.shmmin	integer	yes
+.It kern.shminfo.shmmni	integer	yes
+.It kern.shminfo.shmseg	integer	yes
+.It kern.shminfo.shmall	integer	yes
+.It kern.watchdog.period	integer	yes
+.It kern.watchdog.auto	integer	yes
+.It kern.emul.nemuls	integer	no
+.It kern.emul.other	integer	yes
+.It kern.maxclusters	integer	yes
+.It kern.timecounter.tick	integer	no
+.It kern.timecounter.timestepwarnings	integer	yes
+.It kern.timecounter.hardware	string	yes
+.It kern.timecounter.choice	string	no
+.It kern.maxlocksperuid	integer	yes
+.It kern.bufcachepercent	integer	yes
+.It kern.rthreads	integer	yes
+.It vm.vmmeter	struct	no
+.It vm.loadavg	struct	no
+.It vm.psstrings	struct	no
+.It vm.uvmexp	struct	no
+.It vm.swapencrypt.enable	integer	yes
+.It vm.swapencrypt.keyscreated	integer	no
+.It vm.swapencrypt.keysdeleted	integer	no
+.It vm.nkmempages	integer	no
+.It vm.anonmin	integer	yes
+.It vm.vtextmin	integer	yes
+.It vm.vnodemin	integer	yes
+.It vm.maxslp	integer	no
+.It vm.uspace	integer	no
+.It fs.posix.setuid	integer	yes
+.It net.inet.divert.recvspace	integer	yes
+.It net.inet.divert.sendspace	integer	yes
+.It net.inet.ip.forwarding	integer	yes
+.It net.inet.ip.redirect	integer	yes
+.It net.inet.ip.ttl	integer	yes
+.\" .It net.inet.ip.mtu	integer	yes
+.It net.inet.ip.sourceroute	integer	yes
+.It net.inet.ip.directed-broadcast	integer	yes
+.It net.inet.ip.portfirst	integer	yes
+.It net.inet.ip.portlast	integer	yes
+.It net.inet.ip.porthifirst	integer	yes
+.It net.inet.ip.porthilast	integer	yes
+.It net.inet.ip.maxqueue	integer	yes
+.It net.inet.ip.encdebug	integer	yes
+.It net.inet.ip.ipsec-expire-acquire	integer	yes
+.It net.inet.ip.ipsec-invalid-life	integer	yes
+.It net.inet.ip.ipsec-pfs	integer	yes
+.It net.inet.ip.ipsec-soft-allocs	integer	yes
+.It net.inet.ip.ipsec-allocs	integer	yes
+.It net.inet.ip.ipsec-soft-bytes	integer	yes
+.It net.inet.ip.ipsec-bytes	integer	yes
+.It net.inet.ip.ipsec-timeout	integer	yes
+.It net.inet.ip.ipsec-soft-timeout	integer	yes
+.It net.inet.ip.ipsec-soft-firstuse	integer	yes
+.It net.inet.ip.ipsec-firstuse	integer	yes
+.It net.inet.ip.ipsec-enc-alg	string	yes
+.It net.inet.ip.ipsec-auth-alg	string	yes
+.It net.inet.ip.mtudisc	integer	yes
+.It net.inet.ip.mtudisctimeout	integer	yes
+.It net.inet.ip.ipsec-comp-alg	string	yes
+.It net.inet.ip.mforwarding	integer	yes
+.It net.inet.ip.multipath	integer	yes
+.It net.inet.icmp.maskrepl	integer	yes
+.It net.inet.icmp.bmcastecho	integer	yes
+.It net.inet.icmp.errppslimit	integer	yes
+.It net.inet.icmp.rediraccept	integer	yes
+.It net.inet.icmp.redirtimeout	integer	yes
+.It net.inet.icmp.tstamprepl	integer	yes
+.It net.inet.ipip.allow	integer	yes
+.It net.inet.tcp.rfc1323	integer	yes
+.It net.inet.tcp.keepinittime	integer	yes
+.It net.inet.tcp.keepidle	integer	yes
+.It net.inet.tcp.keepintvl	integer	yes
+.It net.inet.tcp.slowhz	integer	no
+.It net.inet.tcp.baddynamic	array	yes
+.It net.inet.tcp.recvspace	integer	yes
+.It net.inet.tcp.sendspace	integer	yes
+.It net.inet.tcp.sack	integer	yes
+.It net.inet.tcp.mssdflt	integer	yes
+.It net.inet.tcp.rstppslimit	integer	yes
+.It net.inet.tcp.ackonpush	integer	yes
+.It net.inet.tcp.ecn	integer	yes
+.It net.inet.tcp.syncachelimit	integer	yes
+.It net.inet.tcp.synbucketlimit	integer	yes
+.It net.inet.tcp.rfc3390	integer	yes
+.It net.inet.tcp.reasslimit	integer	yes
+.It net.inet.udp.checksum	integer	yes
+.It net.inet.udp.baddynamic	array	yes
+.It net.inet.udp.recvspace	integer	yes
+.It net.inet.udp.sendspace	integer	yes
+.It net.inet.gre.allow	integer	yes
+.It net.inet.gre.wccp	integer	yes
+.It net.inet.esp.enable	integer	yes
+.It net.inet.esp.udpencap	integer	yes
+.It net.inet.esp.udpencap_port	integer	yes
+.It net.inet.ah.enable	integer	yes
+.It net.inet.mobileip.allow	integer	yes
+.It net.inet.etherip.allow	integer	yes
+.It net.inet.ipcomp.enable	integer	yes
+.It net.inet.carp.allow	integer	yes
+.It net.inet.carp.preempt	integer	yes
+.It net.inet.carp.log	integer	yes
+.It net.inet6.ip6.forwarding	integer	yes
+.It net.inet6.ip6.redirect	integer	yes
+.It net.inet6.ip6.hlim	integer	yes
+.It net.inet6.ip6.maxfragpackets	integer	yes
+.It net.inet6.ip6.accept_rtadv	integer	yes
+.It net.inet6.ip6.keepfaith	integer	yes
+.It net.inet6.ip6.log_interval	integer	yes
+.It net.inet6.ip6.hdrnestlimit	integer	yes
+.It net.inet6.ip6.dad_count	integer	yes
+.It net.inet6.ip6.auto_flowlabel	integer	yes
+.It net.inet6.ip6.defmcasthlim	integer	yes
+.It net.inet6.ip6.kame_version	string	no
+.It net.inet6.ip6.use_deprecated	integer	yes
+.It net.inet6.ip6.rr_prune	integer	yes
+.It net.inet6.ip6.v6only	integer	no
+.It net.inet6.ip6.maxfrags	integer	yes
+.It net.inet6.ip6.mforwarding	integer	yes
+.It net.inet6.ip6.multipath	integer	yes
+.It net.inet6.ip6.multicast_mtudisc	integer	yes
+.It net.inet6.icmp6.rediraccept	integer	yes
+.It net.inet6.icmp6.redirtimeout	integer	yes
+.It net.inet6.icmp6.nd6_prune	integer	yes
+.It net.inet6.icmp6.nd6_delay	integer	yes
+.It net.inet6.icmp6.nd6_umaxtries	integer	yes
+.It net.inet6.icmp6.nd6_mmaxtries	integer	yes
+.It net.inet6.icmp6.nd6_useloopback	integer	yes
+.It net.inet6.icmp6.nodeinfo	integer	yes
+.It net.inet6.icmp6.errppslimit	integer	yes
+.It net.inet6.icmp6.nd6_maxnudhint	integer	yes
+.It net.inet6.icmp6.mtudisc_hiwat	integer	yes
+.It net.inet6.icmp6.mtudisc_lowat	integer	yes
+.It net.inet6.icmp6.nd6_debug	integer	yes
+.It debug.syncprt	integer	yes
+.It debug.busyprt	integer	yes
+.It debug.doclusterread	integer	yes
+.It debug.doclusterwrite	integer	yes
+.It debug.doreallocblks	integer	yes
+.It debug.doasyncfree	integer	yes
+.It debug.prtrealloc	integer	yes
+.It hw.machine	string	no
+.It hw.model	string	no
+.It hw.ncpu	integer	no
+.It hw.byteorder	integer	no
+.It hw.physmem	int64_t	no
+.It hw.usermem	int64_t	no
+.It hw.pagesize	integer	no
+.It hw.diskstats	struct	no
+.It hw.disknames	string	no
+.It hw.diskcount	integer	no
+.It hw.sensors.<xname>.<type><numt>	struct	no
+.It hw.cpuspeed	integer	no
+.It hw.setperf	integer	yes
+.It hw.vendor	string	no
+.It hw.product	string	no
+.It hw.version	string	no
+.It hw.serialno	string	no
+.It hw.uuid	string	no
+.It hw.ncpufound	integer	no
+.It machdep.console_device	dev_t	no
+.It machdep.unaligned_print	integer	yes
+.It machdep.unaligned_fix	integer	yes
+.It machdep.unaligned_sigbus	integer	yes
+.It machdep.apmwarn	integer	yes
+.It machdep.apmhalt	integer	yes
+.It machdep.kbdreset	integer	yes
+.It machdep.userldt	integer	yes
+.It machdep.osxsfr	integer	no
+.It machdep.sse	integer	no
+.It machdep.sse2	integer	no
+.It machdep.xcrypt	integer	no
+.It machdep.allowaperture	integer	yes
+.It machdep.led_blink	integer	yes
+.It machdep.ceccerrs	integer	no
+.It machdep.cecclast	quad	no
+.It user.cs_path	string	no
+.It user.bc_base_max	integer	no
+.It user.bc_dim_max	integer	no
+.It user.bc_scale_max	integer	no
+.It user.bc_string_max	integer	no
+.It user.coll_weights_max	integer	no
+.It user.expr_nest_max	integer	no
+.It user.line_max	integer	no
+.It user.re_dup_max	integer	no
+.It user.posix2_version	integer	no
+.It user.posix2_c_bind	integer	no
+.It user.posix2_c_dev	integer	no
+.It user.posix2_char_term	integer	no
+.It user.posix2_fort_dev	integer	no
+.It user.posix2_fort_run	integer	no
+.It user.posix2_localedef	integer	no
+.It user.posix2_sw_dev	integer	no
+.It user.posix2_upe	integer	no
+.It user.stream_max	integer	no
+.It user.tzname_max	integer	no
+.It ddb.radix	integer	yes
+.It ddb.max_width	integer	yes
+.It ddb.max_line	integer	yes
+.It ddb.tab_stop_width	integer	yes
+.It ddb.panic	integer	yes
+.It ddb.console	integer	yes
+.It ddb.log	integer	yes
+.It ddb.trigger	integer	yes
+.It vfs.mounts.*	struct	no
+.It vfs.ffs.doclusterread	integer	yes
+.It vfs.ffs.doclusterwrite	integer	yes
+.It vfs.ffs.doreallocblks	integer	yes
+.It vfs.ffs.doasyncfree	integer	yes
+.It vfs.ffs.max_softdeps	integer	yes
+.It vfs.ffs.sd_tickdelay	integer	yes
+.It vfs.ffs.sd_worklist_push	integer	no
+.It vfs.ffs.sd_blk_limit_push	integer	no
+.It vfs.ffs.sd_ino_limit_push	integer	no
+.It vfs.ffs.sd_blk_limit_hit	integer	no
+.It vfs.ffs.sd_ino_limit_hit	integer	no
+.It vfs.ffs.sd_sync_limit_hit	integer	no
+.It vfs.ffs.sd_indir_blk_ptrs	integer	no
+.It vfs.ffs.sd_inode_bitmap	integer	no
+.It vfs.ffs.sd_direct_blk_ptrs	integer	no
+.It vfs.ffs.sd_dir_entry	integer	no
+.It vfs.ffs.dirhash_dirsize	integer	yes
+.It vfs.ffs.dirhash_maxmem	integer	yes
+.It vfs.ffs.dirhash_mem	integer	no
+.It vfs.nfs.iothreads	integer	yes
+.El
+.Pp
+The
+.Nm
+program can extract information about the filesystems that have been compiled
+into the running system.
+This information can be obtained by using the command:
+.Pp
+.Dl $ sysctl vfs.mounts
+.Pp
+By default, only filesystems that are actively being used are listed.
+Use of the
+.Fl A
+flag lists all the filesystems compiled into the running kernel.
+.Sh FILES
+.Bl -tag -width <uvm/uvm_swap_encrypt.h> -compact
+.It Aq Pa sys/sysctl.h
+definitions for top level identifiers, second level kernel and hardware
+identifiers, and user level identifiers
+.It Aq Pa dev/rndvar.h
+definitions for
+.Xr random 4
+device's statistics structure
+.It Aq Pa sys/socket.h
+definitions for second level network identifiers
+.It Aq Pa sys/gmon.h
+definitions for third level profiling identifiers
+.It Aq Pa uvm/uvm_param.h
+definitions for second level virtual memory identifiers
+.It Aq Pa uvm/uvm_swap_encrypt.h
+definitions for third level virtual memory identifiers
+.It Aq Pa netinet/in.h
+definitions for third level IPv4/v6 identifiers and
+fourth level IPv4/v6 identifiers
+.It Aq Pa netinet/ip_divert.h
+definitions for fourth level divert identifiers
+.It Aq Pa netinet/icmp_var.h
+definitions for fourth level ICMP identifiers
+.It Aq Pa netinet6/icmp6.h
+definitions for fourth level ICMPv6 identifiers
+.It Aq Pa netinet/tcp_var.h
+definitions for fourth level TCP identifiers
+.It Aq Pa netinet/udp_var.h
+definitions for fourth level UDP identifiers
+.It Aq Pa ddb/db_var.h
+definitions for second level ddb identifiers
+.It Aq Pa sys/mount.h
+definitions for second level vfs identifiers
+.It Aq Pa nfs/nfs.h
+definitions for third level NFS identifiers
+.It Aq Pa ufs/ffs/ffs_extern.h
+definitions for third level FFS identifiers
+.It Aq Pa machine/cpu.h
+definitions for second level CPU identifiers
+.El
+.Sh EXAMPLES
+To retrieve the maximum number of processes allowed
+in the system:
+.Pp
+.Dl $ sysctl kern.maxproc
+.Pp
+To set the maximum number of processes allowed
+in the system to 1000:
+.Pp
+.Dl # sysctl kern.maxproc=1000
+.Pp
+To retrieve information about the system clock rate:
+.Pp
+.Dl $ sysctl kern.clockrate
+.Pp
+To retrieve information about the load average history:
+.Pp
+.Dl $ sysctl vm.loadavg
+.Pp
+To make the
+.Xr chown 2
+system call use traditional BSD semantics (don't clear setuid/setgid bits):
+.Pp
+.Dl # sysctl fs.posix.setuid=0
+.Pp
+To set the list of reserved TCP ports that should not be allocated
+by the kernel dynamically:
+.Pp
+.Dl # sysctl net.inet.tcp.baddynamic=749,750,751,760,761,871
+.Pp
+This can be used to keep daemons
+from stealing a specific port that another program needs to function.
+List elements may be separated by commas and/or whitespace.
+.Pp
+It is also possible to add or remove ports from the current list:
+.Bd -literal -offset indent
+# sysctl net.inet.tcp.baddynamic=+748
+# sysctl net.inet.tcp.baddynamic=-871
+.Ed
+.Pp
+To adjust the number of kernel nfsio
+threads used to service asynchronous
+I/O requests on an NFS client machine:
+.Pp
+.Dl # sysctl vfs.nfs.iothreads=4
+.Pp
+The default is 4; 20 is the maximum.
+See
+.Xr nfssvc 2
+and
+.Xr nfsd 8
+for further discussion.
+.Pp
+To set the amount of shared memory available in the system and
+the maximum number of shared memory segments:
+.Bd -literal -offset indent
+# sysctl kern.shminfo.shmmax=33554432
+# sysctl kern.shminfo.shmseg=32
+.Ed
+.Sh SEE ALSO
+.Xr sysctl 3 ,
+.Xr options 4 ,
+.Xr sysctl.conf 5
+.Sh HISTORY
+.Nm
+first appeared in
+.Bx 4.4 .
