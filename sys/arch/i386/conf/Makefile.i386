@@ -94,6 +94,10 @@ LINKFLAGS+=	-S -x
 
 %LOAD
 
+.ifdef L4_BUILDDIR
+INCLUDES+=     -I${L4_BUILDDIR}/include
+.endif
+
 assym.h: $S/kern/genassym.sh Makefile \
 	 ${_archdir}/${_arch}/genassym.cf ${_machdir}/${_mach}/genassym.cf
 	cat ${_archdir}/${_arch}/genassym.cf ${_machdir}/${_mach}/genassym.cf | \

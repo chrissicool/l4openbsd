@@ -54,6 +54,15 @@ options are passed to the compile process as
 flags to the C compiler.
 .Sh COMPATIBILITY OPTIONS
 .Bl -ohang
+.It Cd option L4
+This option specifies that a rehosted kernel image for the L4 microkernel shall
+be built. Think of it as someting like a "sub-architecture". This option is only
+valid on i386.
+.It Cd makeoptions L4_BUILDDIR
+Provide the path to the L4re build directory. The option is only valid, if the
+.Dv L4
+make option is also set. Otherwise it may break your build. You have been
+warned!
 .It Cd option COMPAT_43
 Use of this option is discouraged.
 It enables compatibility with
