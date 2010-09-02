@@ -73,13 +73,17 @@ cat >vers.c <<eof
 #define STATUS "-current"		/* just after a release */
 #endif
 
+#ifdef L4
+#define SUBARCH "-L4"
+#endif
+
 const char ostype[] = "${ost}";
 const char osrelease[] = "${osr}";
 const char osversion[] = "${id}#${v}";
 const char sccs[] =
-    "    @(#)${ost} ${osr}" STATUS " (${id}) #${v}: ${t}\n";
+    "    @(#)${ost} ${osr}" SUBARCH STATUS " (${id}) #${v}: ${t}\n";
 const char version[] =
-    "${ost} ${osr}" STATUS " (${id}) #${v}: ${t}\n    ${u}@${h}:${d}\n";
+    "${ost} ${osr}" SUBARCH STATUS " (${id}) #${v}: ${t}\n    ${u}@${h}:${d}\n";
 eof
 
 expr ${v} + 1 > version
