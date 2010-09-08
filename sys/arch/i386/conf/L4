@@ -16,11 +16,10 @@ include		"arch/i386/conf/GENERIC"
 ##
 # L4 build instructions:
 #
-# Set both: L4 _and_ L4_BUILDDIR for a rehosted L4 build!
-# L4		-- set compiler flags for L4 specific build
-# L4_BUILDDIR	-- path to L4re build directory
+# Adjust the options below to your environment.
 option		L4
 makeoptions     L4_BUILDDIR="/home/cc/TU-Berlin/fiasco/l4-svn/src/l4/builddir"
+option		ARCH_x86	# provide L4re with our architecture
 
 ##
 # reconfigure some options
