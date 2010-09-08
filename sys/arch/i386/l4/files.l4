@@ -1,0 +1,5 @@
+##
+# specify all L4 components here
+
+file	arch/i386/l4/main.c		l4
+file	arch/i386/l4/head.S		l4

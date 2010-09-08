@@ -10,6 +10,9 @@ maxusers 2 16 100
 
 major	{ccd = 16}
 
+# L4 file handling
+include "arch/i386/l4/files.l4"
+
 file	arch/i386/i386/autoconf.c
 file	arch/i386/i386/bus_space.c
 file	arch/i386/i386/bus_dma.c

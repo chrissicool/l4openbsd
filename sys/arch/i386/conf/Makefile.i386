@@ -94,9 +94,26 @@ LINKFLAGS+=	-S -x
 
 %LOAD
 
+##
+# special L4 handling {{{
 .ifdef L4_BUILDDIR
-INCLUDES+=     -I${L4_BUILDDIR}/include
+
+.include "${L4_BUILDDIR}/l4defs.mk.inc"
+
+ARCH=		x86
+CONTRIB_LIBS=	libstdc++-v3 libio-io
+INCLUDES+=	-I${L4_BUILDDIR}/include/${ARCH}/l4f -I${L4_BUILDDIR}/include/${ARCH} \
+		-I${L4_BUILDDIR}/include/l4f -I${L4_BUILDDIR}/include -I${S}/sys
+.for lib in ${CONTRIB_LIBS}
+INCLUDES+=	-I${L4_BUILDDIR}/include/contrib/${lib}
+.endfor
+CFLAGS+=	-DL4API_l4f -DL4SYS_USE_UTCB_WRAP=1
+LINKFLAGS=	-Bstatic -dT${_archdir}/l4/bsd.lds
+LINKFLAGS+=	${L4_LIBDIRS} -ll4sys -ll4sys-direct
+
 .endif
+# special L4 handling }}}
+##
 
 assym.h: $S/kern/genassym.sh Makefile \
 	 ${_archdir}/${_arch}/genassym.cf ${_machdir}/${_mach}/genassym.cf
