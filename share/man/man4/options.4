@@ -61,8 +61,12 @@ valid on i386.
 .It Cd makeoptions L4_BUILDDIR
 Provide the path to the L4re build directory. The option is only valid, if the
 .Dv L4
-make option is also set. Otherwise it may break your build. You have been
-warned!
+option is also set. Otherwise it may break your build. You have been warned!
+.It Cd option ARCH_x86
+Tell L4re that we are using the i386 architecture. This option is only valid on
+the i386 architecture port and may only be used in conjunction with the
+.Dv L4
+option.
 .It Cd option COMPAT_43
 Use of this option is discouraged.
 It enables compatibility with
