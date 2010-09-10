@@ -7,7 +7,6 @@
 #include "linux_compat.h"
 #include <machine/cpu.h>
 
-#include <sys/l4/l4lib.h>
 // just taken from L4Linux's arch/l4/kernel/main.c
 #include <l4/sys/err.h>
 #include <l4/sys/kdebug.h>
@@ -66,13 +65,6 @@ int l4x_phys_virt_addr_items;
 l4_cap_idx_t linux_server_thread_id = L4_INVALID_CAP;
 //l4_cap_idx_t l4x_start_thread_id = L4_INVALID_CAP;
 //l4_cap_idx_t l4x_start_thread_pager_id = L4_INVALID_CAP;
-
-/*
- * used external functions from L4
- */
-L4_EXTERNAL_FUNC(LOG_printf);
-L4_EXTERNAL_FUNC(l4util_kip_kernel_has_feature);
-L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
 
 /*
  * prototypes from others

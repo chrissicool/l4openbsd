@@ -24,7 +24,7 @@ unsigned long find_first_bit(const unsigned long *addr, unsigned long size)
 			goto found;
 		result += BITS_PER_LONG;
 		size -= BITS_PER_LONG;
-	}   
+	}
 	if (!size)
 		return result;
 
