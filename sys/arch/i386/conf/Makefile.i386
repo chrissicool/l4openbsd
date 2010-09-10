@@ -109,6 +109,9 @@ INCLUDES+=	-I${L4_BUILDDIR}/include/contrib/${lib}
 .endfor
 CFLAGS+=	-DL4API_l4f -DL4SYS_USE_UTCB_WRAP=1
 LINKFLAGS=	-Bstatic -dT${_archdir}/l4/bsd.lds
+LINKFLAGS+=	--defsym __L4_KIP_ADDR__=$(L4_BID_KIP_ADDR) \
+		--defsym __l4sys_invoke_direct=$(L4_BID_KIP_ADDR)+$(L4_BID_KIP_OFFS_SYS_INVOKE) \
+		--defsym __l4sys_debugger_direct=$(L4_BID_KIP_ADDR)+$(L4_BID_KIP_OFFS_SYS_DEBUGGER)
 LINKFLAGS+=	${L4_LIBDIRS} -ll4sys -ll4sys-direct
 
 .endif

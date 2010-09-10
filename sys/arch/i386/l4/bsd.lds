@@ -42,8 +42,6 @@ __ALIGN_SIZE = 0x1000;
 __kernel_base_virt = 0x400000 + SIZEOF_HEADERS;
 __kernel_base_phys = __kernel_base_virt;
 
-/* We use physical address to jump to kernel */
-start_phys = LOADADDR(.text) + (__kernel_base_virt);
 ENTRY(_start)	/* defined in head.S */
 SECTIONS
 {
@@ -51,6 +49,7 @@ SECTIONS
 	__kernel_text_phys = __kernel_base_phys;
 	.text (__kernel_text_virt) : AT (__kernel_text_phys)
 	{
+		__text_start = ABSOLUTE(.);
 		__text_size = SIZEOF(.text);
 		__text_load = LOADADDR(.text);
 		*(.text)

@@ -3,3 +3,4 @@
 
 file	arch/i386/l4/main.c		l4
 file	arch/i386/l4/head.S		l4
+file	arch/i386/l4/linux_compat.c	l4
