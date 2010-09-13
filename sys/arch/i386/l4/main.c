@@ -9,6 +9,7 @@
 
 #include <machine/l4/l4lxapi/task.h>
 #include <machine/l4/l4lxapi/thread.h>
+#include <machine/l4/iodb.h>
 
 // just taken from L4Linux's arch/l4/kernel/main.c
 #include <l4/sys/err.h>
@@ -67,7 +68,7 @@ int l4x_phys_virt_addr_items;
 
 l4_cap_idx_t linux_server_thread_id = L4_INVALID_CAP;
 l4_cap_idx_t l4x_start_thread_id = L4_INVALID_CAP;
-//l4_cap_idx_t l4x_start_thread_pager_id = L4_INVALID_CAP;
+l4_cap_idx_t l4x_start_thread_pager_id = L4_INVALID_CAP;
 
 /*
  * prototypes from others
@@ -186,6 +187,13 @@ int L4_CV l4start(int argc, char **argv) {
 	l4lx_thread_init();
 
 	l4x_start_thread_id = l4re_env()->main_thread;
+
+	l4_thread_control_start();
+	l4_thread_control_commit(l4x_start_thread_id);
+	l4x_start_thread_pager_id
+		= l4_utcb_mr()->mr[L4_THREAD_CONTROL_MR_IDX_PAGER];
+
+	l4x_iodb_init();
 
 	start();	/* main OpenBSD entry point from locore.s */
 	return 0;
