@@ -4,8 +4,11 @@
  * Main entry point for L4BSD
  */
 
-#include "linux_compat.h"
+#include <machine/l4/linux_compat.h>
 #include <machine/cpu.h>
+
+#include <machine/l4/l4lxapi/task.h>
+#include <machine/l4/l4lxapi/thread.h>
 
 // just taken from L4Linux's arch/l4/kernel/main.c
 #include <l4/sys/err.h>
@@ -63,7 +66,7 @@ int l4x_phys_virt_addr_items;
 
 
 l4_cap_idx_t linux_server_thread_id = L4_INVALID_CAP;
-//l4_cap_idx_t l4x_start_thread_id = L4_INVALID_CAP;
+l4_cap_idx_t l4x_start_thread_id = L4_INVALID_CAP;
 //l4_cap_idx_t l4x_start_thread_pager_id = L4_INVALID_CAP;
 
 /*
@@ -178,6 +181,11 @@ int L4_CV l4start(int argc, char **argv) {
 
 	/* Init v2p list */
 	l4x_v2p_init();
+
+	l4lx_task_init();
+	l4lx_thread_init();
+
+	l4x_start_thread_id = l4re_env()->main_thread;
 
 	start();	/* main OpenBSD entry point from locore.s */
 	return 0;

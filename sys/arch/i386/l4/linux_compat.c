@@ -6,7 +6,11 @@
 
 /* XXX we should move this file to a more general location */
 
-#include "linux_compat.h"
+#include <machine/l4/linux_compat.h>
+
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/types.h>
 
 static __inline unsigned long __ffs(unsigned long word);
 
@@ -71,3 +75,24 @@ static __inline unsigned long __ffs(unsigned long word)
 		num += 1;
 	return num;
 }
+
+inline void bitmap_zero(unsigned long *dst, int nbits)
+{
+	if (small_const_nbits(nbits))
+		*dst = 0ul;
+	else {
+		size_t len = BITS_TO_LONGS(nbits) * sizeof(unsigned long);
+		memset(dst, 0, len);
+	}
+}
+
+inline void bitmap_fill(unsigned long *dst, int nbits)
+{
+	size_t nlongs = BITS_TO_LONGS(nbits);
+	if (!small_const_nbits(nbits)) {
+		size_t len = (nlongs - 1) * sizeof(unsigned long);
+		memset(dst, 0xff,  len);
+	}
+	dst[nlongs - 1] = BITMAP_LAST_WORD_MASK(nbits);
+}
+
