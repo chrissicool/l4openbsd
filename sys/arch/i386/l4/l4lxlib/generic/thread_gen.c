@@ -2,20 +2,26 @@
  * Stack handling. Used by all API interfaces.
  */
 
+#include <lib/libkern/libkern.h>
+
+#include <machine/l4/linux_compat.h>
 #include <machine/l4/l4lxapi/generic/thread_gen.h>
 #include <machine/l4/l4lxapi/thread.h>
 //#include <machine/l4/api/api.h>
 
+#include <machine/atomic.h>
+#include <sys/types.h>
+
 #include <l4/sys/types.h>
 #include <l4/sys/kdebug.h>
 
-#define __STACKS_ARRAY_ELEM_TYPE unsigned long
+#define __STACKS_ARRAY_ELEM_TYPE u_int32_t
 #define __STACKS_ARRAY_ELEMS \
 	((L4LX_THREAD_NO_THREADS / (8 * sizeof(__STACKS_ARRAY_ELEM_TYPE))) + 1)
 
-//static char l4lx_thread_stacks[L4LX_THREAD_STACK_SIZE * L4LX_THREAD_NO_THREADS]
-//	__attribute((aligned(L4LX_THREAD_STACK_SIZE)));
-//static __STACKS_ARRAY_ELEM_TYPE l4lx_thread_stacks_used[__STACKS_ARRAY_ELEMS];
+static char l4lx_thread_stacks[L4LX_THREAD_STACK_SIZE * L4LX_THREAD_NO_THREADS]
+	__attribute((aligned(L4LX_THREAD_STACK_SIZE)));
+static __STACKS_ARRAY_ELEM_TYPE l4lx_thread_stacks_used[__STACKS_ARRAY_ELEMS];
 /* If the thread is L4_INVALID_CAP the corresponding stacks isn't used */
 static l4_cap_idx_t l4lx_thread_stack_to_thread_no[L4LX_THREAD_NO_THREADS];
 
@@ -32,19 +38,19 @@ void l4lx_thread_init(void)
 
 	l4lx_thread_utcb_alloc_init();
 }
-/*
+
 void *l4lx_thread_stack_get(void)
 {
 	int n;
-	unsigned long flags;
+	//unsigned long flags;
 
-	local_irq_save(flags);
+/* TODO	local_irq_save(flags); */
 
 	n = find_first_zero_bit(l4lx_thread_stacks_used,
 				L4LX_THREAD_NO_THREADS);
-	set_bit(n, l4lx_thread_stacks_used);
+	i386_atomic_setbits_l(l4lx_thread_stacks_used, 1<<n);
 
-	local_irq_restore(flags);
+/* TODO	local_irq_restore(flags); */
 
 	if (n >= L4LX_THREAD_NO_THREADS)
 		return NULL;
@@ -54,18 +60,18 @@ void *l4lx_thread_stack_get(void)
 
 void l4lx_thread_stack_register(l4_cap_idx_t thread, void *stack_pointer)
 {
-	*//* Calculate array entry of this stack as returned by
-	 * l4lx_thread_stack_get *//*
+	/* Calculate array entry of this stack as returned by
+	 * l4lx_thread_stack_get */
 	int offset = (char *)stack_pointer - l4lx_thread_stacks;
 	int n = (offset / L4LX_THREAD_STACK_SIZE);
 	if (offset % L4LX_THREAD_STACK_SIZE == 0)
 		n--;
 
-	*//* sanity check *//*
+	/* sanity check */
 	if (n < 0 || n >= L4LX_THREAD_NO_THREADS)
 		enter_kdebug("Wrong stack_pointer given?!");
 	else
-		*//* eventually register it *//*
+		/* eventually register it */
 		l4lx_thread_stack_to_thread_no[n] = thread;
 }
 
@@ -79,7 +85,7 @@ void *l4lx_thread_stack_alloc(l4_cap_idx_t thread)
 	l4lx_thread_stack_register(thread, stack_pointer);
 	return stack_pointer;
 }
-
+/*
 static int l4lx_thread_stack_get_pos(l4_cap_idx_t thread)
 {
 	int i;
@@ -154,9 +160,10 @@ void *l4lx_thread_stack_get_base_pointer(l4_cap_idx_t thread)
 	return &l4lx_thread_stacks[i];
 }
 
-*//*
+*/
+/*
  * Functions for thread names.
- *//*
+ */
 void l4lx_thread_name_set(l4_cap_idx_t thread, const char *name)
 {
 	int i = 0;
@@ -173,7 +180,7 @@ void l4lx_thread_name_set(l4_cap_idx_t thread, const char *name)
 
 	enter_kdebug("Thread names exhausted!");
 }
-
+/*
 void l4lx_thread_name_delete(l4_cap_idx_t thread)
 {
 	int i = 0;

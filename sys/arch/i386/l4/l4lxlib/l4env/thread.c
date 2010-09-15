@@ -2,6 +2,9 @@
  * Functions implementing the API defined in asm/l4lxapi/thread.h
  */
 
+#include <sys/param.h>
+#include <sys/systm.h>
+
 #include <l4/sys/kdebug.h>
 #include <l4/sys/err.h>
 
@@ -15,9 +18,14 @@
 #include <l4/sys/debugger.h>
 
 #include <machine/l4/l4lxapi/thread.h>
+#include <machine/l4/l4lxapi/generic/thread_gen.h>
 //#include <machine/l4/l4lxapi/misc.h>
-
+#include <machine/l4/api/macros.h>
+#include <machine/l4/stack_id.h>
+#include <machine/l4/smp.h>
+#include <machine/l4/cap_alloc.h>
 #include <machine/l4/linux_compat.h>
+#include <lib/libkern/libkern.h>
 
 /*
 #include <asm/generic/kthreads.h>
@@ -56,11 +64,11 @@ void l4lx_thread_utcb_alloc_init(void)
 	l4re_env()->first_free_utcb = ~0UL;
 }
 
-/*
+
 static l4_addr_t l4lx_thread_utcb_alloc_alloc(unsigned order)
 {
-	*//* find_free_region nicely searches with our requirements, i.e.
-	 * log2size aligned *//*
+	/* find_free_region nicely searches with our requirements, i.e.
+	 * log2size aligned */
 	int r = bitmap_find_free_region(utcb_alloc_bitmap,
 	                                UTCB_BITMAP_ALLOC_BITS, order);
 	if (r < 0)
@@ -69,7 +77,7 @@ static l4_addr_t l4lx_thread_utcb_alloc_alloc(unsigned order)
 	return (l4_fpage_page(l4re_env()->utcb_area) << L4_PAGESHIFT)
 	       + L4_UTCB_OFFSET * r;
 }
-
+/*
 static void l4lx_thread_utcb_alloc_free(l4_addr_t utcb_addr, int order)
 {
 	unsigned bit = utcb_alloc_bit(utcb_addr);
@@ -77,13 +85,14 @@ static void l4lx_thread_utcb_alloc_free(l4_addr_t utcb_addr, int order)
 		return;
 	bitmap_release_region(utcb_alloc_bitmap, bit, order);
 }
+*/
 
 static inline l4_utcb_t *next_utcb(l4_utcb_t *u)
 {
 	return (l4_utcb_t *)((char *)u + L4_UTCB_OFFSET);
 }
 
-
+/*
 #ifdef ARCH_arm
 void __thread_launch(void);
 asm(
@@ -94,6 +103,7 @@ asm(
 "	mov pc, r1\n"
 );
 #endif
+*/
 
 l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
                                 unsigned vcpu,
@@ -109,7 +119,7 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 	l4_utcb_t *utcb;
 	l4_umword_t *sp = stack_pointer;
 
-	*//* Prefix name with 'l4lx.' *//*
+	/* Prefix name with 'l4lx.' */
 	strncpy(l4lx_name + strlen(l4lx_name), name,
 	        sizeof(l4lx_name) - strlen(l4lx_name));
 	l4lx_name[sizeof(l4lx_name) - 1] = 0;
@@ -148,11 +158,7 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 
 	l4_debugger_set_object_name(l4cap, l4lx_name);
 
-#ifdef CONFIG_L4_VCPU
 	utcb = (l4_utcb_t *)l4lx_thread_utcb_alloc_alloc(thread_control_flags & L4_THREAD_CONTROL_VCPU_ENABLED ? 1 : 0);
-#else
-	utcb = (l4_utcb_t *)l4lx_thread_utcb_alloc_alloc(0);
-#endif
 
 	l4_utcb_tcr_u(utcb)->user[L4X_UTCB_TCR_ID]   = l4cap;
 	l4_utcb_tcr_u(utcb)->user[L4X_UTCB_TCR_PRIO] = prio;
@@ -161,13 +167,11 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 	l4_thread_control_pager(l4re_env()->rm);
 	l4_thread_control_exc_handler(l4re_env()->rm);
 	l4_thread_control_bind(utcb, L4_BASE_TASK_CAP);
-#ifdef CONFIG_L4_VCPU
 	if (thread_control_flags & L4_THREAD_CONTROL_VCPU_ENABLED) {
 		l4_thread_control_vcpu_enable(1);
 		// remember corresponding thread for freeing again
 		l4_utcb_tcr_u(next_utcb(utcb))->user[L4X_UTCB_TCR_ID] = l4cap;
 	}
-#endif
 	res = l4_thread_control_commit(l4cap);
 	if (l4_error(res)) {
 		l4re_util_cap_release(l4cap);
@@ -208,9 +212,8 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 
 	return l4cap;
 }
-EXPORT_SYMBOL(l4lx_thread_create);
 
-*//*
+/*
  * l4lx_thread_pager_change
  *//*
 void l4lx_thread_pager_change(l4_cap_idx_t thread, l4_cap_idx_t pager)

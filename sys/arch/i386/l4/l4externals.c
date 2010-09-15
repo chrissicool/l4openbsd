@@ -20,3 +20,6 @@
 L4_EXTERNAL_FUNC(LOG_printf);
 L4_EXTERNAL_FUNC(l4util_kip_kernel_has_feature);
 L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
+#ifdef L4_EXTERNAL_RTC
+L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
+#endif

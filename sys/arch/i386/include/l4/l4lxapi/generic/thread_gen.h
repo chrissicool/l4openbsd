@@ -6,6 +6,8 @@
 
 #include <l4/sys/types.h>
 
+#include <machine/l4/linux_compat.h>
+
 /**
  * \defgroup thread_stack_int Thread stack management functions (internal).
  * \ingroup thread
@@ -32,7 +34,7 @@
  *
  * Don't change the stack size without understanding the consequences!
  */
-//#define L4LX_THREAD_STACK_SIZE THREAD_SIZE
+#define L4LX_THREAD_STACK_SIZE THREAD_SIZE
 
 /**
  * Mask of the stack size.
@@ -78,7 +80,7 @@ struct l4lx_thread_name_struct {
  * \return The stack pointer (of the top of the stack), NULL if no free
  * stack could be found.
  */
-//void *l4lx_thread_stack_get(void);
+void *l4lx_thread_stack_get(void);
 
 /**
  * \brief Register a stack to a thread.
@@ -87,7 +89,7 @@ struct l4lx_thread_name_struct {
  * \param thread	The thread.
  * \param stack_pointer	The stack given back by l4lx_thread_stack_get.
  */
-//void l4lx_thread_stack_register(l4_cap_idx_t thread, void *stack_pointer);
+void l4lx_thread_stack_register(l4_cap_idx_t thread, void *stack_pointer);
 
 /**
  * \brief  Get and register a thread.
@@ -97,7 +99,7 @@ struct l4lx_thread_name_struct {
  *
  * \return The stack pointer, NULL if no free stack could be found.
  */
-//void *l4lx_thread_stack_alloc(l4_cap_idx_t thread);
+void *l4lx_thread_stack_alloc(l4_cap_idx_t thread);
 
 /**
  * \brief Free used stack again.
@@ -177,7 +179,7 @@ struct l4lx_thread_name_struct {
  * \param thread	Thread id of the thread.
  * \param name		Name of the thread.
  */
-//void l4lx_thread_name_set(l4_cap_idx_t thread, const char *name);
+void l4lx_thread_name_set(l4_cap_idx_t thread, const char *name);
 
 /**
  * Delete the name of a thread.

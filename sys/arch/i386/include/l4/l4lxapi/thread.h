@@ -65,12 +65,12 @@ void l4lx_thread_init(void);
  *                             |----------------- ESP for new thread
  * </pre>
  */
-//l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
-//                                unsigned cpu_nr,
-//                                void *stack_pointer,
-//                                void *stack_data, unsigned stack_data_size,
-//                                int prio,
-//                                unsigned thread_control_flags, const char *name);
+l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
+                                unsigned cpu_nr,
+                                void *stack_pointer,
+                                void *stack_data, unsigned stack_data_size,
+                                int prio,
+                                unsigned thread_control_flags, const char *name);
 
 /**
  * \brief Change the pager of a (kernel) thread.
