@@ -20,6 +20,7 @@ include		"arch/i386/conf/GENERIC"
 option		L4
 makeoptions     L4_BUILDDIR="/home/cc/TU-Berlin/fiasco/l4-svn/src/l4/builddir"
 option		ARCH_x86	# provide L4re with our architecture
+option		L4_EXTERNAL_RTC	# use L4re's RTC
 
 ##
 # reconfigure some options
