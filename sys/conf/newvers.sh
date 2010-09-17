@@ -75,6 +75,8 @@ cat >vers.c <<eof
 
 #ifdef L4
 #define SUBARCH "-L4"
+#else
+#define SUBARCH
 #endif
 
 const char ostype[] = "${ost}";
