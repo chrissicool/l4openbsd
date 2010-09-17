@@ -7,6 +7,7 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/lock.h>
+#include <sys/ptrace.h>
 
 #include <machine/cpu.h>
 
@@ -17,6 +18,7 @@
 #include <machine/l4/iodb.h>
 #include <machine/l4/cap_alloc.h>
 #include <machine/l4/smp.h>
+#include <machine/l4/exception.h>
 
 // just taken from L4Linux's arch/l4/kernel/main.c
 #include <l4/sys/err.h>
@@ -582,9 +584,9 @@ static inline int l4x_handle_pagefault(unsigned long pfa, unsigned long ip,
 
 static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 {
-	struct pt_regs regs;
+	struct reg regs;
 	unsigned long regs_addr;
-	extern void die(const char *msg, struct pt_regs *regs, int err);
+	extern void die(const char *msg, struct reg *regs, int err);
 	static char message[40];
 
 	snprintf(message, sizeof(message), "Trap: %ld", exc->trapno);
@@ -594,12 +596,12 @@ static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 	utcb_exc_to_ptregs(exc, &regs);
 
 	/* XXX: check stack boundaries, i.e. exc->esp & (THREAD_SIZE-1)
-	 * >= THREAD_SIZE - sizeof(thread_struct) - sizeof(struct pt_regs)
+	 * >= THREAD_SIZE - sizeof(thread_struct) - sizeof(struct reg)
 	 * - ...)
 	 */
-	/* Copy pt_regs on the stack */
-	exc->sp -= sizeof(struct pt_regs);
-	*(struct pt_regs *)exc->sp = regs;
+	/* Copy regs on the stack */
+	exc->sp -= sizeof(struct reg);
+	*(struct reg *)exc->sp = regs;
 	regs_addr = exc->sp;
 
 	/* Fill arguments in regs for die params */
