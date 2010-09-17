@@ -18,8 +18,16 @@
  */
 
 L4_EXTERNAL_FUNC(LOG_printf);
+L4_EXTERNAL_FUNC(l4x_external_exit);	/* jumps back into the wrapper */
+L4_EXTERNAL_FUNC(l4_sleep_forever);
+
 L4_EXTERNAL_FUNC(l4util_kip_kernel_has_feature);
 L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
+
 #ifdef L4_EXTERNAL_RTC
 L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
 #endif
+
+L4_EXTERNAL_FUNC(l4re_rm_find_srv);
+L4_EXTERNAL_FUNC(l4re_util_cap_alloc);
+L4_EXTERNAL_FUNC(l4re_util_cap_free);

@@ -71,7 +71,7 @@ struct l4x_phys_virt_mem {
 static struct l4x_phys_virt_mem l4x_phys_virt_addrs[L4X_PHYS_VIRT_ADDRS_MAX_ITEMS];
 int l4x_phys_virt_addr_items;
 
-//l4_cap_idx_t linux_server_thread_id = L4_INVALID_CAP;
+l4_cap_idx_t linux_server_thread_id = L4_INVALID_CAP;
 l4_cap_idx_t l4x_start_thread_id = L4_INVALID_CAP;
 l4_cap_idx_t l4x_start_thread_pager_id = L4_INVALID_CAP;
 
@@ -119,6 +119,7 @@ static unsigned long l4x_handle_ioport_pending_pc;
  * prototypes from others
  */
 extern void start(void);	/* locore.s */
+void l4x_external_exit(int code);	/* jumps back to the wrapper */
 l4re_env_t *l4re_global_env;
 l4_kernel_info_t *l4lx_kinfo;
 
@@ -147,8 +148,11 @@ static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc);
 static inline int l4x_handle_pagefault(unsigned long pfa,
 					unsigned long ip, int wr);
 static void l4x_setup_die_utcb(l4_exc_regs_t *exc);
+static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write);
 
-/* TODO functions from l4x_exception_func_list[] */
+void exit(int code);
+
+/* Functions for l4x_exception_func_list[] */
 
 /*
  * implentation
@@ -617,5 +621,44 @@ static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 	outstring("Die message: ");
 	outstring(message);
 	outstring("\n");
+}
+
+static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
+{
+	l4_msgtag_t tag;
+	l4_umword_t err;
+	l4_utcb_t *u = l4_utcb();
+
+	do {
+		l4_msg_regs_t *mr = l4_utcb_mr_u(u);
+		mr->mr[0] = addr | (extra_write ? 2 : 0);
+		mr->mr[1] = pc;
+		mr->mr[2] = L4_ITEM_MAP | addr;
+		mr->mr[3] = l4_fpage(addr, L4_LOG2_PAGESIZE, L4_FPAGE_RWX).raw;
+		tag = l4_msgtag(L4_PROTO_PAGE_FAULT, 2, 1, 0);
+		tag = l4_ipc_call(l4x_start_thread_pager_id, u, tag,
+				L4_IPC_NEVER);
+		err = l4_ipc_error(tag, u);
+	} while (err == L4_IPC_SECANCELED || err == L4_IPC_SEABORTED);
+
+	if (l4_msgtag_has_error(tag))
+		LOG_printf("Error forwarding page fault: %lx\n",
+				l4_utcb_tcr_u(u)->error);
+
+	if (l4_msgtag_words(tag) > 0
+			&& l4_utcb_mr_u(u)->mr[0] == ~0)
+		// unresolvable page fault, we're supposed to trigger an
+		// exception
+		return 0;
+
+	return 1;
+}
+
+void exit(int code)
+{
+/* TODO	__cxa_finalize(0); */
+	l4x_external_exit(code);
+	LOG_printf("Still alive, going zombie???\n");
+	l4_sleep_forever();
 }
 

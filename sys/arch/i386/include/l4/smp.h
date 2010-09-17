@@ -5,7 +5,8 @@
 
 #include <l4/sys/types.h>
 
-l4_cap_idx_t linux_server_thread_id = L4_INVALID_CAP;
+/* defined in l4/main.c */
+extern l4_cap_idx_t linux_server_thread_id;
 
 struct l4x_cpu_physmap_struct
 {
