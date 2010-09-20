@@ -8,10 +8,12 @@
 #include <sys/systm.h>
 #include <sys/lock.h>
 #include <sys/ptrace.h>
+#include <sys/types.h>
 
 #include <machine/cpu.h>
 
 #include <machine/l4/linux_compat.h>
+#include <machine/l4/api/config.h>
 #include <machine/l4/api/macros.h>
 #include <machine/l4/l4lxapi/task.h>
 #include <machine/l4/l4lxapi/thread.h>
@@ -73,6 +75,7 @@ struct l4x_phys_virt_mem {
 #define L4X_PHYS_VIRT_ADDRS_MAX_ITEMS 20
 static struct l4x_phys_virt_mem l4x_phys_virt_addrs[L4X_PHYS_VIRT_ADDRS_MAX_ITEMS];
 int l4x_phys_virt_addr_items;
+vaddr_t upage_addr;
 
 l4_cap_idx_t linux_server_thread_id = L4_INVALID_CAP;
 l4_cap_idx_t l4x_start_thread_id = L4_INVALID_CAP;
@@ -137,6 +140,8 @@ unsigned l4x_x86_utcb_get_orig_segment(void);
 static void get_initial_cpu_capabilities(void);
 void l4x_v2p_init(void);
 void l4x_v2p_add_item(l4_addr_t phys, void *virt, l4_size_t size);
+
+static void l4x_setup_upage(void);
 
 static L4_CV void l4x_bsd_startup(void *data);
 static void l4x_server_loop(void) __attribute__((__noreturn__));
@@ -269,7 +274,7 @@ int L4_CV l4start(int argc, char **argv) {
 		LOG_printf("WARNING: RTC server does not seem there!\n");
 #endif
 
-/* TODO	l4x_setup_upage();	*/
+	l4x_setup_upage();
 
 	/* Set name of startup thread */
 	l4lx_thread_name_set(l4x_start_thread_id, "l4x-start");
@@ -306,11 +311,14 @@ int L4_CV l4start(int argc, char **argv) {
 	LOG_printf("Main thread running, waiting...\n");
 	l4x_server_loop();
 	
+	/* NOTREACHED */
+
+	/* Just in case... */
 	return 0;
 }
 
 /*
- * overrides L4re's default function
+ * overrides L4re's default utcb handling
  */
 L4_CV l4_utcb_t *l4_utcb_wrap(void)
 {
@@ -408,10 +416,48 @@ void l4x_v2p_add_item(l4_addr_t phys, void *virt, l4_size_t size)
 			= (struct l4x_phys_virt_mem){.phys = phys, .virt = virt, .size = size};
 }
 
+static void l4x_setup_upage(void)
+{
+	l4re_ds_t ds;
+
+	if (l4_is_invalid_cap(ds = l4re_util_cap_alloc())) {
+		LOG_printf("%s: Cap alloc failed\n", __func__);
+		l4x_linux_main_exit();
+	}
+
+	if (l4re_ma_alloc(USPACE, ds, L4RE_MA_PINNED)) {
+		LOG_printf("Memory request for upage failed\n");
+		l4x_linux_main_exit();
+	}
+
+	upage_addr = UPAGE_USER_ADDRESS;
+	if (l4re_rm_attach((void **)&upage_addr, L4_PAGESIZE,
+			L4RE_RM_SEARCH_ADDR,
+			ds, 0, L4_PAGESHIFT)) {
+		LOG_printf("Cannot attach upage properly\n");
+		l4x_linux_main_exit();
+	}
+
+	LOG_printf("Attached UPAGE\n");
+}
+
 static L4_CV void l4x_bsd_startup(void *data)
 {
+	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
+	extern int main(void);			/* see: sys/kern/init_main.c */
+
 	/* TODO implement l4x_bsd_startup */
-	LOG_printf("l4x_bsd_startup: Starting up main thread\n");
+	LOG_printf("l4x_bsd_startup: Waiting for startup message.\n");
+
+	/* Wait for start signal */
+	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
+	LOG_printf("l4x_bsd_startup: received startup message.\n");
+
+
+	/* Finally, fasten your seatbelts... */
+	main();
+
+	/* NOTREACHED */
 }
 
 static void l4x_server_loop(void)
