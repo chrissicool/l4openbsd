@@ -52,6 +52,9 @@
 #error We are not ready for option MULTIPROCESSOR yet!
 #endif
 
+/* TODO find the equivalent OpenBSD function */
+static inline void die(const char *msg, struct reg *regs, int err) {}
+
 /*
  * variables
  */
@@ -78,7 +81,7 @@ l4_cap_idx_t l4x_start_thread_pager_id = L4_INVALID_CAP;
 unsigned l4x_fiasco_gdt_entry_offset;
 
 struct simplelock l4x_cap_lock;
-static char init_stack[PAGE_SIZE];	/* XXX cl: this is plain wrong */
+static char init_stack[2*PAGE_SIZE];	/* XXX cl: this is plain wrong */
 enum {
 	L4X_SERVER_EXIT = 1,
 };
@@ -91,11 +94,10 @@ struct l4x_exception_func_struct {
 	int           for_vcpu;
 };
 static struct l4x_exception_func_struct l4x_exception_func_list[] = {
-#ifdef L4_USE_L4VMM
 	/* TODO THERE IS A BIG FAT TODO HERE */
+#ifdef L4_USE_L4VMM
 //	{ .trap_mask = ~0UL,   .for_vcpu = 1, .f = l4vmm_handle_exception_r0 },
 #endif
-#ifdef ARCH_x86
 //	{ .trap_mask = 0x2000, .for_vcpu = 1, .f = l4x_handle_hlt_for_bugs_test }, // before kprobes!
 #ifdef CONFIG_KPROBES
 //	{ .trap_mask = 0x2000, .for_vcpu = 1, .f = l4x_handle_kprobes },
@@ -105,10 +107,6 @@ static struct l4x_exception_func_struct l4x_exception_func_list[] = {
 //	{ .trap_mask = 0x2000, .for_vcpu = 1, .f = l4x_handle_msr },
 //	{ .trap_mask = 0x2000, .for_vcpu = 1, .f = l4x_handle_clisti },
 //	{ .trap_mask = 0x4000, .for_vcpu = 0, .f = l4x_handle_ioport },
-#endif
-#ifdef ARCH_arm
-//	{ .trap_mask = ~0UL,   .for_vcpu = 1, .f = l4x_arm_instruction_emu },
-#endif
 };
 static const int l4x_exception_funcs
 	= sizeof(l4x_exception_func_list) / sizeof(l4x_exception_func_list[0]);
@@ -119,7 +117,7 @@ static unsigned long l4x_handle_ioport_pending_pc;
  * prototypes from others
  */
 extern void start(void);	/* locore.s */
-void l4x_external_exit(int code);	/* jumps back to the wrapper */
+L4_CV void l4x_external_exit(int code);		/* jumps back to the wrapper */
 l4re_env_t *l4re_global_env;
 l4_kernel_info_t *l4lx_kinfo;
 
@@ -261,6 +259,8 @@ int L4_CV l4start(int argc, char **argv) {
 		= fiasco_gdt_get_entry_offset(l4re_env()->main_thread, l4_utcb());
 	LOG_printf("l4x_fiasco_gdt_entry_offset = %x\n",
 			l4x_fiasco_gdt_entry_offset);
+
+	/* VGA BIOS memory hole */
 	l4x_v2p_add_item(0xa0000, (void *)0xa0000, 0xfffff - 0xa0000);
 
 #ifdef L4_EXTERNAL_RTC
@@ -268,6 +268,8 @@ int L4_CV l4start(int argc, char **argv) {
 	if (l4rtc_get_seconds_since_1970(&seconds))
 		LOG_printf("WARNING: RTC server does not seem there!\n");
 #endif
+
+/* TODO	l4x_setup_upage();	*/
 
 	/* Set name of startup thread */
 	l4lx_thread_name_set(l4x_start_thread_id, "l4x-start");
@@ -408,6 +410,8 @@ void l4x_v2p_add_item(l4_addr_t phys, void *virt, l4_size_t size)
 
 static L4_CV void l4x_bsd_startup(void *data)
 {
+	/* TODO implement l4x_bsd_startup */
+	LOG_printf("l4x_bsd_startup: Starting up main thread\n");
 }
 
 static void l4x_server_loop(void)
@@ -436,6 +440,7 @@ static void l4x_server_loop(void)
 				&src, L4_IPC_SEND_TIMEOUT_0);
 		do_wait = l4_msgtag_has_error(tag);
 	}
+	/* NOTREACHED */
 }
 
 void l4x_linux_main_exit(void)
@@ -445,6 +450,9 @@ void l4x_linux_main_exit(void)
 	exit(0);
 }
 
+/*
+ * Exception scheduler
+ */
 static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
 {
 	l4_exc_regs_t exc;
@@ -535,7 +543,7 @@ static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
 
 static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc)
 {
-	LOG_printf("EX: "l4util_idfmt": pc = "l4_addr_fmt
+	LOG_printf("Exception: "l4util_idfmt": pc = "l4_addr_fmt
 			" trapno = 0x%lx err/pfa = 0x%lx%s\n",
 			l4util_idstr(t), exc->ip,
 			exc->trapno,
@@ -654,11 +662,15 @@ static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
 	return 1;
 }
 
+/*
+ * Exit the VM and return to the L4 runtime.
+ */
 void exit(int code)
 {
 /* TODO	__cxa_finalize(0); */
 	l4x_external_exit(code);
 	LOG_printf("Still alive, going zombie???\n");
 	l4_sleep_forever();
+	/* NOTREACHED */
 }
 

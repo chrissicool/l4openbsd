@@ -19,7 +19,6 @@
 
 L4_EXTERNAL_FUNC(LOG_printf);
 L4_EXTERNAL_FUNC(l4x_external_exit);	/* jumps back into the wrapper */
-L4_EXTERNAL_FUNC(l4_sleep_forever);
 
 L4_EXTERNAL_FUNC(l4util_kip_kernel_has_feature);
 L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
