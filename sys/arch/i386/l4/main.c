@@ -21,6 +21,7 @@
 #include <machine/l4/cap_alloc.h>
 #include <machine/l4/smp.h>
 #include <machine/l4/exception.h>
+#include <machine/l4/stack_id.h>
 
 // just taken from L4Linux's arch/l4/kernel/main.c
 #include <l4/sys/err.h>
@@ -116,6 +117,7 @@ static const int l4x_exception_funcs
 
 static unsigned long l4x_handle_ioport_pending_pc;
 
+extern struct user *proc0paddr;         /* locore.s */
 /*
  * prototypes from others
  */
@@ -295,13 +297,13 @@ int L4_CV l4start(int argc, char **argv) {
 		return 1;
 	}
 
+	LOG_printf("main thread will be " PRINTF_L4TASK_FORM "\n",
+			PRINTF_L4TASK_ARG(main_id));
+
 #ifdef MULTIPROCESSOR
 	/* XXX this does not happen, ATM */
 	l4x_cpu_thread_set(0, main_id);
 #endif
-
-	LOG_printf("main thread will be " PRINTF_L4TASK_FORM "\n",
-			PRINTF_L4TASK_ARG(main_id));
 
 //	l4x_register_pointer_section(&__init_begin, 0, "sec-w-init");
 
@@ -331,7 +333,7 @@ L4_CV l4_utcb_t *l4_utcb_wrap(void)
 	__asm __volatile ("mov %%gs, %0": "=r" (gsvalue));
 	//if (gsvalue == 0x43 || gsvalue == 7)
 		return l4_utcb_direct();
-	//return 42; /* XXX cl: l4x_stack_utcb_get(); */
+	return l4x_stack_utcb_get();
 #endif
 }
 
@@ -431,20 +433,26 @@ static void l4x_setup_upage(void)
 	}
 
 	upage_addr = UPAGE_USER_ADDRESS;
-	if (l4re_rm_attach((void **)&upage_addr, L4_PAGESIZE,
+	if (l4re_rm_attach((void **)&upage_addr, USPACE,
 			L4RE_RM_SEARCH_ADDR,
 			ds, 0, L4_PAGESHIFT)) {
 		LOG_printf("Cannot attach upage properly\n");
 		l4x_linux_main_exit();
 	}
 
-	LOG_printf("Attached UPAGE\n");
+	/* FIXME not in L4Linux */
+	memset((void *)upage_addr, 0, USPACE);
+
+	/* The UPAGE is used as kernel stack, too. */
+	proc0paddr = (struct user *) upage_addr;
+
+	LOG_printf("Attached upage to 0x%08x\n", proc0paddr);
 }
 
 static L4_CV void l4x_bsd_startup(void *data)
 {
 	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
-	extern int main(void);			/* see: sys/kern/init_main.c */
+	extern int main(void *framep);		/* see: sys/kern/init_main.c */
 
 	/* TODO implement l4x_bsd_startup */
 	LOG_printf("l4x_bsd_startup: Waiting for startup message.\n");
@@ -453,10 +461,13 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
 	LOG_printf("l4x_bsd_startup: received startup message.\n");
 
+	/* setup kernel stack */
+	l4x_stack_setup(proc0paddr);
 
 	/* Finally, fasten your seatbelts... */
-	main();
+// TODO	main(data);
 
+	l4x_linux_main_exit();
 	/* NOTREACHED */
 }
 
