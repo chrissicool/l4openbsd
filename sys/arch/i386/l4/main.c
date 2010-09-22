@@ -140,6 +140,11 @@ static inline void l4x_x86_utcb_save_orig_segment(void);
 unsigned l4x_x86_utcb_get_orig_segment(void);
 
 static void get_initial_cpu_capabilities(void);
+
+static void l4x_register_pointer_section(void *p_in_addr,
+		int allow_noncontig, const char *tag);
+static void l4x_register_region(const l4re_ds_t ds, void *start,
+		int allow_noncontig, const char *tag);
 void l4x_v2p_init(void);
 void l4x_v2p_add_item(l4_addr_t phys, void *virt, l4_size_t size);
 
@@ -266,6 +271,10 @@ int L4_CV l4start(int argc, char **argv) {
 		= fiasco_gdt_get_entry_offset(l4re_env()->main_thread, l4_utcb());
 	LOG_printf("l4x_fiasco_gdt_entry_offset = %x\n",
 			l4x_fiasco_gdt_entry_offset);
+
+	/* register physmem for (r/o)-data sections */
+	l4x_register_pointer_section(&__rodata_start, 0, "sec-rodata");
+	l4x_register_pointer_section(&__data_start, 0, "sec-data");
 
 	/* VGA BIOS memory hole */
 	l4x_v2p_add_item(0xa0000, (void *)0xa0000, 0xfffff - 0xa0000);
@@ -403,6 +412,66 @@ static void get_initial_cpu_capabilities(void)
 {
 	/* XXX cl: we should set a l4util_cpu_capabilities() here */
 }
+
+/*
+ * Register program section(s) for virt_to_phys.
+ */
+static void l4x_register_pointer_section(void *p_in_addr,
+		int allow_noncontig,
+		const char *tag)
+{
+	l4re_ds_t ds;
+	l4_addr_t off;
+	l4_addr_t addr;
+	unsigned long size;
+	unsigned flags;
+
+	addr = (l4_addr_t)p_in_addr;
+	size = 1;
+	if (l4re_rm_find(&addr, &size, &off, &flags, &ds)) {
+		LOG_printf("Cannot anything at %p?!", p_in_addr);
+		l4re_rm_show_lists();
+		enter_kdebug("l4re_rm_find failed");
+		return;
+	}
+
+	LOG_printf("%s: addr = %08lx size = %ld\n", __func__, addr, size);
+
+	l4x_register_region(ds, (void *)addr, allow_noncontig, tag);
+}
+
+static void l4x_register_region(const l4re_ds_t ds, void *start,
+		int allow_noncontig, const char *tag)
+{
+	l4_size_t ds_size;
+	l4_addr_t offset = 0;
+	l4_addr_t phys_addr;
+	l4_size_t phys_size;
+
+	ds_size = l4re_ds_size(ds);
+
+	LOG_printf("%15s: virt: %p to %p [%u KiB]\n",
+			tag, start, start + ds_size - 1, ds_size >> 10);
+
+	while (offset < ds_size) {
+		if (l4re_ds_phys(ds, offset, &phys_addr, &phys_size)) {
+			LOG_printf("error: failed to get physical address for %lx.\n",
+					(unsigned long)start + offset);
+			break;
+		}
+
+		if (!allow_noncontig && phys_size != ds_size)
+			LOG_printf("Noncontiguous region for %s\n", tag);
+
+		l4x_v2p_add_item(phys_addr, start + offset, phys_size);
+
+		LOG_printf("%15s: Phys: 0x%08lx to 0x%08lx, Size: %8u\n",
+				tag, phys_addr, phys_addr + phys_size, phys_size);
+
+		offset += phys_size;
+	}
+}
+
 
 void l4x_v2p_init(void)
 {

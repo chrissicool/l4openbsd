@@ -27,8 +27,11 @@ L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
 L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
 #endif
 
+L4_EXTERNAL_FUNC(l4re_ds_size);
+L4_EXTERNAL_FUNC(l4re_ds_phys);
 L4_EXTERNAL_FUNC(l4re_ma_alloc_srv);
 L4_EXTERNAL_FUNC(l4re_rm_attach_srv);
 L4_EXTERNAL_FUNC(l4re_rm_find_srv);
+L4_EXTERNAL_FUNC(l4re_rm_show_lists_srv);
 L4_EXTERNAL_FUNC(l4re_util_cap_alloc);
 L4_EXTERNAL_FUNC(l4re_util_cap_free);
