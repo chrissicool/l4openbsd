@@ -2879,12 +2879,30 @@ cpu_init_ldt(struct cpu_info *ci)
 }
 #endif	/* MULTIPROCESSOR */
 
+#ifdef L4
+#include <l4/log/log.h>
+#endif
+
 void
 init386(paddr_t first_avail)
 {
 	int i, kb;
 	struct region_descriptor region;
 	bios_memmap_t *im;
+
+#ifdef L4
+	/*
+	 * Since we never ran locore.s, we need to setup some variables
+	 * on our own.
+	 */
+	struct proc *p;
+	curproc = p = &proc0;
+	p->p_cpu = curcpu();
+
+	bootapiver = BOOTARG_APIVER;
+	boothowto = 0;
+	cpu_feature = 0;
+#endif
 
 	proc0.p_addr = proc0paddr;
 	cpu_info_primary.ci_self = &cpu_info_primary;
@@ -2949,10 +2967,13 @@ init386(paddr_t first_avail)
 	setgate(&idt[128], &IDTVEC(syscall), 0, SDT_SYS386TGT, SEL_UPL, GCODE_SEL);
 
 	setregion(&region, gdt, NGDT * sizeof(union descriptor) - 1);
+#ifndef L4
 	lgdt(&region);
+#endif
 	setregion(&region, idt, sizeof(idt_region) - 1);
 	lidt(&region);
 
+#ifndef L4
 #if NISA > 0
 	isa_defaultirq();
 #endif
@@ -2960,7 +2981,12 @@ init386(paddr_t first_avail)
 	/*
 	 * Attach the glass console early in case we need to display a panic.
 	 */
-	cninit();
+	cninit();	/* TODO for L4 */
+#endif
+
+#ifdef L4
+	LOG_printf("%s:%d console init skipped\n", __func__, __LINE__);
+#endif
 
 	/*
 	 * Saving SSE registers won't work if the save area isn't
@@ -2969,8 +2995,14 @@ init386(paddr_t first_avail)
 	if (offsetof(struct user, u_pcb.pcb_savefpu) & 0xf)
 		panic("init386: pcb_savefpu not 16-byte aligned");
 
+
 	/* call pmap initialization to make new kernel address space */
 	pmap_bootstrap((vaddr_t)atdevbase + IOM_SIZE);
+
+#ifdef L4
+	LOG_printf("%s:%d pmap bootstrapped\n", __func__, __LINE__);
+	return; /* XXX cl */
+#endif
 
 	/*
 	 * Boot arguments are in a single page specified by /boot.
@@ -3001,6 +3033,10 @@ init386(paddr_t first_avail)
 		panic("no BIOS memory map supplied");
 #endif
  
+#ifdef L4
+	LOG_printf("%s:%d /boot arguments processed\n", __func__, __LINE__);
+#endif
+
 #if defined(MULTIPROCESSOR)
 	/* install the lowmem ptp after boot args for 1:1 mappings */
 	pmap_prealloc_lowmem_ptp(round_page((paddr_t)(bootargv + bootargc)));
@@ -3251,6 +3287,7 @@ kgdb_port_init()
 void
 cpu_reset()
 {
+#ifndef L4
 	struct region_descriptor region;
 
 	disable_intr();
@@ -3285,7 +3322,7 @@ cpu_reset()
 	bzero((caddr_t)PTD, NBPG);
 	tlbflush();
 #endif
-
+#endif /* !L4 */
 	for (;;);
 }
 

@@ -11,6 +11,7 @@
 #include <sys/types.h>
 
 #include <machine/cpu.h>
+#include <machine/specialreg.h>
 
 #include <machine/l4/linux_compat.h>
 #include <machine/l4/api/config.h>
@@ -22,6 +23,7 @@
 #include <machine/l4/smp.h>
 #include <machine/l4/exception.h>
 #include <machine/l4/stack_id.h>
+#include <machine/l4/vcpu.h>
 
 // just taken from L4Linux's arch/l4/kernel/main.c
 #include <l4/sys/err.h>
@@ -81,11 +83,12 @@ vaddr_t upage_addr;
 l4_cap_idx_t linux_server_thread_id = L4_INVALID_CAP;
 l4_cap_idx_t l4x_start_thread_id = L4_INVALID_CAP;
 l4_cap_idx_t l4x_start_thread_pager_id = L4_INVALID_CAP;
+l4_cap_idx_t l4x_user_gate[MAXCPUS];
 
 unsigned l4x_fiasco_gdt_entry_offset;
 
 struct simplelock l4x_cap_lock;
-static char init_stack[2*PAGE_SIZE];	/* XXX cl: this is plain wrong */
+static char init_stack[2*PAGE_SIZE];	/* XXX cl: this is wrong, but sufficient */
 enum {
 	L4X_SERVER_EXIT = 1,
 };
@@ -97,6 +100,11 @@ struct l4x_exception_func_struct {
 	unsigned long trap_mask;
 	int           for_vcpu;
 };
+
+/* Functions for l4x_exception_func_list[] */
+static int l4x_handle_msr(l4_exc_regs_t *exc);
+static int l4x_handle_clisti(l4_exc_regs_t *exc);
+
 static struct l4x_exception_func_struct l4x_exception_func_list[] = {
 	/* TODO THERE IS A BIG FAT TODO HERE */
 #ifdef L4_USE_L4VMM
@@ -108,8 +116,8 @@ static struct l4x_exception_func_struct l4x_exception_func_list[] = {
 #endif
 //	{ .trap_mask = 0x2000, .for_vcpu = 0, .f = l4x_handle_lxsyscall },
 //	{ .trap_mask = 0x0002, .for_vcpu = 0, .f = l4x_handle_int1 },
-//	{ .trap_mask = 0x2000, .for_vcpu = 1, .f = l4x_handle_msr },
-//	{ .trap_mask = 0x2000, .for_vcpu = 1, .f = l4x_handle_clisti },
+	{ .trap_mask = 0x2000, .for_vcpu = 1, .f = l4x_handle_msr },
+	{ .trap_mask = 0x2000, .for_vcpu = 1, .f = l4x_handle_clisti },
 //	{ .trap_mask = 0x4000, .for_vcpu = 0, .f = l4x_handle_ioport },
 };
 static const int l4x_exception_funcs
@@ -160,9 +168,9 @@ static inline int l4x_handle_pagefault(unsigned long pfa,
 static void l4x_setup_die_utcb(l4_exc_regs_t *exc);
 static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write);
 
-void exit(int code);
+static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu);
 
-/* Functions for l4x_exception_func_list[] */
+void exit(int code);
 
 /*
  * implentation
@@ -450,7 +458,7 @@ static void l4x_register_region(const l4re_ds_t ds, void *start,
 
 	ds_size = l4re_ds_size(ds);
 
-	LOG_printf("%15s: virt: %p to %p [%u KiB]\n",
+	LOG_printf("%15s: virt: %08p to %08p [%u KiB]\n",
 			tag, start, start + ds_size - 1, ds_size >> 10);
 
 	while (offset < ds_size) {
@@ -523,16 +531,32 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
 	extern int main(void *framep);		/* see: sys/kern/init_main.c */
 
-	/* TODO implement l4x_bsd_startup */
-	LOG_printf("l4x_bsd_startup: Waiting for startup message.\n");
+	/* setup kernel stack */
+	l4x_stack_setup(proc0paddr);
+
+	extern void init386(paddr_t first_avail); 	/* machdep.c */
+	init386(PAGE0_PAGE_ADDRESS);
+
+/* #ifdef L4_VCPU */
+	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
+	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS;
+	l4x_vcpu_state(0)->entry_ip = (l4_addr_t)&l4x_vcpu_entry;
+	l4x_vcpu_state(0)->user_task = L4_INVALID_CAP;
+/* #endif */
+
+	LOG_printf("%s: thread "l4util_idfmt".\n",
+			__func__, l4util_idstr(l4x_stack_id_get()));
+	(void) l4x_stack_utcb_get();
 
 	/* Wait for start signal */
 	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
 	LOG_printf("l4x_bsd_startup: received startup message.\n");
 
-	/* setup kernel stack */
-	l4x_stack_setup(proc0paddr);
+	linux_server_thread_id = l4x_stack_id_get();
+	/* TODO implement l4x_bsd_startup */
+	l4x_create_ugate(linux_server_thread_id, 0);
 
+	LOG_printf("ugate created\n");
 	/* Finally, fasten your seatbelts... */
 // TODO	main(data);
 
@@ -788,6 +812,27 @@ static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
 	return 1;
 }
 
+static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu)
+{
+	l4_msgtag_t r;
+
+	l4x_user_gate[cpu] = l4x_cap_alloc();
+	if (l4_is_invalid_cap(l4x_user_gate[cpu]))
+		LOG_printf("Error getting cap\n");
+	r = l4_factory_create_gate(l4re_env()->factory,
+			l4x_user_gate[cpu],
+			forthread, 0x10);
+	if (l4_error(r))
+		LOG_printf("Error creating user-gate %d\n", cpu);
+
+	char n[14];
+	snprintf(n, sizeof(n), "l4x ugate-%d", cpu);
+	n[sizeof(n) - 1] = 0;
+/* #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES */
+	l4_debugger_set_object_name(l4x_user_gate[cpu], n);
+/* #endif */
+}
+
 /*
  * Exit the VM and return to the L4 runtime.
  */
@@ -800,3 +845,62 @@ void exit(int code)
 	/* NOTREACHED */
 }
 
+/*
+ * BEGIN Functions for l4x_exception_func_list[]
+ */
+
+static int l4x_handle_msr(l4_exc_regs_t *exc)
+{
+	void *pc = (void *)l4_utcb_exc_pc(exc);
+	unsigned long reg = exc->ecx;
+
+	/* wrmsr */
+	if (*(unsigned short *)pc == 0x300f) {
+		if (reg != MSR_SYSENTER_CS
+				&& reg != MSR_SYSENTER_ESP
+				&& reg != MSR_SYSENTER_EIP)
+			LOG_printf("WARNING: Unknown wrmsr: %08lx at %p\n", reg, pc);
+
+		exc->ip += 2;
+		return 0; // handled
+	}
+
+	/* rdmsr */
+	if (*(unsigned short *)pc == 0x320f) {
+		if (reg == MSR_MISC_ENABLE) {
+			exc->eax = exc->edx = 0;
+/*		} else if (reg == MSR_K7_CLK_CTL) {
+			exc->eax = 0x20000000;		*/
+		} else
+			LOG_printf("WARNING: Unknown rdmsr: %08lx at %p\n", reg, pc);
+
+		exc->ip += 2;
+		return 0; // handled
+	}
+
+	return 1; // not for us
+}
+
+static int l4x_handle_clisti(l4_exc_regs_t *exc)
+{
+	unsigned char opcode = *(unsigned char *)l4_utcb_exc_pc(exc);
+	extern void exit(int);
+
+	/* check for cli or sti instruction */
+	if (opcode != 0xfa && opcode != 0xfb)
+		return 1; /* not handled if not those instructions */
+
+	/* If we trap those instructions it's most likely a configuration
+	 * error and quite early in the boot-up phase, so just quit. */
+	LOG_printf("Aborting L4Linux due to unexpected CLI/STI instructions"
+			" at %lx.\n", l4_utcb_exc_pc(exc));
+	enter_kdebug("abort");
+	exit(0);
+
+	/* NOTREACHED */
+	return 0;
+}
+
+/*
+ * END Functions for l4x_exception_func_list[]
+ */
