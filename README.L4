@@ -1,0 +1,33 @@
+OpenBSD port to the Fiasco-UX/L4 microkernel
+============================================
+
+Build:
+
+ - setup a Linux machine
+ - unpack l4re-snapshot, compile fiasco and L4
+   ( e.g. in /home/l4/ )
+ - unpack this source tree into that path
+   ( e.g. in /home/l4/openbsd/src )
+ - export that path via NFS
+ - setup an OpenBSD 4.8 machine
+ - import the /home/l4 path via NFS (needs to be the same on both machines)
+ - build the kernel on OpenBSD
+
+  # cd /home/l4/openbsd/
+  # mkdir obj/sys
+  # cd obj/sys
+  # ln -s /home/l4/openbsd/src/sys/arch/i386/conf/L4 .
+  # config -b . -n /home/l4/openbsd/src/sys/ L4
+  # make clean depend
+  # make
+  [ lots of output => generates file: bsd ]
+
+ - copy "bsd" to l4loader directory on Linux machine
+ - in l4loader directory:
+
+  # make
+  [ less output => generates: l4bsd ]
+
+Run:
+ - treat l4bsd as if it was vmlinu[xz] from L4Linux
+

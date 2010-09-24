@@ -11,8 +11,6 @@
 #include <machine/l4/l4lxapi/thread.h>
 #include <l4/sys/utcb.h>
 
-extern struct user *proc0paddr;		/* locore.s */
-
 struct l4x_stack_struct {
 	l4_utcb_t *l4utcb;
 };
