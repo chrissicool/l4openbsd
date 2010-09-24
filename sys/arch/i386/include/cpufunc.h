@@ -45,6 +45,14 @@
 
 #include <machine/specialreg.h>
 
+#ifdef L4
+#include <l4/sys/types.h>
+#include <l4/sys/segment.h>
+#define  L4XV_V(n)
+#define  L4XV_L(n) disable_intr()
+#define  L4XV_U(n) enable_intr()
+#endif
+
 static __inline void invlpg(u_int);
 static __inline void lidt(void *);
 static __inline void lldt(u_short);
@@ -78,13 +86,24 @@ invlpg(u_int addr)
 static __inline void
 lidt(void *p)
 {
+#ifndef L4
 	__asm __volatile("lidt (%0)" : : "r" (p));
+#endif
 }
 
 static __inline void
 lldt(u_short sel)
 {
+#ifdef L4
+	L4XV_V(f);
+	unsigned long addr = sel;	/* very nasty conversion */
+	L4XV_L(f);
+	fiasco_ldt_set(L4_INVALID_CAP /* XXX cl */, (void *)addr,
+			NGDT * sizeof(union descriptor) - 1, 0, l4_utcb());
+	L4XV_U(f);
+#else /* !L4 */
 	__asm __volatile("lldt %0" : : "r" (sel));
+#endif
 }
 
 static __inline void
@@ -143,17 +162,21 @@ rcr4(void)
 	return val;
 }
 
+/* L4BSD does not handle TLB flushing */
 static __inline void
 tlbflush(void)
 {
+#ifndef L4
 	u_int val;
 	__asm __volatile("movl %%cr3,%0" : "=r" (val));
 	__asm __volatile("movl %0,%%cr3" : : "r" (val));
+#endif
 }
 
 static __inline void
 tlbflushg(void)
 {
+#ifndef L4
 	/*
 	 * Big hammer: flush all TLB entries, including ones from PTE's
 	 * with the G bit set.  This should only be necessary if TLB
@@ -180,6 +203,7 @@ tlbflushg(void)
 		lcr4(cr4);
 	} else
 		tlbflush();
+#endif /* !L4 */
 }
 
 #ifdef notyet

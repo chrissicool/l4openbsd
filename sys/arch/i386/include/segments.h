@@ -134,6 +134,10 @@ int idt_vec_alloc(int, int);
 void idt_vec_set(int, void (*)(void));
 void idt_vec_free(int);
 
+#ifdef L4
+extern unsigned l4x_fiasco_gdt_entry_offset;
+#endif
+
 #endif /* _KERNEL */
 
 #endif /* !_LOCORE */
