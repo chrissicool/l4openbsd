@@ -9,6 +9,7 @@
 #include <machine/l4/l4lxapi/thread.h>
 //#include <machine/l4/api/api.h>
 
+#include <machine/cpufunc.h>
 #include <machine/atomic.h>
 #include <sys/types.h>
 
@@ -42,15 +43,14 @@ void l4lx_thread_init(void)
 void *l4lx_thread_stack_get(void)
 {
 	int n;
-	//unsigned long flags;
 
-/* TODO	local_irq_save(flags); */
+	disable_intr();
 
 	n = find_first_zero_bit(l4lx_thread_stacks_used,
 				L4LX_THREAD_NO_THREADS);
 	i386_atomic_setbits_l(l4lx_thread_stacks_used, 1<<n);
 
-/* TODO	local_irq_restore(flags); */
+	enable_intr();
 
 	if (n >= L4LX_THREAD_NO_THREADS)
 		return NULL;
