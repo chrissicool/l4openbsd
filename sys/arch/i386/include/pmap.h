@@ -142,6 +142,7 @@
  * "APDP_BASE" (0xfffff000).
  */
 
+/* TODO cl: Adjust all macros here, to point to (A)PTD[] */
 /*
  * The following defines identify the slots used as described above.
  */

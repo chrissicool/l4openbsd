@@ -133,6 +133,17 @@
 	iret
 
 
+#ifdef L4
+	.data
+
+	.globl _C_LABEL(PTD), _C_LABEL(APTD)
+_C_LABEL(PTD):
+	.space NBPG
+_C_LABEL(APTD):
+	.space NBPG
+
+#else /* !L4 */
+
 /*
  * PTmap is recursive pagemap at top of virtual address space.
  * Within PTmap, the page directory can be found (third indirection).
@@ -151,6 +162,8 @@
 	.set	_C_LABEL(APTD), (_C_LABEL(APTmap) + PDSLOT_APTE * NBPG)
 	# XXX 4 == sizeof pde
 	.set	_C_LABEL(APTDpde), (_C_LABEL(PTD) + PDSLOT_APTE * 4)
+
+#endif /* !L4 */
 
 /*
  * Initialization
