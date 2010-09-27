@@ -79,7 +79,7 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
  * \param thread	Thread to modify.
  * \param pager		Pager thread.
  */
-//void l4lx_thread_pager_change(l4_cap_idx_t thread, l4_cap_idx_t pager);
+void l4lx_thread_pager_change(l4_cap_idx_t thread, l4_cap_idx_t pager);
 
 /**
  * \brief Change pager of given thread to the kernel pager.

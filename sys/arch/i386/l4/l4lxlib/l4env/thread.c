@@ -215,7 +215,7 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 
 /*
  * l4lx_thread_pager_change
- *//*
+ */
 void l4lx_thread_pager_change(l4_cap_idx_t thread, l4_cap_idx_t pager)
 {
 	l4_utcb_t *u = l4_utcb();
@@ -226,7 +226,7 @@ void l4lx_thread_pager_change(l4_cap_idx_t thread, l4_cap_idx_t pager)
 	l4_thread_control_commit_u(thread, u);
 }
 
-*//*
+/*
  * l4lx_thread_set_kernel_pager
  *//*
 void l4lx_thread_set_kernel_pager(l4_cap_idx_t thread)

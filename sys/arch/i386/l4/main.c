@@ -557,9 +557,10 @@ static L4_CV void l4x_bsd_startup(void *data)
 
 	linux_server_thread_id = l4x_stack_id_get();
 	l4x_create_ugate(linux_server_thread_id, 0);
+
+	l4lx_thread_pager_change(linux_server_thread_id, caller_id);
 	/* TODO further implement l4x_bsd_startup */
 
-	LOG_printf("ugate created\n");
 	/* Finally, fasten your seatbelts... */
 // TODO	main(data);
 
