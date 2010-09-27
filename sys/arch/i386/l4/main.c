@@ -537,6 +537,10 @@ static L4_CV void l4x_bsd_startup(void *data)
 	extern void init386(paddr_t first_avail); 	/* machdep.c */
 	init386(PAGE0_PAGE_ADDRESS);
 
+	/*
+	 * At this point we have a halfway usable proc0 structure.
+	 */
+
 /* #ifdef L4_VCPU */
 	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
 	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS;
@@ -546,15 +550,14 @@ static L4_CV void l4x_bsd_startup(void *data)
 
 	LOG_printf("%s: thread "l4util_idfmt".\n",
 			__func__, l4util_idstr(l4x_stack_id_get()));
-	(void) l4x_stack_utcb_get();
 
 	/* Wait for start signal */
 	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
 	LOG_printf("l4x_bsd_startup: received startup message.\n");
 
 	linux_server_thread_id = l4x_stack_id_get();
-	/* TODO implement l4x_bsd_startup */
 	l4x_create_ugate(linux_server_thread_id, 0);
+	/* TODO further implement l4x_bsd_startup */
 
 	LOG_printf("ugate created\n");
 	/* Finally, fasten your seatbelts... */
