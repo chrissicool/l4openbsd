@@ -2879,10 +2879,6 @@ cpu_init_ldt(struct cpu_info *ci)
 }
 #endif	/* MULTIPROCESSOR */
 
-#ifdef L4
-#include <l4/log/log.h>
-#endif
-
 void
 init386(paddr_t first_avail)
 {
@@ -2902,6 +2898,8 @@ init386(paddr_t first_avail)
 	bootapiver = BOOTARG_APIVER;
 	boothowto = 0;
 	cpu_feature = 0;
+
+	i = kb = (int) im;	/* keep gcc -Wall -Werror happy */
 #endif
 
 	proc0.p_addr = proc0paddr;
@@ -2984,10 +2982,6 @@ init386(paddr_t first_avail)
 	cninit();	/* TODO for L4 */
 #endif
 
-#ifdef L4
-	LOG_printf("%s:%d console init skipped\n", __func__, __LINE__);
-#endif
-
 	/*
 	 * Saving SSE registers won't work if the save area isn't
 	 * 16-byte aligned.
@@ -2999,11 +2993,7 @@ init386(paddr_t first_avail)
 	/* call pmap initialization to make new kernel address space */
 	pmap_bootstrap((vaddr_t)atdevbase + IOM_SIZE);
 
-#ifdef L4
-	LOG_printf("%s:%d pmap bootstrapped\n", __func__, __LINE__);
-	return; /* XXX cl */
-#endif
-
+#ifndef L4
 	/*
 	 * Boot arguments are in a single page specified by /boot.
 	 *
@@ -3033,10 +3023,6 @@ init386(paddr_t first_avail)
 		panic("no BIOS memory map supplied");
 #endif
  
-#ifdef L4
-	LOG_printf("%s:%d /boot arguments processed\n", __func__, __LINE__);
-#endif
-
 #if defined(MULTIPROCESSOR)
 	/* install the lowmem ptp after boot args for 1:1 mappings */
 	pmap_prealloc_lowmem_ptp(round_page((paddr_t)(bootargv + bootargc)));
@@ -3228,6 +3214,8 @@ init386(paddr_t first_avail)
 	}
 #endif
 #endif
+
+#endif /* !L4 */
 
 #ifdef DDB
 	db_machine_init();
