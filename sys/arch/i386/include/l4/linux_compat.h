@@ -36,4 +36,6 @@ int bitmap_find_free_region(unsigned long *bitmap, int bits, int order);
 /* XXX This is most probably wrong */
 #define THREAD_SIZE		(2 * PAGE_SIZE)
 
+unsigned long long memparse(const char *ptr, char **retptr);
+
 #endif /* __LINUX_COMPAT_H__ */

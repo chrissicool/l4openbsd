@@ -19,6 +19,8 @@ include		"arch/i386/conf/GENERIC"
 # Adjust the options below to your environment.
 option		L4
 makeoptions     L4_BUILDDIR="/home/cc/TU-Berlin/fiasco/l4-svn/src/l4/builddir"
+option		L4_MEMSIZE="32"	# Default memory size (in MB).
+				# Override with mem=xxx boot parameter.
 option		ARCH_x86	# provide L4re with our architecture
 option		L4_EXTERNAL_RTC	# use L4re's RTC
 

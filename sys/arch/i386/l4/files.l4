@@ -3,8 +3,10 @@
 
 file	arch/i386/l4/main.c					l4
 file	arch/i386/l4/head.S					l4
+file	arch/i386/l4/bsd_compat.c				l4
 file	arch/i386/l4/linux_compat.c				l4
 file	arch/i386/l4/l4externals.c				l4
+file	arch/i386/l4/setupmem.c					l4
 
 # l4lxlib
 file	arch/i386/l4/l4lxlib/l4env/task.c			l4

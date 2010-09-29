@@ -13,6 +13,7 @@
 #include <machine/cpu.h>
 #include <machine/specialreg.h>
 
+#include <machine/l4/bsd_compat.h>
 #include <machine/l4/linux_compat.h>
 #include <machine/l4/api/config.h>
 #include <machine/l4/api/macros.h>
@@ -22,6 +23,7 @@
 #include <machine/l4/cap_alloc.h>
 #include <machine/l4/smp.h>
 #include <machine/l4/exception.h>
+#include <machine/l4/setup.h>
 #include <machine/l4/stack_id.h>
 #include <machine/l4/vcpu.h>
 
@@ -149,9 +151,9 @@ unsigned l4x_x86_utcb_get_orig_segment(void);
 
 static void get_initial_cpu_capabilities(void);
 
-static void l4x_register_pointer_section(void *p_in_addr,
+void l4x_register_pointer_section(void *p_in_addr,
 		int allow_noncontig, const char *tag);
-static void l4x_register_region(const l4re_ds_t ds, void *start,
+void l4x_register_region(const l4re_ds_t ds, void *start,
 		int allow_noncontig, const char *tag);
 void l4x_v2p_init(void);
 void l4x_v2p_add_item(l4_addr_t phys, void *virt, l4_size_t size);
@@ -176,8 +178,8 @@ void exit(int code);
  * implentation
  */
 
-int L4_CV l4start(int argc, char **argv) {
-
+int L4_CV l4start(int argc, char **argv)
+{
 	l4_cap_idx_t main_id;
 	l4_msgtag_t tag;
 
@@ -193,11 +195,13 @@ int L4_CV l4start(int argc, char **argv) {
 
 	LOG_printf("\033[34;1m======> L4OpenBSD starting... <========\033[0m\n");
 	LOG_printf("Binary name: %s\n", (*argv)?*argv:"NULL??");
+
 	argv++;
 	LOG_printf("OpenBSD kernel command line (%d args): ", argc - 1);
-	while (*argv) {
+	char **iterate_argv = argv;
+	while (*iterate_argv) {
 		LOG_printf("%s ", *argv);
-		argv++;
+		iterate_argv++;
 	}
 	LOG_printf("\n");
 
@@ -424,7 +428,7 @@ static void get_initial_cpu_capabilities(void)
 /*
  * Register program section(s) for virt_to_phys.
  */
-static void l4x_register_pointer_section(void *p_in_addr,
+void l4x_register_pointer_section(void *p_in_addr,
 		int allow_noncontig,
 		const char *tag)
 {
@@ -448,7 +452,7 @@ static void l4x_register_pointer_section(void *p_in_addr,
 	l4x_register_region(ds, (void *)addr, allow_noncontig, tag);
 }
 
-static void l4x_register_region(const l4re_ds_t ds, void *start,
+void l4x_register_region(const l4re_ds_t ds, void *start,
 		int allow_noncontig, const char *tag)
 {
 	l4_size_t ds_size;
@@ -538,6 +542,14 @@ static L4_CV void l4x_bsd_startup(void *data)
 	init386(PAGE0_PAGE_ADDRESS);
 
 	/*
+	 * Setup (allocate) some main memory. On i386, init386() will also
+	 * enumerate all available RAM according to bios_memmap from E820,
+	 * which we skipped here.
+	 */
+	extern char **bootargv;
+	l4x_memory_setup(bootargv);
+
+	/*
 	 * At this point we have a halfway usable proc0 structure.
 	 */
 
@@ -559,6 +571,7 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4x_create_ugate(linux_server_thread_id, 0);
 
 	l4lx_thread_pager_change(linux_server_thread_id, caller_id);
+
 	/* TODO further implement l4x_bsd_startup */
 
 	/* Finally, fasten your seatbelts... */
@@ -603,6 +616,19 @@ void l4x_linux_main_exit(void)
 	LOG_printf("Terminating L4Linux.\n");
 	exit(0);
 }
+
+void l4x_exit_l4linux(void)
+{
+	l4_msgtag_t tag = l4_msgtag(L4X_SERVER_EXIT, 0, 0, 0);
+
+/* TODO	__cxa_finalize(0); */
+
+	if (l4_msgtag_has_error(l4_ipc_send(l4x_start_thread_id, l4_utcb(), tag, L4_IPC_NEVER)))
+		outstring("IPC ERROR l4x_exit_l4linux\n");
+	l4_sleep_forever();
+	/* NOTREACHED */
+}
+
 
 /*
  * Exception scheduler

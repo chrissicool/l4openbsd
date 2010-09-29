@@ -18,6 +18,7 @@
  */
 
 L4_EXTERNAL_FUNC(LOG_printf);
+L4_EXTERNAL_FUNC(LOG_flush);
 L4_EXTERNAL_FUNC(l4x_external_exit);	/* jumps back into the wrapper */
 
 L4_EXTERNAL_FUNC(l4util_kip_kernel_has_feature);
@@ -27,11 +28,17 @@ L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
 L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
 #endif
 
+L4_EXTERNAL_FUNC(l4re_debug_obj_debug);
 L4_EXTERNAL_FUNC(l4re_ds_size);
 L4_EXTERNAL_FUNC(l4re_ds_phys);
 L4_EXTERNAL_FUNC(l4re_ma_alloc_srv);
 L4_EXTERNAL_FUNC(l4re_rm_attach_srv);
+L4_EXTERNAL_FUNC(l4re_rm_detach_srv);
 L4_EXTERNAL_FUNC(l4re_rm_find_srv);
+L4_EXTERNAL_FUNC(l4re_rm_reserve_area_srv);
+L4_EXTERNAL_FUNC(l4re_rm_free_area_srv);
 L4_EXTERNAL_FUNC(l4re_rm_show_lists_srv);
 L4_EXTERNAL_FUNC(l4re_util_cap_alloc);
 L4_EXTERNAL_FUNC(l4re_util_cap_free);
+
+L4_EXTERNAL_FUNC(l4sys_errtostr);

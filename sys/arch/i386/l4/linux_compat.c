@@ -7,6 +7,7 @@
 /* XXX we should move this file to a more general location */
 
 #include <machine/l4/linux_compat.h>
+#include <machine/l4/bsd_compat.h>
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -251,3 +252,42 @@ int bitmap_find_free_region(unsigned long *bitmap, int bits, int order)
         return -ENOMEM;
 }
 
+/**
+ *      memparse - parse a string with mem suffixes into a number
+ *      @ptr: Where parse begins
+ *      @retptr: (output) Optional pointer to next char after parse completes
+ *
+ *      Parses a string into a number.  The number stored at @ptr is
+ *      potentially suffixed with %K (for kilobytes, or 1024 bytes),
+ *      %M (for megabytes, or 1048576 bytes), or %G (for gigabytes, or
+ *      1073741824).  If the number is suffixed with K, M, or G, then
+ *      the return value is the number multiplied by one kilobyte, one
+ *      megabyte, or one gigabyte, respectively.
+ */
+
+unsigned long long memparse(const char *ptr, char **retptr)
+{
+	char *endptr;   /* local pointer to end of parsed string */
+
+	unsigned long long ret = strtoull(ptr, &endptr, 0);
+
+	switch (*endptr) {
+		case 'G':
+		case 'g':
+			ret <<= 10;
+		case 'M':
+		case 'm':
+			ret <<= 10;
+		case 'K':
+		case 'k':
+			ret <<= 10;
+			endptr++;
+		default:
+			break;
+	}
+
+	if (retptr)
+		*retptr = endptr;
+
+	return ret;
+}
