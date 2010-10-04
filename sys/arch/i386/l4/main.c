@@ -12,6 +12,7 @@
 
 #include <machine/cpu.h>
 #include <machine/specialreg.h>
+#include <machine/segments.h>
 
 #include <machine/l4/bsd_compat.h>
 #include <machine/l4/linux_compat.h>
@@ -151,6 +152,7 @@ unsigned l4x_x86_utcb_get_orig_segment(void);
 
 static void get_initial_cpu_capabilities(void);
 
+void l4x_load_gdt_register(struct region_descriptor *gdt);
 void l4x_register_pointer_section(void *p_in_addr,
 		int allow_noncontig, const char *tag);
 void l4x_register_region(const l4re_ds_t ds, void *start,
@@ -423,6 +425,18 @@ unsigned l4x_x86_utcb_get_orig_segment(void)
 static void get_initial_cpu_capabilities(void)
 {
 	/* XXX cl: we should set a l4util_cpu_capabilities() here */
+}
+
+/*
+ * Set the global descriptor table.
+ */
+void l4x_load_gdt_register(struct region_descriptor *gdt)
+{
+	if (fiasco_gdt_set(L4_INVALID_CAP,
+				gdt, 8, 2, l4_utcb()))
+		LOG_printf("GDT setting failed\n");
+	asm("mov %0, %%fs"
+			: : "r" ((l4x_fiasco_gdt_entry_offset + 2) * 8 + 3) : "memory");
 }
 
 /*

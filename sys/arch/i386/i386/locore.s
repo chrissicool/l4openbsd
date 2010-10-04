@@ -1175,11 +1175,17 @@ ENTRY(copystr)
 NENTRY(lgdt)
 	/* Reload the descriptor table. */
 	movl	4(%esp),%eax
+#ifdef L4
+	push	%eax
+	call	_C_LABEL(l4x_load_gdt_register)	/* void l4x_load_gdt_register(struct region_descriptor *gdt) */
+	ret
+#else
 	lgdt	(%eax)
 	/* Flush the prefetch q. */
 	jmp	1f
 	nop
-1:	/* Reload "stale" selectors. */
+1:
+	/* Reload "stale" selectors. */
 	movl	$GSEL(GDATA_SEL, SEL_KPL),%eax
 	movw	%ax,%ds
 	movw	%ax,%es
@@ -1191,6 +1197,7 @@ NENTRY(lgdt)
 	pushl	$GSEL(GCODE_SEL, SEL_KPL)
 	pushl	%eax
 	lret
+#endif
 
 ENTRY(setjmp)
 	movl	4(%esp),%eax
