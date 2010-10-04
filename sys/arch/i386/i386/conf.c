@@ -450,6 +450,9 @@ dev_rawpart(struct device *dv)
 
 cons_decl(com);
 cons_decl(ws);
+#ifdef L4_SERIAL_CONS
+cons_decl(l4ser);
+#endif
 
 struct	consdev constab[] = {
 #if NWSDISPLAY > 0
@@ -457,6 +460,9 @@ struct	consdev constab[] = {
 #endif
 #if NCOM
 	cons_init(com),
+#endif
+#ifdef L4_SERIAL_CONS
+	cons_init(l4ser),
 #endif
 	{ 0 },
 };

@@ -2975,12 +2975,12 @@ init386(paddr_t first_avail)
 #if NISA > 0
 	isa_defaultirq();
 #endif
+#endif
 
 	/*
 	 * Attach the glass console early in case we need to display a panic.
 	 */
 	cninit();	/* TODO for L4 */
-#endif
 
 	/*
 	 * Saving SSE registers won't work if the save area isn't
