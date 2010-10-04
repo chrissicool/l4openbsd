@@ -159,8 +159,13 @@
  * PDP_PDE and APDP_PDE: the VA of the PDE that points back to the PDP/APDP
  */
 
+#ifdef L4
+#define PTE_BASE	((pt_entry_t *)  PTD )
+#define APTE_BASE	((pt_entry_t *) APTD )
+#else
 #define PTE_BASE	((pt_entry_t *)  (PDSLOT_PTE * NBPD) )
 #define APTE_BASE	((pt_entry_t *)  (PDSLOT_APTE * NBPD) )
+#endif
 #define PDP_BASE ((pd_entry_t *)(((char *)PTE_BASE) + (PDSLOT_PTE * NBPG)))
 #define APDP_BASE ((pd_entry_t *)(((char *)APTE_BASE) + (PDSLOT_APTE * NBPG)))
 #define PDP_PDE		(PDP_BASE + PDSLOT_PTE)
@@ -343,6 +348,9 @@ struct pv_page {
  */
 
 extern pd_entry_t	PTD[];
+#ifdef L4
+extern pd_entry_t	APTD[];
+#endif
 
 /* PTDpaddr: is the physical address of the kernel's PDP */
 extern u_int32_t PTDpaddr;

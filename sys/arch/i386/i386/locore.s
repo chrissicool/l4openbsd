@@ -138,9 +138,9 @@
 
 	.globl _C_LABEL(PTD), _C_LABEL(APTD)
 _C_LABEL(PTD):
-	.space NBPG
+	.space 1024*NBPG
 _C_LABEL(APTD):
-	.space NBPG
+	.space 1024*NBPG
 
 #else /* !L4 */
 
