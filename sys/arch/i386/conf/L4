@@ -35,6 +35,7 @@ rmoption	BOOT_CONFIG	# support for boot -c
 ##
 # provide minimal default config based on RAMDISK
 option		SMALL_KERNEL
+option		DIAGNOSTIC
 option		RAMDISK_HOOKS
 option		MINIROOTSIZE=3800
 
