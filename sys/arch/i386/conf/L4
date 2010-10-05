@@ -11,7 +11,9 @@
 
 ##
 # based on the default OpenBSD kernel configuration
-include		"arch/i386/conf/GENERIC"
+#include		"arch/i386/conf/GENERIC"
+
+machine		i386
 
 ##
 # L4 build instructions:
@@ -26,6 +28,37 @@ option		L4_EXTERNAL_RTC	# use L4re's RTC
 option		L4_SERIAL_CONS	# enable serial console
 
 ##
-# reconfigure some options
+# reconfigure some default options
 rmoption	APERTURE	# in-kernel aperture driver for XFree86
 rmoption	BOOT_CONFIG	# support for boot -c
+
+##
+# provide minimal default config based on RAMDISK
+option		SMALL_KERNEL
+option		RAMDISK_HOOKS
+option		MINIROOTSIZE=3800
+
+maxusers	4
+
+option		TIMEZONE=0
+option		DST=0
+
+option		INET
+
+option		FFS
+option		FFS2
+
+option		CRYPTO
+
+config		bsd	root on rd0a swap on rd0b #and wd0b and sd0b
+
+mainbus0 at root
+
+cpu0		at mainbus?
+bios0		at mainbus0
+isa0		at mainbus0
+npx0		at isa? port 0xf0 irq 13	# math co-processor
+
+pseudo-device	loop	1
+pseudo-device	rd	1
+pseudo-device	wsmux	2
