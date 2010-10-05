@@ -420,7 +420,9 @@ trap(struct trapframe *frame)
 		goto out;
 
 	case T_XFTRAP|T_USER:
+#if NNPX > 0
 		npxtrap(frame);
+#endif
 		goto out;
 
 	case T_PAGEFLT:			/* allow page faults in kernel mode */

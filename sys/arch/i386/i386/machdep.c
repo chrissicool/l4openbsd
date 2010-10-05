@@ -2202,6 +2202,7 @@ sendsig(sig_t catcher, int sig, int mask, u_long code, int type,
 		sp = tf->tf_esp;
 
 	frame.sf_sc.sc_fpstate = NULL;
+#if NNPX > 0
 	if (p->p_md.md_flags & MDP_USEDFPU) {
 		npxsave_proc(p, 1);
 		sp -= sizeof(union savefpu);
@@ -2214,6 +2215,7 @@ sendsig(sig_t catcher, int sig, int mask, u_long code, int type,
 		/* Signal handlers get a completely clean FP state */
 		p->p_md.md_flags &= ~MDP_USEDFPU;
 	}
+#endif
 
 	fp = (struct sigframe *)sp - 1;
 	frame.sf_scp = &fp->sf_sc;
@@ -2358,8 +2360,10 @@ sys_sigreturn(struct proc *p, void *v, register_t *retval)
 	tf->tf_esp = context.sc_esp;
 	tf->tf_ss = context.sc_ss;
 
+#if NNPX > 0
 	if (p->p_md.md_flags & MDP_USEDFPU)
 		npxsave_proc(p, 0);
+#endif
 
 	if (context.sc_fpstate) {
 		if ((error = copyin(context.sc_fpstate,
@@ -2683,11 +2687,12 @@ void
 setregs(struct proc *p, struct exec_package *pack, u_long stack,
     register_t *retval)
 {
-	struct pcb *pcb = &p->p_addr->u_pcb;
 	struct pmap *pmap = vm_map_pmap(&p->p_vmspace->vm_map);
 	struct trapframe *tf = p->p_md.md_regs;
 
 #if NNPX > 0
+	struct pcb *pcb = &p->p_addr->u_pcb;
+
 	/* If we were using the FPU, forget about it. */
 	if (pcb->pcb_fpcpu != NULL)
 		npxsave_proc(p, 0);
