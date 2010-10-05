@@ -134,7 +134,6 @@ static int probe_l4ser(void)
 #ifdef L4_SERIAL_CONS
 
 #include <dev/cons.h>
-#include <l4/log/log.h>
 
 cons_decl(l4ser)
 
