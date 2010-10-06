@@ -51,6 +51,10 @@
 #define  L4XV_V(n)
 #define  L4XV_L(n) disable_intr()
 #define  L4XV_U(n) enable_intr()
+
+/* tamed.c */
+extern void l4x_global_cli(void);
+extern void l4x_global_sti(void);
 #endif
 
 static __inline void invlpg(u_int);
@@ -137,7 +141,9 @@ rcr2(void)
 static __inline void
 lcr3(u_int val)
 {
+#ifndef L4
 	__asm __volatile("movl %0,%%cr3" : : "r" (val));
+#endif
 }
 
 static __inline u_int
@@ -216,13 +222,21 @@ void	setidt(int idx, /*XXX*/caddr_t func, int typ, int dpl);
 static __inline void
 disable_intr(void)
 {
+#ifdef L4
+	l4x_global_cli();
+#else
 	__asm __volatile("cli");
+#endif
 }
 
 static __inline void
 enable_intr(void)
 {
+#ifdef L4
+	l4x_global_sti();
+#else
 	__asm __volatile("sti");
+#endif
 }
 
 static __inline u_int

@@ -398,6 +398,9 @@ ioapic_activate(struct device *self, int act)
  * range of the vectors here.  (0x30..0xef)
  */
 
+#ifdef L4
+struct intrhand apic_intrhand_internal[256];
+#endif
 struct intrhand *apic_intrhand[256];
 int	apic_intrcount[256];
 int	apic_maxlevel[256];
@@ -607,6 +610,9 @@ ioapic_enable(void)
 			apic_vectorset(sc, p, minlevel, maxlevel);
 		}
 	}
+#ifdef L4
+	apic_intrhand[0] = &apic_intrhand_internal[0];
+#endif
 }
 
 void

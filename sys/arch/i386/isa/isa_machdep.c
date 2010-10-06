@@ -241,6 +241,9 @@ isa_strayintr(int irq)
 
 int intrtype[ICU_LEN], intrmask[ICU_LEN], intrlevel[ICU_LEN];
 int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
+#ifdef L4
+struct intrhand intrhand_internal[ICU_LEN];
+#endif
 struct intrhand *intrhand[ICU_LEN];
 
 int imask[NIPL];	/* Bitmask telling what interrupts are blocked. */
@@ -613,6 +616,10 @@ isa_attach_hook(struct device *parent, struct device *self,
 	if (isa_has_been_seen)
 		panic("isaattach: ISA bus already seen!");
 	isa_has_been_seen = 1;
+
+#ifdef L4
+	intrhand[0] = &intrhand_internal[0];
+#endif
 }
 
 #if NISADMA > 0

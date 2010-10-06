@@ -549,7 +549,13 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
 	extern int main(void *framep);		/* see: sys/kern/init_main.c */
 
-	/* setup kernel stack */
+	/* Initialize vCPU state now, we need it for init386()::consinit() */
+	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
+	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS;
+	l4x_vcpu_state(0)->entry_ip = (l4_addr_t)&l4x_vcpu_entry;
+	l4x_vcpu_state(0)->user_task = L4_INVALID_CAP;
+
+	/* Setup kernel stack, init386() needs it.  */
 	l4x_stack_setup(proc0paddr);
 
 	extern void init386(paddr_t first_avail); 	/* machdep.c */
@@ -566,13 +572,6 @@ static L4_CV void l4x_bsd_startup(void *data)
 	/*
 	 * At this point we have a halfway usable proc0 structure.
 	 */
-
-/* #ifdef L4_VCPU */
-	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
-	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS;
-	l4x_vcpu_state(0)->entry_ip = (l4_addr_t)&l4x_vcpu_entry;
-	l4x_vcpu_state(0)->user_task = L4_INVALID_CAP;
-/* #endif */
 
 	LOG_printf("%s: thread "l4util_idfmt".\n",
 			__func__, l4util_idstr(l4x_stack_id_get()));
