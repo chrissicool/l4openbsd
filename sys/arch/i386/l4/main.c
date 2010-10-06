@@ -109,7 +109,6 @@ static int l4x_handle_msr(l4_exc_regs_t *exc);
 static int l4x_handle_clisti(l4_exc_regs_t *exc);
 
 static struct l4x_exception_func_struct l4x_exception_func_list[] = {
-	/* TODO THERE IS A BIG FAT TODO HERE */
 #ifdef L4_USE_L4VMM
 //	{ .trap_mask = ~0UL,   .for_vcpu = 1, .f = l4vmm_handle_exception_r0 },
 #endif

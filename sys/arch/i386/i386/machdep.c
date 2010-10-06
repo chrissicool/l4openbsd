@@ -2985,7 +2985,7 @@ init386(paddr_t first_avail)
 	/*
 	 * Attach the glass console early in case we need to display a panic.
 	 */
-	cninit();	/* TODO for L4 */
+	cninit();
 
 	/*
 	 * Saving SSE registers won't work if the save area isn't
