@@ -324,7 +324,7 @@ static void l4x_map_below_mainmem(void)
 	int map_count = 0, map_count_all = 0;
 	l4_addr_t reg_start = ~0UL;
 
-	LOG_printf("Filling lower ptabs...\n");
+	LOG_printf("Filling lower ptabs... ");
 	LOG_flush();
 
 	/* Loop through free address space before mainmem */
@@ -373,7 +373,7 @@ static void l4x_map_below_mainmem(void)
 		}
 	}
 	l4x_map_below_mainmem_print_region(reg_start, i);
-	LOG_printf("Done (%d entries).\n", map_count_all);
+	LOG_printf("done (%d entries).\n", map_count_all);
 	LOG_flush();
 }
 
