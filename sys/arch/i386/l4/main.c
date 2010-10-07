@@ -331,8 +331,8 @@ int L4_CV l4start(int argc, char **argv)
 
 	/* Send start message to main thread. */
 	tag = l4_msgtag(0, 0, 0, 0);
-	l4_ipc_send(main_id, l4_utcb(), tag, L4_IPC_NEVER);
 	LOG_printf("Main thread running, waiting...\n");
+	l4_ipc_send(main_id, l4_utcb(), tag, L4_IPC_NEVER);
 	l4x_server_loop();
 	
 	/* NOTREACHED */
