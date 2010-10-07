@@ -584,10 +584,8 @@ static L4_CV void l4x_bsd_startup(void *data)
 
 	l4lx_thread_pager_change(linux_server_thread_id, caller_id);
 
-	/* TODO further implement l4x_bsd_startup */
-
 	/* Finally, fasten your seatbelts... */
-// TODO	main(data);
+	main(data);
 
 	l4x_linux_main_exit();
 	/* NOTREACHED */
