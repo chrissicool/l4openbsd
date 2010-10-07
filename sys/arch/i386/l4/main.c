@@ -73,13 +73,6 @@ l4_kernel_info_t *l4lx_kinfo;
 l4_vcpu_state_t *l4x_vcpu_states[MAXCPUS];
 unsigned int  l4x_nr_cpus = 1;
 
-struct l4x_phys_virt_mem {
-	l4_addr_t phys; /* physical address */
-	void    * virt; /* virtual address */
-	l4_size_t size; /* size of chunk in Bytes */
-};
-#define L4X_PHYS_VIRT_ADDRS_MAX_ITEMS 20
-static struct l4x_phys_virt_mem l4x_phys_virt_addrs[L4X_PHYS_VIRT_ADDRS_MAX_ITEMS];
 int l4x_phys_virt_addr_items;
 vaddr_t upage_addr;
 
@@ -156,8 +149,6 @@ void l4x_register_pointer_section(void *p_in_addr,
 		int allow_noncontig, const char *tag);
 void l4x_register_region(const l4re_ds_t ds, void *start,
 		int allow_noncontig, const char *tag);
-void l4x_v2p_init(void);
-void l4x_v2p_add_item(l4_addr_t phys, void *virt, l4_size_t size);
 
 static void l4x_setup_upage(void);
 
@@ -290,7 +281,7 @@ int L4_CV l4start(int argc, char **argv)
 	l4x_register_pointer_section(&__data_start, 0, "sec-data");
 
 	/* VGA BIOS memory hole */
-	l4x_v2p_add_item(0xa0000, (void *)0xa0000, 0xfffff - 0xa0000);
+	l4x_v2p_add_item(0xa0000, 0xa0000, 0xfffff - 0xa0000);
 
 #ifdef L4_EXTERNAL_RTC
 	l4_uint32_t seconds;
@@ -488,28 +479,13 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 		if (!allow_noncontig && phys_size != ds_size)
 			LOG_printf("Noncontiguous region for %s\n", tag);
 
-		l4x_v2p_add_item(phys_addr, start + offset, phys_size);
+		l4x_v2p_add_item(phys_addr, (vaddr_t)(start + offset), phys_size);
 
 		LOG_printf("%15s: Phys: 0x%08lx to 0x%08lx, Size: %8u\n",
-				tag, phys_addr, phys_addr + phys_size, phys_size);
+				tag, phys_addr, phys_addr + phys_size - 1, phys_size);
 
 		offset += phys_size;
 	}
-}
-
-
-void l4x_v2p_init(void)
-{
-	l4x_phys_virt_addr_items = 0;
-}
-
-void l4x_v2p_add_item(l4_addr_t phys, void *virt, l4_size_t size)
-{
-	if (l4x_phys_virt_addr_items == L4X_PHYS_VIRT_ADDRS_MAX_ITEMS)
-		panic("v2p filled up!");
-
-	l4x_phys_virt_addrs[l4x_phys_virt_addr_items++]
-			= (struct l4x_phys_virt_mem){.phys = phys, .virt = virt, .size = size};
 }
 
 static void l4x_setup_upage(void)

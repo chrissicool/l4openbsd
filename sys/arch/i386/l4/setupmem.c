@@ -3,6 +3,7 @@
  */
 
 #include <sys/param.h>
+#include <sys/systm.h>
 #include <sys/types.h>
 
 #include <machine/vmparam.h>
@@ -25,7 +26,68 @@
 #include <l4/re/c/util/cap_alloc.h>
 #include <l4/re/c/util/cap.h>
 
-/* DATA */
+/*
+ * P H Y S I C A L - T O - V I R T U A L
+ * M E M O R Y   M A P P I N G
+ */
+
+struct l4x_phys_virt_mem {
+	l4_addr_t phys; /* physical address */
+	vaddr_t   virt; /* virtual address */
+	l4_size_t size; /* size of chunk in Bytes */
+};
+
+#define L4X_PHYS_VIRT_ADDRS_MAX_ITEMS 20
+static struct l4x_phys_virt_mem l4x_phys_virt_addrs[L4X_PHYS_VIRT_ADDRS_MAX_ITEMS];
+static int l4x_phys_virt_addr_items;
+
+void l4x_v2p_init(void)
+{
+	l4x_phys_virt_addr_items = 0;
+}
+
+void l4x_v2p_add_item(l4_addr_t phys, vaddr_t virt, l4_size_t size)
+{
+	if (l4x_phys_virt_addr_items == L4X_PHYS_VIRT_ADDRS_MAX_ITEMS)
+		panic("v2p filled up!");
+
+	l4x_phys_virt_addrs[l4x_phys_virt_addr_items++]
+			= (struct l4x_phys_virt_mem) { 	.phys = phys, 
+							.virt = virt, 
+							.size = size };
+}
+
+
+paddr_t
+l4x_virt_to_phys(volatile vaddr_t address)
+{
+	int i;
+
+	for (i = 0; i < l4x_phys_virt_addr_items; i++) {
+		if (l4x_phys_virt_addrs[i].virt <= address &&
+				address < l4x_phys_virt_addrs[i].virt
+				+ l4x_phys_virt_addrs[i].size) {
+			return (address - l4x_phys_virt_addrs[i].virt
+					+ l4x_phys_virt_addrs[i].phys);
+		}
+	}
+
+	//l4x_virt_to_phys_show();
+	/* Whitelist: */
+
+	/* Debugging check: don't miss a translation, can give nasty
+	 *                  DMA problems */
+	LOG_printf("%s: Could not translate virt. address %p\n",
+			__func__, address);
+
+	return NULL;
+}
+
+
+
+/*
+ * M E M O R Y   S E T U P
+ */
 
 #ifdef L4_DEBUG
 static int l4x_debug_show_ghost_regions = 1;
@@ -46,13 +108,11 @@ l4re_ds_t l4x_ds_isa_dma;
 static void *l4x_isa_dma_memory_start;
 static unsigned long l4x_isa_dma_size   = 0;
 
-/* FUNCTIONS */
-
 static void setup_l4x_memory(char **cmdl,
-                             paddr_t *main_mem_start,
-                             paddr_t *main_mem_end,
-                             paddr_t *isa_dma_mem_start,
-                             paddr_t *isa_dma_mem_end);
+                             vaddr_t *main_mem_startv,
+                             vaddr_t *main_mem_endv,
+                             vaddr_t *isa_dma_mem_startv,
+                             vaddr_t *isa_dma_mem_endv);
 static void l4x_map_below_mainmem_print_region(l4_addr_t s, l4_addr_t e);
 static void l4x_map_below_mainmem(void);
 static void l4x_mbm_request_ghost(l4re_ds_t *ghost_ds);
@@ -60,48 +120,54 @@ static unsigned long get_min_virt_address(void);
 
 void l4x_memory_setup(char **cmdl)
 {
-	paddr_t mem_start, mem_end, isa_start, isa_end;
+	vaddr_t mem_startv, mem_endv, isa_startv, isa_endv;
+	paddr_t mem_startp, mem_endp, isa_startp, isa_endp;
 	extern char _end[];
 
-	setup_l4x_memory(cmdl, &mem_start, &mem_end, &isa_start, &isa_end);
+	setup_l4x_memory(cmdl, &mem_startv, &mem_endv, &isa_startv, &isa_endv);
 
-	if (mem_start && (paddr_t)&_end > mem_start)
+	if (mem_startv && (vaddr_t)&_end > mem_startv)
 		enter_kdebug("Kernel maps into main memory region!");
-	if (isa_start && (paddr_t)&_end > isa_start)
+	if (isa_startv && (vaddr_t)&_end > isa_startv)
 		enter_kdebug("Kernel maps into ISA memory region!");
 
-	if (mem_end - mem_start)
-		uvm_page_physload(mem_start, mem_end, mem_start, mem_end,
+	mem_startp = l4x_virt_to_phys(mem_startv);
+	mem_endp   = l4x_virt_to_phys(mem_endv);
+	isa_startp = l4x_virt_to_phys(isa_startv);
+	isa_endp   = l4x_virt_to_phys(isa_endv);
+
+	if (mem_endv - mem_startv)
+		uvm_page_physload(mem_startp, mem_endp, mem_startp, mem_endp,
 				VM_FREELIST_DEFAULT);
 
-	if (isa_end - isa_start)
-		uvm_page_physload(isa_start, isa_end, isa_start, isa_end,
+	if (isa_endv - isa_startv)
+		uvm_page_physload(isa_startp, isa_endp, isa_startp, isa_endp,
 				VM_FREELIST_DEFAULT);
 
 	/*
 	 * Fill global parameters from machdep.c
-	 * These are used on other occasions (PCI, ...)
+	 * These are used on other occasions (PCI, ISA, ...)
 	 */
-	extern paddr_t avail_end;
+	extern vaddr_t avail_end;
 	extern u_int ndumpmem;
 	extern struct dumpmem {
-		paddr_t start;
-		paddr_t end;
+		vaddr_t start;
+		vaddr_t end;
 	} dumpmem[VM_PHYSSEG_MAX];
 	extern int physmem;
 
-	avail_end = mem_end;
+	avail_end = mem_endp;
 	ndumpmem = 1;
-	dumpmem[0].start = atop(mem_start);
-	dumpmem[0].end = atop(mem_end);
-	physmem = atop(mem_end - mem_start);
+	dumpmem[0].start = atop(mem_startv);
+	dumpmem[0].end = atop(mem_endv);
+	physmem = atop(mem_endv - mem_startv);
 }
 
 static void setup_l4x_memory(char **cmdl,
-                             paddr_t *main_mem_start,
-                             paddr_t *main_mem_end,
-                             paddr_t *isa_dma_mem_start,
-                             paddr_t *isa_dma_mem_end)
+                             vaddr_t *main_mem_startv,
+                             vaddr_t *main_mem_endv,
+                             vaddr_t *isa_dma_mem_startv,
+                             vaddr_t *isa_dma_mem_endv)
 {
 	extern char _end[];
 	int res;
@@ -249,15 +315,15 @@ static void setup_l4x_memory(char **cmdl,
 		l4x_exit_l4linux();
 	}
 
-	*main_mem_start = (paddr_t)l4x_main_memory_start;
-	*main_mem_end   = (paddr_t)(l4x_main_memory_start + l4x_mainmem_size);
+	*main_mem_startv = (vaddr_t)l4x_main_memory_start;
+	*main_mem_endv   = (vaddr_t)(l4x_main_memory_start + l4x_mainmem_size - 1);
 
 	if (l4_is_invalid_cap(l4x_ds_isa_dma))
-		*isa_dma_mem_start = *isa_dma_mem_end = 0;
+		*isa_dma_mem_startv = *isa_dma_mem_endv = 0;
 	else {
-		*isa_dma_mem_start = (paddr_t)l4x_isa_dma_memory_start;
-		*isa_dma_mem_end   = (paddr_t)(l4x_isa_dma_memory_start
-				+ l4x_isa_dma_size);
+		*isa_dma_mem_startv = (vaddr_t)l4x_isa_dma_memory_start;
+		*isa_dma_mem_endv   = (vaddr_t)(l4x_isa_dma_memory_start
+				+ l4x_isa_dma_size - 1);
 	}
 
 	if (!l4_is_invalid_cap(l4x_ds_isa_dma))
