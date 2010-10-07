@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <sys/errno.h>
 
+#include <machine/l4/irq.h>
 #include <machine/l4/vcpu.h>
 #include <machine/l4/cap_alloc.h>
 
@@ -43,17 +44,33 @@
 #define PORT0_NAME              "l4ser"
 
 cdev_decl(l4ser);
+void l4ser_attach(struct device *, struct device *, void *);
+int  l4ser_match(struct device *parent, void *match, void *aux);
 
 /* helpers */
 static int probe_l4ser(void);
 
 /* DATA */
 
-/* open, close, read, write, ioctl, stop, tty */
-struct cdevsw l4ser_cd = {
-	l4seropen, l4serclose, l4serread, l4serwrite, l4serioctl,
-	l4serstop, l4sertty, NULL, NULL, 0, 0, NULL
+struct l4ser_softc {
+	struct device sc_dev;
+	void *sc_ih;
+	struct tty *sc_tty;
+	int enabled;
 };
+
+struct cfattach l4ser_ca = {
+	sizeof(struct l4ser_softc), l4ser_match, l4ser_attach, NULL, NULL
+};
+
+struct cfdriver l4ser_cd = {
+	NULL, "l4ser", DV_TTY
+};
+/* open, close, read, write, ioctl, stop, tty */
+//struct cdevsw l4ser_cd = {
+//	l4seropen, l4serclose, l4serread, l4serwrite, l4serioctl,
+//	l4serstop, l4sertty, NULL, NULL, 0, 0, NULL
+//};
 
 static int l4sermajor, l4serminor;
 
@@ -65,6 +82,12 @@ static struct l4ser_uart {
 
 /* IMPLEMENTATION */
 
+int l4ser_match(struct device *parent, void *match, void *aux)
+{
+	return 0;
+}
+
+void l4ser_attach(struct device *parent, struct device *self, void *aux) { }
 int l4seropen(dev_t dev, int oflags, int devtype, struct proc *p) { return 0; }
 int l4serclose(dev_t dev, int fflag, int devtype, struct proc *p) { return 0; }
 int l4serread(dev_t dev, struct uio *uio, int ioflag) { return 0; }
@@ -79,6 +102,7 @@ struct tty *l4sertty(dev_t dev)
 	return f;
 }
 
+#include <l4/log/log.h>
 static int probe_l4ser(void)
 {
 	int irq;
@@ -113,14 +137,15 @@ static int probe_l4ser(void)
 		l4x_cap_free(l4ser.vcon_irq_cap);
 
 		// No interrupt, just output
+		LOG_printf("l4ser: No interrupt, just output.\n");
 		l4ser.vcon_irq_cap = L4_INVALID_CAP;
 		irq = 0;
-	} /* else if ((irq = l4x_register_irq(l4ser.vcon_irq_cap)) < 0) {
+	} else if ((irq = l4x_register_irq(l4ser.vcon_irq_cap)) < 0) {
 		l4x_cap_free(l4ser.vcon_irq_cap);
 		l4x_cap_free(l4ser.vcon_cap);
 		L4XV_U(f);
 		return EIO;
-	} TODO cl: Make IRQ jandling work */
+	}
 
 	vcon_attr.i_flags = 0;
 	vcon_attr.o_flags = 0;
@@ -178,6 +203,8 @@ void l4sercnputc(dev_t dev, int i)
 	L4XV_V(f);
 
 	c = i;
+	if (c == '\r')
+		return;		/* XXX cl: is this a crazy "qemu -serial stdio" hack! */
 	L4XV_L(f);
 	l4_vcon_write(l4ser.vcon_cap, &c, 1);
 	L4XV_U(f);

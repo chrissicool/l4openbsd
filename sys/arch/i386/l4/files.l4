@@ -17,4 +17,7 @@ file	arch/i386/l4/l4lxlib/l4env/thread.c		l4
 file	arch/i386/l4/l4lxlib/generic/thread_gen.c	l4
 
 # drivers
-file	arch/i386/l4/l4ser.c				l4 & l4_serial_cons
+define	l4ser {[apid = -1]}
+device	l4ser
+attach	l4ser at isa
+file	arch/i386/l4/l4ser.c				l4ser
