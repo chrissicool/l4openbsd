@@ -4,6 +4,7 @@
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/rwlock.h>
 
 #include <machine/reg.h>
 #include <machine/intr.h>
@@ -15,9 +16,15 @@
 #include <machine/l4/vcpu.h>
 #include <machine/l4/irq.h>
 
+#define NR_REQUESTABLE I386_NSOFTINTR
+
 static int handle_irq(int irq, struct reg *regs);
+static void init_array(void);
 
 static struct reg *irq_regs;
+static struct rwlock irq_lock;
+static l4_cap_idx_t caps[NR_REQUESTABLE];
+static int init_done = 0;
 
 static inline struct reg *
 set_irq_regs(struct reg *new_regs)
@@ -90,7 +97,7 @@ handle_irq(int irq, struct reg *regs)
 		for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next)
 			result |= q->ih_fun(q->ih_arg);
 #if NIOAPIC > 0
-	if (irq < 256)
+	if (irq < NR_REQUESTABLE)
 		for (p = &apic_intrhand[irq]; (q = *p) != NULL; p = &q->ih_next)
 			result |= q->ih_fun(q->ih_arg);
 #endif
@@ -98,3 +105,38 @@ handle_irq(int irq, struct reg *regs)
 	return result;
 }
 
+static void
+init_array(void)
+{
+	int i;
+
+	rw_init(&irq_lock, "l4x-irqlock");
+
+	for (i = 0; i < NR_REQUESTABLE; i++)
+		caps[i] = L4_INVALID_CAP;
+
+	init_done = 1;
+}
+
+
+int
+l4x_register_irq(l4_cap_idx_t irqcap)
+{
+	int i, ret = -1;
+
+	if (!init_done)
+		init_array();
+
+	rw_enter_write(&irq_lock);
+
+	for (i = 0; i < NR_REQUESTABLE; ++i) {
+		if (l4_is_invalid_cap(caps[i])) {
+			caps[i] = irqcap;
+			ret = i + ICU_LEN;
+			break;
+		}
+	}
+
+	rw_exit_write(&irq_lock);
+	return ret;
+}
