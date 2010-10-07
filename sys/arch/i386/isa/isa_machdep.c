@@ -618,7 +618,12 @@ isa_attach_hook(struct device *parent, struct device *self,
 	isa_has_been_seen = 1;
 
 #ifdef L4
+	int irq;
+
+	/* Initialize the interrupt handler array. */
 	intrhand[0] = &intrhand_internal[0];
+	for (irq = 0; irq < ICU_LEN; irq++)
+		intrhand[irq] = NULL;
 #endif
 }
 

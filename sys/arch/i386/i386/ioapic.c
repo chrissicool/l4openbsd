@@ -612,6 +612,8 @@ ioapic_enable(void)
 	}
 #ifdef L4
 	apic_intrhand[0] = &apic_intrhand_internal[0];
+	for (p = 0; p < 256; p++)
+		apic_intrhand[p] = NULL;
 #endif
 }
 
