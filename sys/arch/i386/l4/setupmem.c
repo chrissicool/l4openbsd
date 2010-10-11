@@ -63,6 +63,10 @@ l4x_virt_to_phys(volatile vaddr_t address)
 {
 	int i;
 
+	/* sanety check */
+	if (address == NULL)
+		return NULL;
+
 	for (i = 0; i < l4x_phys_virt_addr_items; i++) {
 		if (l4x_phys_virt_addrs[i].virt <= address &&
 				address < l4x_phys_virt_addrs[i].virt
@@ -77,13 +81,43 @@ l4x_virt_to_phys(volatile vaddr_t address)
 
 	/* Debugging check: don't miss a translation, can give nasty
 	 *                  DMA problems */
-	LOG_printf("%s: Could not translate virt. address %p\n",
-			__func__, address);
+	LOG_printf("%s: Could not translate VA %p\n", __func__, address);
 
 	return NULL;
 }
 
+vaddr_t
+l4x_phys_to_virt(volatile paddr_t address)
+{
+	int i;
 
+	/* sanety check */
+	if (address == NULL)
+		return NULL;
+
+	for (i = 0; i < l4x_phys_virt_addr_items; i++) {
+		if (l4x_phys_virt_addrs[i].phys <= address &&
+				address < l4x_phys_virt_addrs[i].phys
+				        + l4x_phys_virt_addrs[i].size) {
+			return (address - l4x_phys_virt_addrs[i].phys
+					+ l4x_phys_virt_addrs[i].virt);
+		}
+	}
+
+	//l4x_virt_to_phys_show();
+	/* Whitelist */
+	if ((address < 0x1000) ||		/* first pte, direct mapped */
+	    (address >= 0xa000 &&		/* VGA and ROM space...     */
+	     address <= 0xffff)) {		/*   ... direct mapped      */
+		return address;
+	}
+
+	/* Debugging check: don't miss a translation, can give nasty
+	 *                  DMA problems */
+	LOG_printf("%s: Could not translate PA %p\n", __func__, address);
+
+	return NULL;
+}
 
 /*
  * M E M O R Y   S E T U P
@@ -103,7 +137,7 @@ unsigned long l4x_mainmem_size = L4_MEMSIZE << 20;
 #endif
 
 l4re_ds_t l4x_ds_mainmem;
-static void *l4x_main_memory_start;
+void *l4x_main_memory_start;	/* vaddr_t */
 l4re_ds_t l4x_ds_isa_dma;
 static void *l4x_isa_dma_memory_start;
 static unsigned long l4x_isa_dma_size   = 0;

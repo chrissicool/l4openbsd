@@ -13,11 +13,13 @@ extern unsigned int l4x_kernel_taskno;
 /* main memory parameters from setupmem.c */
 extern l4re_ds_t l4x_ds_mainmem;
 extern l4re_ds_t l4x_ds_isa_dma;
+extern void *l4x_main_memory_start;		/* vaddr_t */
 extern unsigned long l4x_mainmem_size;
 
 void l4x_v2p_init(void);
 void l4x_v2p_add_item(l4_addr_t phys, vaddr_t virt, l4_size_t size);
 paddr_t l4x_virt_to_phys(volatile vaddr_t address);
+vaddr_t l4x_phys_to_virt(volatile paddr_t address);
 void l4x_memory_setup(char **cmdl);
 
 unsigned long l4x_get_isa_dma_memory_end(void);
