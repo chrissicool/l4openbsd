@@ -134,7 +134,7 @@
 
 
 #ifdef L4
-	.data
+	.bss
 
 	.globl _C_LABEL(PTD), _C_LABEL(APTD)
 _C_LABEL(PTD):
