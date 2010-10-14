@@ -84,7 +84,9 @@ static __inline void breakpoint(void);
 static __inline void 
 invlpg(u_int addr)
 { 
+#ifndef L4	/* L4 does not invalidate pages */
         __asm __volatile("invlpg (%0)" : : "r" (addr) : "memory");
+#endif
 }  
 
 static __inline void
