@@ -41,6 +41,10 @@
  * Machine dependent constants for 386.
  */
 
+#ifdef L4
+#include <machine/l4/api/config.h>
+#endif
+
 /*
  * Virtual address space arrangement. On 386, both user and kernel
  * share the address space, not unlike the vax.
@@ -101,11 +105,22 @@
 
 /* user/kernel map constants */
 #define VM_MIN_ADDRESS		((vaddr_t)PAGE_SIZE)
+#ifdef L4
+#define VM_MAXUSER_ADDRESS	((vaddr_t)L4LX_USER_END_ADDRESS)
+#define VM_MAX_ADDRESS		((vaddr_t)0xffffffff)
+#else /* !L4 */
 #define VM_MAXUSER_ADDRESS	((vaddr_t)((PDSLOT_PTE<<PDSHIFT) - USPACE))
 #define VM_MAX_ADDRESS		((vaddr_t)((PDSLOT_PTE<<PDSHIFT) + \
 				    (PDSLOT_PTE<<PGSHIFT)))
+#endif /* !L4 */
+
+#ifdef L4
+#define VM_MIN_KERNEL_ADDRESS	((vaddr_t)KERNBASE)
+#define VM_MAX_KERNEL_ADDRESS	((vaddr_t)L4LX_USER_KERN_AREA_END)
+#else
 #define VM_MIN_KERNEL_ADDRESS	((vaddr_t)KERNBASE)
 #define VM_MAX_KERNEL_ADDRESS	((vaddr_t)(PDSLOT_APTE<<PDSHIFT))
+#endif
 
 /* virtual sizes (bytes) for various kernel submaps */
 #define VM_PHYS_SIZE		(USRIOSIZE*PAGE_SIZE)

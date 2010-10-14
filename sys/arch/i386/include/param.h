@@ -81,7 +81,12 @@
  * Start of kernel virtual space.  Remember to alter the memory and
  * page table layout description in pmap.h when changing this.
  */
+#ifdef L4
+#include <machine/l4/api/config.h>
+#define KERNBASE	L4LX_USER_KERN_AREA_START
+#else  /* !L4 */
 #define	KERNBASE	0xd0000000
+#endif /* !L4 */
 
 #define	KERNTEXTOFF	(KERNBASE+0x200000)	/* start of kernel text */
 

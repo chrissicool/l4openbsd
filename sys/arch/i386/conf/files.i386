@@ -32,7 +32,7 @@ file	arch/i386/i386/mem.c
 file	arch/i386/i386/i686_mem.c	mtrr
 file	arch/i386/i386/k6_mem.c		mtrr
 file	arch/i386/i386/p4tcc.c		!small_kernel
-file	arch/i386/i386/pmap.c
+file	arch/i386/i386/pmap.c		!l4
 file	arch/i386/i386/powernow.c	!small_kernel
 file	arch/i386/i386/powernow-k7.c	!small_kernel
 file	arch/i386/i386/powernow-k8.c	!small_kernel

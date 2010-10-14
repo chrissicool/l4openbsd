@@ -39,7 +39,7 @@ PHDRS
  *__ALIGN_SIZE = 0x200000;
  */
 __ALIGN_SIZE = 0x1000;
-__kernel_base_virt = 0x400000 + SIZEOF_HEADERS;
+__kernel_base_virt = 0x10200000 + SIZEOF_HEADERS;
 __kernel_base_phys = __kernel_base_virt;
 
 ENTRY(_start)	/* defined in head.S */

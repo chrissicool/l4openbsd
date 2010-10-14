@@ -46,6 +46,10 @@
 #include <uvm/uvm_pglist.h>
 #include <uvm/uvm_object.h>
 
+#ifdef L4
+#include <machine/l4/api/config.h>
+#endif
+
 /*
  * See pte.h for a description of i386 MMU terminology and hardware
  * interface.
@@ -148,7 +152,11 @@
 
 #define PDSLOT_PTE	((KERNBASE/NBPD)-1) /* 831: for recursive PDP map */
 #define PDSLOT_KERN	(KERNBASE/NBPD)	    /* 832: start of kernel space */
+#ifdef L4
+#define PDSLOT_APTE	((unsigned)255)     /* alternate recursive slot */
+#else
 #define PDSLOT_APTE	((unsigned)1023) /* 1023: alternative recursive slot */
+#endif
 
 /*
  * The following defines give the virtual addresses of various MMU
@@ -177,12 +185,17 @@
  * pmap module can add more PTPs to the kernel area on demand.
  */
 
+
 #ifndef NKPTP
 #define NKPTP		4	/* 16MB to start */
 #endif
 #define NKPTP_MIN	4	/* smallest value we allow */
+#ifdef L4
+#define NKPTP_MAX	((L4LX_USER_KERN_AREA_END/NBPD) - (KERNBASE/NBPD) - 1)
+#else
 #define NKPTP_MAX	(1024 - (KERNBASE/NBPD) - 1)
 				/* largest value (-1 for APTP space) */
+#endif
 
 /*
  * various address macros
