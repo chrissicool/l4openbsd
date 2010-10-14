@@ -7,6 +7,7 @@ file	arch/i386/l4/bsd_compat.c			l4
 file	arch/i386/l4/linux_compat.c			l4
 file	arch/i386/l4/l4externals.c			l4
 file	arch/i386/l4/setupmem.c				l4
+file	arch/i386/l4/pmap.c				l4
 file	arch/i386/l4/ioport.c				l4
 file	arch/i386/l4/tamed.c				l4
 file	arch/i386/l4/irq.c				l4
@@ -15,6 +16,7 @@ file	arch/i386/l4/irq.c				l4
 file	arch/i386/l4/l4lxlib/l4env/task.c		l4
 file	arch/i386/l4/l4lxlib/l4env/thread.c		l4
 file	arch/i386/l4/l4lxlib/generic/thread_gen.c	l4
+file	arch/i386/l4/l4lxlib/l4env/memory.c		l4
 
 # drivers
 define	l4ser {[apid = -1]}

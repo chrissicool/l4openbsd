@@ -133,14 +133,16 @@
 	iret
 
 
+
 #ifdef L4
 	.bss
 
+	/* Pointer to the current page table directory. */
 	.globl _C_LABEL(PTD), _C_LABEL(APTD)
 _C_LABEL(PTD):
-	.space 1024*NBPG
+	.long
 _C_LABEL(APTD):
-	.space 1024*NBPG
+	.long
 
 #else /* !L4 */
 

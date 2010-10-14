@@ -510,7 +510,6 @@ static void l4x_setup_upage(void)
 		l4x_linux_main_exit();
 	}
 
-	/* FIXME not in L4Linux */
 	memset((void *)upage_addr, 0, USPACE);
 
 	/* The UPAGE is used as kernel stack, too. */
@@ -524,6 +523,18 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
 	extern int main(void *framep);		/* see: sys/kern/init_main.c */
 
+	/* Wait for start signal */
+	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
+	LOG_printf("l4x_bsd_startup: received startup message.\n");
+
+	/*
+	 * Setup (allocate) some main memory. On i386, init386() will also
+	 * enumerate all available RAM according to bios_memmap from E820,
+	 * which we will skip here.
+	 */
+	extern char **bootargv;
+	l4x_memory_setup(bootargv);
+
 	/* Initialize vCPU state now, we need it for init386()::consinit() */
 	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
 	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS;
@@ -532,17 +543,10 @@ static L4_CV void l4x_bsd_startup(void *data)
 
 	/* Setup kernel stack, init386() needs it.  */
 	l4x_stack_setup(proc0paddr);
+	paddr_t first_avail = l4x_setup_kernel_ptd();
 
 	extern void init386(paddr_t first_avail); 	/* machdep.c */
-	init386(PAGE0_PAGE_ADDRESS);
-
-	/*
-	 * Setup (allocate) some main memory. On i386, init386() will also
-	 * enumerate all available RAM according to bios_memmap from E820,
-	 * which we skipped here.
-	 */
-	extern char **bootargv;
-	l4x_memory_setup(bootargv);
+	init386(first_avail);
 
 	/*
 	 * At this point we have a halfway usable proc0 structure.
@@ -550,10 +554,6 @@ static L4_CV void l4x_bsd_startup(void *data)
 
 	LOG_printf("%s: thread "l4util_idfmt".\n",
 			__func__, l4util_idstr(l4x_stack_id_get()));
-
-	/* Wait for start signal */
-	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
-	LOG_printf("l4x_bsd_startup: received startup message.\n");
 
 	linux_server_thread_id = l4x_stack_id_get();
 	l4x_create_ugate(linux_server_thread_id, 0);

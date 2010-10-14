@@ -163,6 +163,10 @@ extern struct proc *npxproc;
 #include <dev/ic/comvar.h>
 #endif /* NCOM > 0 */
 
+#ifdef L4
+#include <machine/l4/setup.h>
+#endif
+
 /* the following is used externally (sysctl_hw) */
 char machine[] = MACHINE;
 
@@ -2998,7 +3002,10 @@ init386(paddr_t first_avail)
 	/* call pmap initialization to make new kernel address space */
 	pmap_bootstrap((vaddr_t)atdevbase + IOM_SIZE);
 
-#ifndef L4
+#ifdef L4
+	uvm_page_physload(first_avail, avail_end, first_avail, avail_end,
+			VM_FREELIST_DEFAULT);
+#else /* !L4 */
 	/*
 	 * Boot arguments are in a single page specified by /boot.
 	 *
@@ -3180,6 +3187,8 @@ init386(paddr_t first_avail)
 	printf("\n");
 #endif
 
+#endif /* !L4 */
+
 #if defined(MULTIPROCESSOR) || \
     (NACPI > 0 && !defined(SMALL_KERNEL))
 	/* install the lowmem ptp after boot args for 1:1 mappings */
@@ -3220,7 +3229,6 @@ init386(paddr_t first_avail)
 #endif
 #endif
 
-#endif /* !L4 */
 
 #ifdef DDB
 	db_machine_init();

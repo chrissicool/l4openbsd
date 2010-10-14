@@ -5,14 +5,19 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/types.h>
-
-#include <machine/vmparam.h>
+#include <sys/proc.h>
+#include <sys/user.h>
 
 #include <uvm/uvm_extern.h>
+
+#include <machine/vmparam.h>
+#include <machine/pmap.h>
 
 #include <machine/l4/bsd_compat.h>
 #include <machine/l4/linux_compat.h>
 #include <machine/l4/setup.h>
+#include <machine/l4/l4lxapi/memory.h>
+#include <machine/l4/api/config.h>
 
 #include <l4/sys/err.h>
 #include <l4/sys/types.h>
@@ -123,12 +128,6 @@ l4x_phys_to_virt(volatile paddr_t address)
  * M E M O R Y   S E T U P
  */
 
-#ifdef L4_DEBUG
-static int l4x_debug_show_ghost_regions = 1;
-#else
-static int l4x_debug_show_ghost_regions = 0;
-#endif
-
 /* Default memory size */
 #ifdef L4_MEMSIZE
 unsigned long l4x_mainmem_size = L4_MEMSIZE << 20;
@@ -137,7 +136,7 @@ unsigned long l4x_mainmem_size = L4_MEMSIZE << 20;
 #endif
 
 l4re_ds_t l4x_ds_mainmem;
-void *l4x_main_memory_start;	/* vaddr_t */
+void *l4x_main_memory_start;	/* paddr_t */
 l4re_ds_t l4x_ds_isa_dma;
 static void *l4x_isa_dma_memory_start;
 static unsigned long l4x_isa_dma_size   = 0;
@@ -147,67 +146,51 @@ static void setup_l4x_memory(char **cmdl,
                              vaddr_t *main_mem_endv,
                              vaddr_t *isa_dma_mem_startv,
                              vaddr_t *isa_dma_mem_endv);
-static void l4x_map_below_mainmem_print_region(l4_addr_t s, l4_addr_t e);
-static void l4x_map_below_mainmem(void);
-static void l4x_mbm_request_ghost(l4re_ds_t *ghost_ds);
-static unsigned long get_min_virt_address(void);
 
+/*
+ * Allocate a range of contiguous memory host virtual memory from L4.
+ * Use it as OpenBSD physical memory.
+ */
 void l4x_memory_setup(char **cmdl)
 {
-	vaddr_t mem_startv, mem_endv, isa_startv, isa_endv;
 	paddr_t mem_startp, mem_endp, isa_startp, isa_endp;
-	extern char _end[];
 
-	setup_l4x_memory(cmdl, &mem_startv, &mem_endv, &isa_startv, &isa_endv);
+	setup_l4x_memory(cmdl, &mem_startp, &mem_endp, &isa_startp, &isa_endp);
 
-	if (mem_startv && (vaddr_t)&_end > mem_startv)
-		enter_kdebug("Kernel maps into main memory region!");
-	if (isa_startv && (vaddr_t)&_end > isa_startv)
-		enter_kdebug("Kernel maps into ISA memory region!");
-
-	mem_startp = l4x_virt_to_phys(mem_startv);
-	mem_endp   = l4x_virt_to_phys(mem_endv);
-	isa_startp = l4x_virt_to_phys(isa_startv);
-	isa_endp   = l4x_virt_to_phys(isa_endv);
-
-	if (mem_endv - mem_startv)
-		uvm_page_physload(mem_startp, mem_endp, mem_startp, mem_endp,
-				VM_FREELIST_DEFAULT);
-
-	if (isa_endv - isa_startv)
-		uvm_page_physload(isa_startp, isa_endp, isa_startp, isa_endp,
-				VM_FREELIST_DEFAULT);
+	if (!mem_startp)
+		enter_kdebug("Could not get requested main memory!");
 
 	/*
 	 * Fill global parameters from machdep.c
 	 * These are used on other occasions (PCI, ISA, ...)
 	 */
-	extern vaddr_t avail_end;
-	extern u_int ndumpmem;
-	extern struct dumpmem {
-		vaddr_t start;
-		vaddr_t end;
-	} dumpmem[VM_PHYSSEG_MAX];
-	extern int physmem;
+//	extern u_int ndumpmem;
+//	extern struct dumpmem {
+//		vaddr_t start;
+//		vaddr_t end;
+//	} dumpmem[VM_PHYSSEG_MAX];
+//	extern int physmem;
+	extern paddr_t avail_end;
+
+//	ndumpmem = 1;
+//	dumpmem[0].start = atop(mem_startp);
+//	dumpmem[0].end = atop(mem_endp);
+//	physmem = atop(mem_endp - mem_startp);
 
 	avail_end = mem_endp;
-	ndumpmem = 1;
-	dumpmem[0].start = atop(mem_startv);
-	dumpmem[0].end = atop(mem_endv);
-	physmem = atop(mem_endv - mem_startv);
 }
 
 static void setup_l4x_memory(char **cmdl,
-                             vaddr_t *main_mem_startv,
-                             vaddr_t *main_mem_endv,
-                             vaddr_t *isa_dma_mem_startv,
-                             vaddr_t *isa_dma_mem_endv)
+                             paddr_t *main_mem_startp,
+                             paddr_t *main_mem_endp,
+                             paddr_t *isa_dma_mem_startp,
+                             paddr_t *isa_dma_mem_endp)
 {
 	extern char _end[];
 	int res;
 	char *memstr, **i_cmdl;
 	unsigned long memory_area_size;
-	l4_addr_t memory_area_id = 0;
+	l4_addr_t memory_area_id = L4LX_USER_KERN_AREA_END;
 	l4_addr_t memory_area_addr;
 
 	//l4_size_t poolsize, poolfree;
@@ -349,14 +332,14 @@ static void setup_l4x_memory(char **cmdl,
 		l4x_exit_l4linux();
 	}
 
-	*main_mem_startv = (vaddr_t)l4x_main_memory_start;
-	*main_mem_endv   = (vaddr_t)(l4x_main_memory_start + l4x_mainmem_size - 1);
+	*main_mem_startp = (paddr_t)l4x_main_memory_start;
+	*main_mem_endp   = (paddr_t)(l4x_main_memory_start + l4x_mainmem_size - 1);
 
 	if (l4_is_invalid_cap(l4x_ds_isa_dma))
-		*isa_dma_mem_startv = *isa_dma_mem_endv = 0;
+		*isa_dma_mem_startp = *isa_dma_mem_endp = 0;
 	else {
-		*isa_dma_mem_startv = (vaddr_t)l4x_isa_dma_memory_start;
-		*isa_dma_mem_endv   = (vaddr_t)(l4x_isa_dma_memory_start
+		*isa_dma_mem_startp = (paddr_t)l4x_isa_dma_memory_start;
+		*isa_dma_mem_endp   = (paddr_t)(l4x_isa_dma_memory_start
 				+ l4x_isa_dma_size - 1);
 	}
 
@@ -392,161 +375,80 @@ static void setup_l4x_memory(char **cmdl,
 	__FIXADDR_TOP = l4x_fixmap_space_start
 	                 + __end_of_permanent_fixed_addresses * PAGE_SIZE;	*/
 #endif
-	l4x_map_below_mainmem();
 
 	// that happened with some version of ld...
 	if ((unsigned long)&_end < 0x100000)
 		LOG_printf("_end == %p, unreasonable small\n", &_end);
 
 	l4x_register_pointer_section((void *)((unsigned long)&_end - 1), 0, "end");
-}
 
-static void l4x_map_below_mainmem_print_region(l4_addr_t s, l4_addr_t e)
-{
-	if (!l4x_debug_show_ghost_regions)
-		return;
-	if (s == ~0UL)
-		return;
-
-	LOG_printf("Ghost region: %08lx - %08lx [%4ld]\n", s, e, (e - s) >> 12);
-}
-
-static void l4x_map_below_mainmem(void)
-{
-	unsigned long i;
-	l4re_ds_t ds, ghost_ds = L4_INVALID_CAP;
-	l4_addr_t off;
-	l4_addr_t map_addr;
-	unsigned long map_size;
-	unsigned flags;
-	long ret;
-	unsigned long i_inc;
-	int map_count = 0, map_count_all = 0;
-	l4_addr_t reg_start = ~0UL;
-
-	LOG_printf("Filling lower ptabs... ");
-	LOG_flush();
-
-	/* Loop through free address space before mainmem */
-	for (i = get_min_virt_address();
-	     i < (unsigned long)l4x_main_memory_start; i += i_inc) {
-		map_addr = i;
-		map_size = L4_PAGESIZE;
-		ret = l4re_rm_find(&map_addr, &map_size, &off, &flags, &ds);
-		if (ret == 0) {
-			// success, something there
-			if (i != map_addr)
-				enter_kdebug("shouldn't be, hmm?");
-			i_inc = map_size;
-			l4x_map_below_mainmem_print_region(reg_start, i);
-			reg_start = ~0UL;
-			continue;
-		}
-
-		if (reg_start == ~0UL)
-			reg_start = i;
-
-		i_inc = L4_PAGESIZE;
-
-		if (ret != -L4_ENOENT) {
-			LOG_printf("l4re_rm_find call failure: %s(%ld)\n",
-			           l4sys_errtostr(ret), ret);
-			l4x_exit_l4linux();
-		}
-
-		if (!map_count) {
-			/* Get new ghost page every 1024 mappings
-			 * to overcome a Fiasco mapping db
-			 * limitation. */
-			l4x_mbm_request_ghost(&ghost_ds);
-			map_count = 1014;
-		}
-		map_count--;
-		map_count_all++;
-		map_addr = i;
-		if (l4re_rm_attach((void **)&map_addr, L4_PAGESIZE,
-		                   L4RE_RM_READ_ONLY | L4RE_RM_EAGER_MAP,
-		                   ghost_ds, 0, L4_PAGESHIFT)) {
-			LOG_printf("%s: Can't attach ghost page at %lx!\n",
-			           __func__, i);
-			l4x_exit_l4linux();
-		}
-	}
-	l4x_map_below_mainmem_print_region(reg_start, i);
-	LOG_printf("done (%d entries).\n", map_count_all);
-	LOG_flush();
-}
-
-/* To get mmap of /dev/mem working, map address space before
- * start of mainmem with a ro page,
- * lets try with this... */
-static void l4x_mbm_request_ghost(l4re_ds_t *ghost_ds)
-{
-	unsigned int i;
-	void *addr;
-
-	if (l4_is_invalid_cap(*ghost_ds = l4re_util_cap_alloc())) {
-		LOG_printf("%s: Out of caps\n", __func__);
-		l4x_exit_l4linux();
-	}
-
-	/* Get a page from our dataspace manager */
-	if (l4re_ma_alloc(L4_PAGESIZE, *ghost_ds, L4RE_MA_PINNED)) {
-		LOG_printf("%s: Can't get ghost page!\n", __func__);
-		l4x_exit_l4linux();
-	}
-
-
-	/* Poison the page, this is optional */
-
-	/* Map page RW */
-	addr = 0;
-	if (l4re_rm_attach(&addr, L4_PAGESIZE, L4RE_RM_SEARCH_ADDR,
-	                   *ghost_ds, 0, L4_PAGESHIFT)) {
-		LOG_printf("%s: Can't map ghost page\n", __func__);
-		l4x_exit_l4linux();
-	}
-
-	/* Write a certain value in to the page so that we can
-	 * easily recognize it */
-	for (i = 0; i < L4_PAGESIZE; i += sizeof(i))
-		*(unsigned long *)((unsigned long)addr + i) = 0xcafeface;
-
-	/* Detach it again */
-	if (l4re_rm_detach(addr)) {
-		LOG_printf("%s: Can't unmap ghost page\n", __func__);
-		l4x_exit_l4linux();
-	}
-
+	return;
 }
 
 /*
- * We need to get the lowest virtual address and we can find out in the
- * KIP's memory descriptors. Fiasco-UX on system like Ubuntu set the minimum
- * mappable address to 0x10000 so we cannot just plain begin at 0x1000.
+ * Virtual address space of kernel:
+ *
+ * text | data | bss | [syms] | proc0 stack | page dir     | Sysmap
+ *                            0             1       2      3
  */
-static unsigned long get_min_virt_address(void)
+#define PROC0STACK      ((0)            * NBPG)
+#define PROC0PDIR       ((  UPAGES)     * NBPG)
+#define SYSMAP          ((1+UPAGES)     * NBPG)
+#define TABLESIZE       ((1+UPAGES) * NBPG) /* + _C_LABEL(nkpde) * NBPG */
+
+extern u_long atdevbase;	/* KVA of ISA memory hole */
+extern int nkpde;		/* number of kernel page tables (pmap.c) */
+
+extern struct user *proc0paddr;
+
+/*
+ * Setup kernel page table directory, return the PA of the lowest
+ * free memory region.
+ */
+paddr_t
+l4x_setup_kernel_ptd(void)
 {
-	l4_kernel_info_t *kip = l4re_kip();
-	struct md_t {
-		unsigned long _l, _h;
-	};
-	struct md_t *md
-	  = (struct md_t *)((char *)kip +
-			    (kip->mem_info >> ((sizeof(unsigned long) / 2) * 8)));
-	unsigned long count
-	  = kip->mem_info & ((1UL << ((sizeof(unsigned long)/2)*8)) - 1);
-	unsigned long i;
+	paddr_t esi = (paddr_t)l4x_main_memory_start;
+	paddr_t ecx;
+	int i;
 
-	for (i = 0; i < count; ++i, md++) {
-		/* Not a virtual descriptor? */
-		if (!(md->_l & 0x200))
-			continue;
+	/* Since we are running as a monolithic kernel BLOB,
+	 * we do not need to map the kernel in a special way.
+	 */
 
-		/* Return start address of descriptor, there should only be
-		 * a single one, so just return the first */
-		return md->_l & ~0x3ffUL;
+	if (nkpde < NKPTP_MIN)
+		nkpde = NKPTP_MIN;
+	if (nkpde > NKPTP_MAX)
+		nkpde = NKPTP_MAX;
+
+	/* Clear physical memory for bootstrap tables. */
+	ecx = (nkpde << PGSHIFT) + TABLESIZE;
+	memset((void *)esi, 0, ecx);
+
+	/* Let L4 map our initial VM layout ... */
+
+	/* Map the recursive mapping for the PTD */
+	l4lx_memory_map_virtual_page((vaddr_t)PDP_BASE, esi, PG_V|PG_KW);
+	*PDP_PDE = esi;
+	esi += PAGE_SIZE;
+
+	/* Map UPAGES pages at VM_MAXUSER_ADDRESS for the user structure */
+	proc0paddr = (struct user *)esi;
+	for (i = 0; i < UPAGES; i++) {
+		l4lx_memory_map_virtual_page((vaddr_t)VM_MAXUSER_ADDRESS + (i*PAGE_SIZE),
+				esi, PG_V|PG_KW);
+		esi += PAGE_SIZE;
 	}
 
-	return 0x1000;
+	/* Map nkpde PDEs starting at KERNBASE */
+	proc0paddr->u_pcb.pcb_cr3 = esi;
+	for (i = 0; i < nkpde; i++) {
+		l4lx_memory_map_virtual_page((vaddr_t)(PDP_BASE+pdei(KERNBASE + i*NBPG)),
+				esi, PG_V|PG_KW);
+		*(PDP_BASE + pdei(KERNBASE + i*NBPG)) = esi;
+		esi += PAGE_SIZE;
+	}
+
+	atdevbase = KERNBASE + esi - (unsigned long)l4x_main_memory_start;
+	return esi;
 }
