@@ -2521,7 +2521,6 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 	 * is there currently a valid mapping at our VA?
 	 */
 
-/*XXX*/	//printf("%s: cl: opte=0x%08lx, valid=%lu\n", __func__, opte, pmap_valid_entry(opte));
 	if (pmap_valid_entry(opte)) {
 
 		/*
@@ -2656,8 +2655,6 @@ enter_now:
 
 #ifdef L4
 	/* Map only kernel pages into KVA */
-	printf("%s: cl: pmap_kernel()? %u, pa=0x%08lx, va=0x%08lx\n",
-			__func__, pmap == pmap_kernel(), pa, va);
 	if (pmap == pmap_kernel())
 		l4lx_memory_map_virtual_page(va, pa,
 				pmap_pg_g | (PG_u | PG_RW));
