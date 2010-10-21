@@ -100,8 +100,10 @@
 /*
  * Specific addresses being unmapped and used as fillers for free memory.
  */
+#ifndef L4
 #define	DEADBEEF0	0xefffeecc	/* malloc's filler */
 #define	DEADBEEF1	0xefffaabb	/* pool's filler */
+#endif
 
 /* user/kernel map constants */
 #define VM_MIN_ADDRESS		((vaddr_t)PAGE_SIZE)
