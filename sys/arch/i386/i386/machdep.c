@@ -2827,6 +2827,7 @@ fix_f00f(void)
 	vaddr_t va;
 	void *p;
 	pt_entry_t *pte;
+	pd_entry_t *pd;
 
 	/* Allocate two new pages */
 	va = uvm_km_zalloc(kernel_map, NBPG*2);
@@ -2841,7 +2842,9 @@ fix_f00f(void)
 	    GCODE_SEL);
 
 	/* Map first page RO */
-	pte = PTE_BASE + atop(va);
+	pd = (pd_entry_t *)pmap_kernel()->pm_pdirpa;
+//	pte = PTE_BASE + atop(va);
+	pte = (pt_entry_t *)pd[pdei(va)];
 	*pte &= ~PG_RW;
 
 	/* Reload idtr */
@@ -2908,7 +2911,7 @@ init386(paddr_t first_avail)
 	boothowto = 0;
 	cpu_feature = 0;
 
-	i = kb = (int) im;	/* keep gcc -Wall -Werror happy */
+	kb = (int) im;		/* keep gcc -Wall -Werror happy */
 #endif
 
 	proc0.p_addr = proc0paddr;
@@ -3003,8 +3006,16 @@ init386(paddr_t first_avail)
 	pmap_bootstrap((vaddr_t)atdevbase + IOM_SIZE);
 
 #ifdef L4
-	uvm_page_physload(first_avail, avail_end, first_avail, avail_end,
-			VM_FREELIST_DEFAULT);
+	avail_end -= round_page(MSGBUFSIZE);
+
+	ndumpmem = 1;
+	dumpmem[0].start = atop(avail_end);
+	dumpmem[0].end = atop(first_avail);
+
+	physmem = atop(avail_end - first_avail);
+	extent_alloc_region(iomem_ex, first_avail, avail_end - first_avail, EX_NOWAIT);
+	uvm_page_physload(atop(first_avail), atop(avail_end),
+			atop(first_avail), atop(avail_end), VM_FREELIST_DEFAULT);
 #else /* !L4 */
 	/*
 	 * Boot arguments are in a single page specified by /boot.

@@ -141,6 +141,14 @@ l4re_ds_t l4x_ds_isa_dma;
 static void *l4x_isa_dma_memory_start;
 static unsigned long l4x_isa_dma_size   = 0;
 
+unsigned long l4x_kvmem_size;
+l4re_ds_t l4x_ds_kvmem;
+void *l4x_kv_memory_start;	/* vaddr_t */
+
+extern char _end[];
+#define KVA_START	(round_page((unsigned long)_end))
+#define PA_START	(L4LX_USER_KERN_AREA_END + round_page((unsigned long)_end) - KERNBASE)
+
 static void setup_l4x_memory(char **cmdl,
                              vaddr_t *main_mem_startv,
                              vaddr_t *main_mem_endv,
@@ -164,18 +172,7 @@ void l4x_memory_setup(char **cmdl)
 	 * Fill global parameters from machdep.c
 	 * These are used on other occasions (PCI, ISA, ...)
 	 */
-//	extern u_int ndumpmem;
-//	extern struct dumpmem {
-//		vaddr_t start;
-//		vaddr_t end;
-//	} dumpmem[VM_PHYSSEG_MAX];
-//	extern int physmem;
 	extern paddr_t avail_end;
-
-//	ndumpmem = 1;
-//	dumpmem[0].start = atop(mem_startp);
-//	dumpmem[0].end = atop(mem_endp);
-//	physmem = atop(mem_endp - mem_startp);
 
 	avail_end = mem_endp;
 }
@@ -186,12 +183,13 @@ static void setup_l4x_memory(char **cmdl,
                              paddr_t *isa_dma_mem_startp,
                              paddr_t *isa_dma_mem_endp)
 {
-	extern char _end[];
 	int res;
 	char *memstr, **i_cmdl;
 	unsigned long memory_area_size;
-	l4_addr_t memory_area_id = L4LX_USER_KERN_AREA_END;
+	l4_addr_t memory_area_id;
 	l4_addr_t memory_area_addr;
+	l4_addr_t kvm_area_id;
+//	l4_addr_t kvm_area_addr;
 
 	//l4_size_t poolsize, poolfree;
 	l4_uint32_t dm_flags = L4RE_MA_CONTINUOUS | L4RE_MA_PINNED;
@@ -207,11 +205,23 @@ static void setup_l4x_memory(char **cmdl,
 
 	LOG_printf("utcb %p\n", l4_utcb());
 
-	if ((l4x_mainmem_size % L4_SUPERPAGESIZE) == 0) {
-		LOG_printf("%s: Forcing superpages for main memory\n", __func__);
-		/* force ds-mgr to allocate superpages */
-		dm_flags |= L4RE_MA_SUPER_PAGES;
-	}
+	/*
+	 * Compute space and place to map our "physical" memory in our VM.
+	 * Pretend to have the kernel mapped in at the front, so there is no
+	 * need to waste real memory for it.
+	 */
+	memory_area_id = PA_START;
+	l4x_mainmem_size -= round_page((unsigned long)_end) - KERNBASE;
+//	LOG_printf("l4x_mainmem_size=%ldMB, end=%ldMB, KERNBASE=%ldMB\n",
+//		l4x_mainmem_size >> 20,
+//		round_page((unsigned long)_end) >> 20,
+//			KERNBASE >> 20);
+
+//	if ((l4x_mainmem_size % L4_SUPERPAGESIZE) == 0) {
+//		LOG_printf("%s: Forcing superpages for main memory\n", __func__);
+//		/* force ds-mgr to allocate superpages */
+//		dm_flags |= L4RE_MA_SUPER_PAGES;
+//	}
 
 	/* Allocate main memory */
 	if (l4_is_invalid_cap(l4x_ds_mainmem = l4re_util_cap_alloc())) {
@@ -242,7 +252,7 @@ static void setup_l4x_memory(char **cmdl,
 	}
 #endif
 
-	LOG_printf("Main memory size: %ldMB\n", l4x_mainmem_size >> 20);
+	LOG_printf("Effective main memory size: %ldMB\n", l4x_mainmem_size >> 20);
 	if (l4x_mainmem_size < (4 << 20)) {
 		LOG_printf("Need at least 4MB RAM - aborting!\n");
 		l4x_exit_l4linux();
@@ -291,7 +301,7 @@ static void setup_l4x_memory(char **cmdl,
 	 * the dataspaces in */
 	if (l4re_rm_reserve_area(&memory_area_id, memory_area_size,
 	                         L4RE_RM_SEARCH_ADDR,
-	                         L4_SUPERPAGESHIFT)) {
+	                         L4_PAGESHIFT)) {
 		LOG_printf("Error reserving memory area\n");
 		l4x_exit_l4linux();
 	}
@@ -321,16 +331,16 @@ static void setup_l4x_memory(char **cmdl,
 	/** Second: the main memory */
 	if (l4re_rm_attach(&l4x_main_memory_start, l4x_mainmem_size,
 	                   L4RE_RM_IN_AREA | L4RE_RM_EAGER_MAP,
-	                   l4x_ds_mainmem, 0, L4_SUPERPAGESHIFT)) {
+	                   l4x_ds_mainmem, 0, L4_PAGESHIFT)) {
 		LOG_printf("Error attaching to L4Linux main memory\n");
 		l4x_exit_l4linux();
 	}
 
 	/* Release area ... make possible hole available again */
-	if (l4re_rm_free_area(memory_area_id)) {
-		LOG_printf("Error releasing area\n");
-		l4x_exit_l4linux();
-	}
+//	if (l4re_rm_free_area(memory_area_id)) {
+//		LOG_printf("Error releasing area\n");
+//		l4x_exit_l4linux();
+//	}
 
 	*main_mem_startp = (paddr_t)l4x_main_memory_start;
 	*main_mem_endp   = (paddr_t)(l4x_main_memory_start + l4x_mainmem_size - 1);
@@ -349,19 +359,21 @@ static void setup_l4x_memory(char **cmdl,
 	l4x_register_region(l4x_ds_mainmem, l4x_main_memory_start,
 	                    0, "Main memory");
 
-	/* Reserve some part of the virtual address space for vmalloc */
-//	l4x_vmalloc_memory_start = (unsigned long)l4x_main_memory_start;
-//	if (l4re_rm_reserve_area(&l4x_vmalloc_memory_start,
-#ifdef ARCH_x86
-//	                          __VMALLOC_RESERVE,
-#else
-//	                          VMALLOC_SIZE << 20,
-#endif
-//	                          L4RE_RM_SEARCH_ADDR, PGDIR_SHIFT)) {
-//		LOG_printf("%s: Error reserving vmalloc memory!\n", __func__);
-//		l4x_exit_l4linux();
-//	}
-//	l4x_vmalloc_areaid = l4x_vmalloc_memory_start;
+	/*
+	 * Reserve some part of the virtual address space
+	 * as kernel virtual memory for use by uvm_km_alloc(9).
+	 */
+	kvm_area_id = (l4_addr_t)KVA_START;
+	l4x_kvmem_size = L4LX_USER_KERN_AREA_END - KVA_START;
+	if (l4re_rm_reserve_area(&kvm_area_id,
+	                          l4x_kvmem_size,
+	                          L4RE_RM_SEARCH_ADDR, L4_PAGESHIFT)) {
+		LOG_printf("%s: Error reserving kernel virtual memory!\n", __func__);
+		l4x_exit_l4linux();
+	}
+	l4x_kv_memory_start = (void *)kvm_area_id;
+	LOG_printf("Registered kernel virtual memory at: VA=0x%08lx, size=0x%08lx\n",
+			kvm_area_id, l4x_kvmem_size);
 
 #ifdef ARCH_x86
 	// fixmap area
@@ -385,17 +397,6 @@ static void setup_l4x_memory(char **cmdl,
 	return;
 }
 
-/*
- * Virtual address space of kernel:
- *
- * text | data | bss | [syms] | proc0 stack | page dir     | Sysmap
- *                            0             1       2      3
- */
-#define PROC0STACK      ((0)            * NBPG)
-#define PROC0PDIR       ((  UPAGES)     * NBPG)
-#define SYSMAP          ((1+UPAGES)     * NBPG)
-#define TABLESIZE       ((1+UPAGES) * NBPG) /* + _C_LABEL(nkpde) * NBPG */
-
 extern u_long atdevbase;	/* KVA of ISA memory hole */
 extern int nkpde;		/* number of kernel page tables (pmap.c) */
 
@@ -404,15 +405,18 @@ extern struct user *proc0paddr;
 /*
  * Setup kernel page table directory, return the PA of the lowest
  * free memory region.
+ *  PA starts at: l4x_main_memory_start
+ * KVA starts at: l4x_kv_memory_start
  */
 paddr_t
 l4x_setup_kernel_ptd(void)
 {
-	paddr_t esi = (paddr_t)l4x_main_memory_start;
-	paddr_t ecx;
+	pd_entry_t *pd;
+	int kva_off = 0, pa_off = 0;
 	int i;
 
-	/* Since we are running as a monolithic kernel BLOB,
+	/*
+	 * Since we are running as a monolithic kernel BLOB,
 	 * we do not need to map the kernel in a special way.
 	 */
 
@@ -421,34 +425,27 @@ l4x_setup_kernel_ptd(void)
 	if (nkpde > NKPTP_MAX)
 		nkpde = NKPTP_MAX;
 
-	/* Clear physical memory for bootstrap tables. */
-	ecx = (nkpde << PGSHIFT) + TABLESIZE;
-	memset((void *)esi, 0, ecx);
+	/* Clear physical memory for a page directory and bootstrap tables. */
+	memset((void *)(PA_START+pa_off), 0, (nkpde+1) * NBPG);
 
-	/* Let L4 map our initial VM layout ... */
+	/* Map our PTD  */
+	l4lx_memory_map_virtual_page((vaddr_t)(KVA_START+kva_off),
+			(paddr_t)(PA_START+pa_off), PG_V | PG_KW);
+	proc0paddr->u_pcb.pcb_cr3 = PA_START + pa_off;
+	pd = PTD = (pd_entry_t *)(KVA_START + kva_off);
+	kva_off += PAGE_SIZE;
+	pa_off += PAGE_SIZE;
 
-	/* Map the recursive mapping for the PTD */
-	l4lx_memory_map_virtual_page((vaddr_t)PDP_BASE, esi, PG_V|PG_KW);
-	*PDP_PDE = esi;
-	esi += PAGE_SIZE;
 
-	/* Map UPAGES pages at VM_MAXUSER_ADDRESS for the user structure */
-	proc0paddr = (struct user *)esi;
-	for (i = 0; i < UPAGES; i++) {
-		l4lx_memory_map_virtual_page((vaddr_t)VM_MAXUSER_ADDRESS + (i*PAGE_SIZE),
-				esi, PG_V|PG_KW);
-		esi += PAGE_SIZE;
+	/* Reserve nkpde page tables. */
+	for (i = pdei(KVA_START); i < pdei(KVA_START) + nkpde; i++) {
+		pd[i] = (pd_entry_t)(PA_START + pa_off) |
+			(PG_V | PG_KW | PG_M | PG_U);
+		pa_off += PAGE_SIZE;
 	}
 
-	/* Map nkpde PDEs starting at KERNBASE */
-	proc0paddr->u_pcb.pcb_cr3 = esi;
-	for (i = 0; i < nkpde; i++) {
-		l4lx_memory_map_virtual_page((vaddr_t)(PDP_BASE+pdei(KERNBASE + i*NBPG)),
-				esi, PG_V|PG_KW);
-		*(PDP_BASE + pdei(KERNBASE + i*NBPG)) = esi;
-		esi += PAGE_SIZE;
-	}
+	/* The following implicitly sets KVA_START for pmap(9). */
+	atdevbase = KVA_START + kva_off;
 
-	atdevbase = KERNBASE + esi - (unsigned long)l4x_main_memory_start;
-	return esi;
+	return(PA_START + pa_off);
 }

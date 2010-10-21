@@ -541,7 +541,7 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4x_vcpu_state(0)->entry_ip = (l4_addr_t)&l4x_vcpu_entry;
 	l4x_vcpu_state(0)->user_task = L4_INVALID_CAP;
 
-	/* Setup kernel stack, init386() needs it.  */
+	/* Setup kernel stack and page tables, init386() needs it.  */
 	l4x_stack_setup(proc0paddr);
 	paddr_t first_avail = l4x_setup_kernel_ptd();
 

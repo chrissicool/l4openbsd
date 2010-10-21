@@ -16,6 +16,11 @@
 
 #include <l4/log/log.h>
 
+/*
+ * Check if an address is correctly aligned.
+ */
+#define IS_ALIGNED(addr)	(addr & 0xfffffffcUL)
+
 int l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page,
                                  int map_rw)
 {
@@ -28,7 +33,7 @@ int l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page,
 	L4XV_V(f);
 
 	addr = page;
-	size = 1;
+	size = PAGE_SIZE;
 	L4XV_L(f);
 	if (l4re_rm_find(&addr, &size, &offset, &flags, &ds)) {
 		L4XV_U(f);
@@ -37,12 +42,19 @@ int l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page,
 		return -1;
 	}
 
-	offset += (page & PAGE_MASK) - addr;
-	addr    = address & PAGE_MASK;
-	LOG_printf("Attaching DS: PA=0x%08lx, VA=0x%08lx\n", page, address);
+	offset += page - addr;
+	addr    = address;
+	/* Sanety checks */
+	if(!IS_ALIGNED(addr))
+		printf("WARNING: Trying to map unaligned virtual page!\n");
+	if(!IS_ALIGNED(page))
+		printf("WARNING: Trying to map unaligned physical page!\n");
+
+//	LOG_printf("Attaching DS: PA=0x%08lx, VA=0x%08lx, Vaddr=%08lx, off=%08lx\n",
+//			page, address, addr, offset);
 	if ((r = l4re_rm_attach((void **)&addr, PAGE_SIZE,
 	                        L4RE_RM_IN_AREA | L4RE_RM_EAGER_MAP
-	                        | (map_rw ? 0 : L4RE_RM_READ_ONLY),
+	                        | (map_rw & PG_RW ? 0 : L4RE_RM_READ_ONLY),
 	                        ds, offset, L4_PAGESHIFT))) {
 		L4XV_U(f);
 		// FIXME wrt L4_EUSED
@@ -57,7 +69,13 @@ int l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page,
 int l4lx_memory_unmap_virtual_page(vaddr_t address)
 {
 	L4XV_V(f);
+
+	/* Sanety check. */
+	if(!IS_ALIGNED(address))
+		printf("WARNING: Trying to unmap unaligned virtual page!\n");
+
 	L4XV_L(f);
+//	LOG_printf("Detaching DS: VA=0x%08lx\n", address);
 	if (l4re_rm_detach((void *)address)) {
 		L4XV_U(f);
 		// Do not complain: someone might vfree a reserved area

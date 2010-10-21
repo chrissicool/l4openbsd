@@ -167,16 +167,22 @@
  */
 
 #ifdef L4
-#define PTE_BASE	((pt_entry_t *)  PTD )
-#define APTE_BASE	((pt_entry_t *) APTD )
-#else
+
+#define PDP_BASE	 PTD
+#define APDP_BASE	APTD
+#define PDP_PDE		PDP_BASE
+#define APDP_PDE	APDP_BASE
+
+#else /* !L4 */
+
 #define PTE_BASE	((pt_entry_t *)  (PDSLOT_PTE * NBPD) )
 #define APTE_BASE	((pt_entry_t *)  (PDSLOT_APTE * NBPD) )
-#endif
 #define PDP_BASE ((pd_entry_t *)(((char *)PTE_BASE) + (PDSLOT_PTE * NBPG)))
 #define APDP_BASE ((pd_entry_t *)(((char *)APTE_BASE) + (PDSLOT_APTE * NBPG)))
 #define PDP_PDE		(PDP_BASE + PDSLOT_PTE)
 #define APDP_PDE	(PDP_BASE + PDSLOT_APTE)
+
+#endif /* !L4 */
 
 /*
  * The following define determines how many PTPs should be set up for the
@@ -208,6 +214,8 @@
  * plus alternative versions of the above
  */
 
+#ifndef L4
+
 #define vtopte(VA)	(PTE_BASE + atop(VA))
 #define kvtopte(VA)	vtopte(VA)
 #define ptetov(PT)	(ptoa(PT - PTE_BASE))
@@ -217,6 +225,8 @@
 #define	ptetoav(PT)	(ptoa(PT - APTE_BASE))
 #define	avtophys(VA)	((*avtopte(VA) & PG_FRAME) | \
 			 ((unsigned)(VA) & ~PG_FRAME))
+
+#endif /* !L4 */
 
 /*
  * pdei/ptei: generate index into PDP/PTP from a VA
@@ -359,9 +369,11 @@ struct pv_page {
  * global kernel variables
  */
 
-extern pd_entry_t	PTD[];
 #ifdef L4
-extern pd_entry_t	APTD[];
+extern pd_entry_t	*PTD;		/* current cr3 */
+extern pd_entry_t	*APTD;
+#else
+extern pd_entry_t	PTD[];
 #endif
 
 /* PTDpaddr: is the physical address of the kernel's PDP */
@@ -392,6 +404,21 @@ extern int pmap_pg_g;			/* do we support PG_G? */
 #define pmap_unuse_final(p)		/* nothing */
 #define	pmap_remove_holes(map)		do { /* nothing */ } while (0)
 
+
+#ifdef L4
+
+__inline static pt_entry_t *
+vtopte(vaddr_t va)
+{
+	pt_entry_t *ptes = (pt_entry_t *)PTD[pdei(va)];
+	return ((pt_entry_t *)&ptes[ptei(va)]);
+}
+#define kvtopte(VA)	vtopte(VA)
+//#define ptetov(PT)	(ptoa(PT) - 0x10000000)		// valid for KVAs
+#define vtophys(VA)	((*vtopte(VA) & PG_FRAME) | \
+			 ((unsigned)(VA) & ~PG_FRAME))
+
+#endif /* L4 */
 
 /*
  * Prototypes
