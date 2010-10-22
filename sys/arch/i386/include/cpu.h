@@ -315,6 +315,10 @@ extern int cpu_cache_ebx;
 extern int cpu_cache_ecx;
 extern int cpu_cache_edx;
 
+#ifdef L4
+extern void l4x_enumerate_cpu(void);
+#endif
+
 /* machdep.c */
 extern int cpu_apmhalt;
 extern int cpu_class;

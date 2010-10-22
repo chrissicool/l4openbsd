@@ -528,6 +528,9 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
 	LOG_printf("l4x_bsd_startup: received startup message.\n");
 
+	/* Enumerate our CPU type. */
+	l4x_enumerate_cpu();
+
 	/*
 	 * Setup (allocate) some main memory. On i386, init386() will also
 	 * enumerate all available RAM according to bios_memmap from E820,

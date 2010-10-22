@@ -239,7 +239,12 @@ _C_LABEL(PTDsize):	.long	NBPG	# size of PTD, for libkvm
 tmpstk:
 
 
+#ifdef L4
+/* No need to relocate anything, we are already in paged mode. */
+#define RELOC(x)	x
+#else
 #define	RELOC(x)	((x) - KERNBASE)
+#endif
 
 	.text
 	.globl	start
@@ -278,6 +283,15 @@ start:	movw	$0x1234,0x472			# warm boot
 	movw	%ax,%fs
 	movw	%ax,%gs
 
+#ifdef L4
+	/*
+	 * Add a new function call to get our CPU type.
+	 * void l4x_enumerate_cpu(void);
+	 */
+ENTRY(l4x_enumerate_cpu)
+	push	%ebp
+	mov	%esp, %ebp
+#endif
 	/* Find out our CPU type. */
 
 try386:	/* Try to toggle alignment check flag; does not exist on 386. */
@@ -449,6 +463,12 @@ try586:	/* Use the `cpuid' instruction. */
 	movl	%edx,RELOC(_C_LABEL(cpu_brandstr))+44
 
 2:
+#ifdef L4
+	/* function epilog for l4x_enumerate_cpu() */
+	mov	$0, %eax
+	pop	%ebp
+	ret
+#endif
 	/*
 	 * Finished with old stack; load new %esp now instead of later so we
 	 * can trace this code without having to worry about the trace trap
