@@ -676,7 +676,7 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot)
 		pmap_tlb_shootpage(pmap_kernel(), va);
 		pmap_tlb_shootwait();
 	}
-//	printf("%s: cl: Mapping PA=0x%08lx -> VA=0x%08lx\n", __func__, pa, va);
+//	printf("%s: pmap(9): Mapping PA=0x%08lx -> VA=0x%08lx\n", __func__, pa, va);
 	l4lx_memory_map_virtual_page(va, pa, prot);
 }
 
@@ -704,7 +704,7 @@ pmap_kremove(vaddr_t sva, vsize_t len)
 		if (opte & PG_PVLIST)
 			panic("pmap_kremove: PG_PVLIST mapping for 0x%lx", va);
 #endif
-//		printf("%s: cl: Unmapping VA=0x%08lx\n", __func__, va);
+//		printf("%s: pmap(9): Unmapping VA=0x%08lx\n", __func__, va);
 		l4lx_memory_unmap_virtual_page(va);
 	}
 	pmap_tlb_shootrange(pmap_kernel(), sva, eva);
@@ -2075,6 +2075,7 @@ pmap_do_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flags)
 				va, blkendva, flags);
 #ifdef L4
 		/* Remove mapping, if it was a kernel page. */
+//		printf("%s: pmap(9): Removing PA=0x%08lx -> VA=0x%08lx\n", __func__, va);
 		if (pmap == pmap_kernel())
 			l4lx_memory_unmap_virtual_page(va);
 #endif
@@ -2655,6 +2656,7 @@ enter_now:
 
 #ifdef L4
 	/* Map only kernel pages into KVA */
+//	printf("%s: pmap(9): Entering PA=0x%08lx -> VA=0x%08lx\n", __func__, pa, va);
 	if (pmap == pmap_kernel())
 		l4lx_memory_map_virtual_page(va, pa,
 				pmap_pg_g | (PG_u | PG_RW));
