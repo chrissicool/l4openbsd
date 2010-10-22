@@ -34,6 +34,7 @@
 #include <machine/l4/irq.h>
 #include <machine/l4/vcpu.h>
 #include <machine/l4/cap_alloc.h>
+#include <machine/l4/util.h>
 
 #include <l4/sys/vcon.h>
 #include <l4/sys/factory.h>
@@ -41,7 +42,7 @@
 #include <l4/re/c/namespace.h>
 #include <l4/re/c/util/cap.h>
 
-#define PORT0_NAME              "l4ser"
+#define PORT0_NAME              "log"
 
 cdev_decl(l4ser);
 void l4ser_attach(struct device *, struct device *, void *);
@@ -105,7 +106,7 @@ struct tty *l4sertty(dev_t dev)
 #include <l4/log/log.h>
 static int probe_l4ser(void)
 {
-	int irq;
+	int irq, r;
 	l4_vcon_attr_t vcon_attr;
 	L4XV_V(f);
 
@@ -113,7 +114,10 @@ static int probe_l4ser(void)
 		return 0;
 	l4ser.inited = 1;
 
-	l4ser.vcon_cap = l4re_env()->log;
+	if ((r = l4x_re_resolve_name(PORT0_NAME, &l4ser.vcon_cap))) {
+		l4ser.vcon_cap = l4re_env()->log;
+		return r;
+	}
 
 	L4XV_L(f);
 	l4ser.vcon_irq_cap = l4x_cap_alloc();

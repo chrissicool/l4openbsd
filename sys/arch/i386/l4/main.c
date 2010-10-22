@@ -20,6 +20,7 @@
 #include <machine/l4/api/macros.h>
 #include <machine/l4/l4lxapi/task.h>
 #include <machine/l4/l4lxapi/thread.h>
+#include <machine/l4/util.h>
 #include <machine/l4/iodb.h>
 #include <machine/l4/cap_alloc.h>
 #include <machine/l4/smp.h>
@@ -859,6 +860,49 @@ void exit(int code)
 	LOG_printf("Still alive, going zombie???\n");
 	l4_sleep_forever();
 	/* NOTREACHED */
+}
+
+/*
+ * Full fledged name resolving, including cap allocation.
+ */
+int l4x_re_resolve_name(const char *name, l4_cap_idx_t *cap)
+{
+	const char *n = name;
+	int r;
+	l4re_env_cap_entry_t const *entry;
+	L4XV_V(f);
+
+	for (; *n && *n != '/'; ++n)
+		;
+
+	L4XV_L(f);
+	entry = l4re_get_env_cap_l(name, n - name, l4re_env());
+	if (!entry) {
+		L4XV_U(f);
+		return ENOENT;
+	}
+
+	if (!*n) {
+		// full name resolved, no slashes, return
+		*cap = entry->cap;
+		L4XV_U(f);
+		return 0;
+	}
+
+	if (l4_is_invalid_cap(*cap = l4x_cap_alloc())) {
+		L4XV_U(f);
+		return ENOMEM;
+	}
+
+	r = l4re_ns_query_srv(entry->cap, n + 1, *cap);
+	if (r) {
+		LOG_printf("Failed to query name '%s': %s(%d)\n",
+				name, l4sys_errtostr(r), r);
+		L4XV_U(f);
+		return ENOENT;
+	}
+
+	return 0;
 }
 
 /*

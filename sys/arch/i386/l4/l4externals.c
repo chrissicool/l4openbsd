@@ -32,6 +32,7 @@ L4_EXTERNAL_FUNC(l4re_debug_obj_debug);
 L4_EXTERNAL_FUNC(l4re_ds_size);
 L4_EXTERNAL_FUNC(l4re_ds_phys);
 L4_EXTERNAL_FUNC(l4re_ma_alloc_srv);
+L4_EXTERNAL_FUNC(l4re_ns_query_to_srv);
 L4_EXTERNAL_FUNC(l4re_rm_attach_srv);
 L4_EXTERNAL_FUNC(l4re_rm_detach_srv);
 L4_EXTERNAL_FUNC(l4re_rm_find_srv);
