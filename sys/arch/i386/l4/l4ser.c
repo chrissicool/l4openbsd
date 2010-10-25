@@ -67,11 +67,6 @@ struct cfattach l4ser_ca = {
 struct cfdriver l4ser_cd = {
 	NULL, "l4ser", DV_TTY
 };
-/* open, close, read, write, ioctl, stop, tty */
-//struct cdevsw l4ser_cd = {
-//	l4seropen, l4serclose, l4serread, l4serwrite, l4serioctl,
-//	l4serstop, l4sertty, NULL, NULL, 0, 0, NULL
-//};
 
 static int l4sermajor, l4serminor;
 
@@ -116,7 +111,6 @@ static int probe_l4ser(void)
 
 	if ((r = l4x_re_resolve_name(PORT0_NAME, &l4ser.vcon_cap))) {
 		l4ser.vcon_cap = l4re_env()->log;
-		return r;
 	}
 
 	L4XV_L(f);
@@ -192,8 +186,8 @@ int l4sercngetc(dev_t dev)
 	L4XV_V(f);
 
 	L4XV_L(f);
-	if (/* l4_is_invalid_cap(l4ser.vcon_irq_cap) TODO cl: Add IRQ handling
-	    ||*/ l4_vcon_read(l4ser.vcon_cap, &c, 1) <= 0)
+	if (l4_is_invalid_cap(l4ser.vcon_irq_cap)
+			|| l4_vcon_read(l4ser.vcon_cap, &c, 1) <= 0)
 		res = -1;
 	else
 		res = c;
