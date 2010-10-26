@@ -1195,13 +1195,13 @@ ENTRY(copystr)
  * Change the global descriptor table.
  */
 NENTRY(lgdt)
-	/* Reload the descriptor table. */
-	movl	4(%esp),%eax
 #ifdef L4
-	push	%eax
-	call	_C_LABEL(l4x_load_gdt_register)	/* void l4x_load_gdt_register(struct region_descriptor *gdt) */
+//	push	%eax
+//	call	_C_LABEL(l4x_load_gdt_register)	/* void l4x_load_gdt_register(struct region_descriptor *gdt) */
 	ret
 #else
+	/* Reload the descriptor table. */
+	movl	4(%esp),%eax
 	lgdt	(%eax)
 	/* Flush the prefetch q. */
 	jmp	1f

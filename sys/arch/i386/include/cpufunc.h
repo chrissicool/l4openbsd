@@ -101,12 +101,12 @@ static __inline void
 lldt(u_short sel)
 {
 #ifdef L4
-	L4XV_V(f);
-	unsigned long addr = sel;	/* very nasty conversion */
-	L4XV_L(f);
-	fiasco_ldt_set(L4_INVALID_CAP /* XXX cl */, (void *)addr,
-			NGDT * sizeof(union descriptor) - 1, 0, l4_utcb());
-	L4XV_U(f);
+//	L4XV_V(f);
+//	unsigned long addr = sel;	/* very nasty conversion */
+//	L4XV_L(f);
+//	fiasco_ldt_set(L4_INVALID_CAP /* XXX cl */, (void *)addr,
+//			NGDT * sizeof(union descriptor) - 1, 0, l4_utcb());
+//	L4XV_U(f);
 #else /* !L4 */
 	__asm __volatile("lldt %0" : : "r" (sel));
 #endif
@@ -115,20 +115,28 @@ lldt(u_short sel)
 static __inline void
 ltr(u_short sel)
 {
+#ifndef L4
 	__asm __volatile("ltr %0" : : "r" (sel));
+#endif
 }
 
 static __inline void
 lcr0(u_int val)
 {
+#ifndef L4
 	__asm __volatile("movl %0,%%cr0" : : "r" (val));
+#endif
 }
 
 static __inline u_int
 rcr0(void)
 {
 	u_int val;
+#ifdef L4
+	val = 0;
+#else
 	__asm __volatile("movl %%cr0,%0" : "=r" (val));
+#endif
 	return val;
 }
 
@@ -136,7 +144,11 @@ static __inline u_int
 rcr2(void)
 {
 	u_int val;
+#ifdef L4
+	val = 0;
+#else
 	__asm __volatile("movl %%cr2,%0" : "=r" (val));
+#endif
 	return val;
 }
 
@@ -152,21 +164,31 @@ static __inline u_int
 rcr3(void)
 {
 	u_int val;
+#ifdef L4
+	val = 0;
+#else
 	__asm __volatile("movl %%cr3,%0" : "=r" (val));
+#endif
 	return val;
 }
 
 static __inline void
 lcr4(u_int val)
 {
+#ifndef L4
 	__asm __volatile("movl %0,%%cr4" : : "r" (val));
+#endif
 }
 
 static __inline u_int
 rcr4(void)
 {
 	u_int val;
+#ifdef L4
+	val = 0;
+#else
 	__asm __volatile("movl %%cr4,%0" : "=r" (val));
+#endif
 	return val;
 }
 
@@ -277,7 +299,9 @@ mfence(void)
 static __inline void
 wrmsr(u_int msr, u_int64_t newval)
 {
+#ifndef L4
         __asm __volatile("wrmsr" : : "A" (newval), "c" (msr));
+#endif
 }
 
 static __inline u_int64_t
