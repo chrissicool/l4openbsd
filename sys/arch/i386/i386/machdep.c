@@ -2909,7 +2909,6 @@ init386(paddr_t first_avail)
 
 	bootapiver = BOOTARG_APIVER;
 	boothowto = 0;
-	cpu_feature = 0;
 
 	kb = (int) im;		/* keep gcc -Wall -Werror happy */
 #endif

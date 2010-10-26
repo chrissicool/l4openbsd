@@ -309,8 +309,10 @@ void
 cpu_init(struct cpu_info *ci)
 {
 	/* configure the CPU if needed */
+#ifndef L4
 	if (ci->cpu_setup != NULL)
 		(*ci->cpu_setup)(ci);
+#endif
 
 	/*
 	 * We do this here after identifycpu() because errata may affect

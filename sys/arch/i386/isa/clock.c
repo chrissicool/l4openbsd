@@ -106,6 +106,10 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <dev/ic/i8253reg.h>
 #include <i386/isa/nvram.h>
 
+#ifdef L4
+#include <machine/l4/setup.h>
+#endif
+
 void	spinwait(int);
 int	clockintr(void *);
 int	gettick(void);
@@ -376,12 +380,16 @@ i8254_delay(int n)
 void
 calibrate_cyclecounter(void)
 {
+#ifdef L4
+	cpuspeed = l4lx_kinfo->frequency_cpu / 1000;
+#else
 	unsigned long long count, last_count;
 
 	__asm __volatile("rdtsc" : "=A" (last_count));
 	delay(1000000);
 	__asm __volatile("rdtsc" : "=A" (count));
 	cpuspeed = ((count - last_count) + 999999) / 1000000;
+#endif
 }
 
 void
