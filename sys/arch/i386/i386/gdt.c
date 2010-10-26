@@ -100,13 +100,18 @@ setgdt(int sel, void *base, size_t limit, int type, int dpl, int def32,
 void
 gdt_init()
 {
+#ifndef L4
 	struct vm_page *pg;
 	vaddr_t va;
+#endif
 	struct cpu_info *ci = &cpu_info_primary;
 
 	gdt_next = NGDT;
 	gdt_free = GNULL_SEL;
 
+#ifdef L4
+	gdt = (union descriptor *)uvm_km_zalloc(kernel_map, MAXGDTSIZ);
+#else
 	gdt = (union descriptor *)uvm_km_valloc(kernel_map, MAXGDTSIZ);
 	for (va = (vaddr_t)gdt; va < (vaddr_t)gdt + MAXGDTSIZ;
 	    va += PAGE_SIZE) {
@@ -116,6 +121,7 @@ gdt_init()
 		pmap_kenter_pa(va, VM_PAGE_TO_PHYS(pg),
 		    VM_PROT_READ | VM_PROT_WRITE);
 	}
+#endif
 	bcopy(bootstrap_gdt, gdt, NGDT * sizeof(union descriptor));
 	ci->ci_gdt = gdt;
 	setsegment(&ci->ci_gdt[GCPU_SEL].sd, ci, sizeof(struct cpu_info)-1,
