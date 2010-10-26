@@ -247,6 +247,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 	}
 #endif
 
+#ifndef L4
 	if (!bcmp(ISA_HOLE_VADDR(EISA_ID_PADDR), EISA_ID, EISA_ID_LEN)) {
 		mba.mba_eba.eba_busname = "eisa";
 		mba.mba_eba.eba_iot = I386_BUS_SPACE_IO;
@@ -256,6 +257,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 #endif
 		config_found(self, &mba.mba_eba, mainbus_print);
 	}
+#endif
 
 	if (isa_has_been_seen == 0) {
 		mba.mba_iba.iba_busname = "isa";
