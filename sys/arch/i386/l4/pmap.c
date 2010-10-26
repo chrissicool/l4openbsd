@@ -2480,11 +2480,15 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 //		panic("pmap_enter: trying to map over PDP/APDP!");
 
 	/* sanity check: kernel PTPs should already have been pre-allocated */
-//	if (va >= VM_MIN_KERNEL_ADDRESS &&
-	if (pmap == pmap_kernel() &&
-	    !pmap_valid_entry(pmap->pm_pdir[pdei(va)]))
-		panic("pmap_enter: missing kernel PTP!");
 #endif
+	if (pmap == pmap_kernel() &&
+	    !pmap_valid_entry(pmap->pm_pdir[pdei(va)])) {
+		/* Get a new kernel page table page. */
+		pd = pmap_map_pdes(pmap);	/* locks pmap */
+		while (!pmap_alloc_ptp(pmap_kernel(), pdei(va), FALSE, 0))
+			uvm_wait("pmap_enter");
+		pmap_unmap_pdes(pmap);		/* unlocks pmap */
+	}
 	if (pmap_initialized)
 		freepve = pmap_alloc_pv(pmap, ALLOCPV_NEED);
 	else
