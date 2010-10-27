@@ -201,8 +201,6 @@ void l4sercnputc(dev_t dev, int i)
 	L4XV_V(f);
 
 	c = i;
-	if (c == '\r')
-		return;		/* XXX cl: is this a crazy "qemu -serial stdio" hack! */
 	L4XV_L(f);
 	l4_vcon_write(l4ser.vcon_cap, &c, 1);
 	L4XV_U(f);
