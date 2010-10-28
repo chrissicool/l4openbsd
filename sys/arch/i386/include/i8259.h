@@ -48,7 +48,11 @@
 extern	unsigned imen;		/* interrupt mask enable */
 extern unsigned i8259_setmask(unsigned);
 
+#ifdef L4
+#define SET_ICUS()
+#else
 #define SET_ICUS()	(outb(IO_ICU1 + 1, imen), outb(IO_ICU2 + 1, imen >> 8))
+#endif
 
 extern void i8259_default_setup(void);
 extern void i8259_reinit(void);

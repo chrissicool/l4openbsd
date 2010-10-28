@@ -169,6 +169,7 @@ isa_defaultirq(void)
 		setgate(&idt[ICU_OFFSET + i], IDTVEC(intr)[i], 0,
 		    SDT_SYS386IGT, SEL_KPL, GICODE_SEL);
   
+#ifndef L4
 	/* initialize 8259's */
 	outb(IO_ICU1, 0x11);		/* reset; program device, four bytes */
 	outb(IO_ICU1+1, ICU_OFFSET);	/* starting at this vector index */
@@ -196,6 +197,7 @@ isa_defaultirq(void)
 	outb(IO_ICU2+1, 0xff);		/* leave interrupts masked */
 	outb(IO_ICU2, 0x68);		/* special mask mode (if available) */
 	outb(IO_ICU2, 0x0a);		/* Read IRR by default. */
+#endif /* !L4 */
 }
 
 void

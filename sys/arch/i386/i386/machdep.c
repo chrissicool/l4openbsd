@@ -2976,16 +2976,12 @@ init386(paddr_t first_avail)
 	setgate(&idt[128], &IDTVEC(syscall), 0, SDT_SYS386TGT, SEL_UPL, GCODE_SEL);
 
 	setregion(&region, gdt, NGDT * sizeof(union descriptor) - 1);
-#ifndef L4
 	lgdt(&region);
-#endif
 	setregion(&region, idt, sizeof(idt_region) - 1);
 	lidt(&region);
 
-#ifndef L4
 #if NISA > 0
 	isa_defaultirq();
-#endif
 #endif
 
 	/*
