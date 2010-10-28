@@ -637,6 +637,7 @@ fstime:
 void
 resettodr(void)
 {
+#ifndef L4
 	mc_todregs rtclk;
 	struct clock_ymdhms dt;
 	int diff;
@@ -674,6 +675,7 @@ resettodr(void)
 		mc146818_write(NULL, NVRAM_CENTURY, century); /* XXX softc */
 	}
 	splx(s);
+#endif /* !L4 */
 }
 
 void
