@@ -299,6 +299,15 @@ cpu_attach(struct device *parent, struct device *self, void *aux)
 		    ci->ci_dev.dv_xname, pcb, pcb->pcb_esp);
 	}
 #endif
+
+#ifdef L4
+	/*
+	 * The *delay_func() may have been set to either one
+	 * of the i8254 or lapic functions above. Replace it with a L4-specific
+	 * function.
+	 */
+	delay_func = l4x_delay;
+#endif /* L4 */
 }
 
 /*

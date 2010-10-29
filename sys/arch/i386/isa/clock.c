@@ -113,6 +113,9 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 #ifdef L4
 #include <machine/l4/setup.h>
+#include <l4/sys/types.h>
+#include <l4/sys/utcb.h>
+#include <l4/util/util.h>
 #endif
 
 #ifdef L4_EXTERNAL_RTC
@@ -326,6 +329,24 @@ gettick(void)
 		return ((hi << 8) | lo);
 	}
 }
+
+#ifdef L4
+/*
+ * Wait "n" microseconds.
+ * This is the paravirtualized version of i8254_delay().
+ */
+void
+l4x_delay(int n)
+{
+	l4_timeout_t to;
+	l4_utcb_t *u = l4_utcb();
+
+	if (n > 0) {
+		l4_rcv_timeout(l4util_micros2l4to(n), &to);
+		l4_ipc_receive(L4_INVALID_CAP, u, to);
+	}
+}
+#endif /* L4 */
 
 /*
  * Wait "n" microseconds.

@@ -23,6 +23,7 @@ L4_EXTERNAL_FUNC(l4x_external_exit);	/* jumps back into the wrapper */
 
 L4_EXTERNAL_FUNC(l4util_kip_kernel_has_feature);
 L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
+L4_EXTERNAL_FUNC(l4util_micros2l4to);
 
 #ifdef L4_EXTERNAL_RTC
 L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);

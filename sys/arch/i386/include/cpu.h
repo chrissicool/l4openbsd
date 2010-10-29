@@ -385,6 +385,10 @@ void	i8254_startclock(void);
 void	i8254_inittimecounter(void);
 void	i8254_inittimecounter_simple(void);
 
+#ifdef L4
+void	l4x_delay(int);
+#endif
+
 #if !defined(SMALL_KERNEL)
 /* est.c */
 void	est_init(const char *, int);
