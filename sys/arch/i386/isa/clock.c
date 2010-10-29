@@ -115,6 +115,10 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <machine/l4/setup.h>
 #endif
 
+#ifdef L4_EXTERNAL_RTC
+#include <l4/rtc/rtc.h>
+#endif
+
 void	spinwait(int);
 int	clockintr(void *);
 int	gettick(void);
@@ -550,9 +554,11 @@ void
 inittodr(time_t base)
 {
 	struct timespec ts;
+#ifndef L4_EXTERNAL_RTC
 	mc_todregs rtclk;
 	struct clock_ymdhms dt;
 	int s;
+#endif
 
 
 	ts.tv_nsec = 0;
@@ -570,6 +576,15 @@ inittodr(time_t base)
 		/* read the system clock anyway */
 		base = 17*SECYR + 186*SECDAY + SECDAY/2;
 	}
+
+#ifdef L4_EXTERNAL_RTC
+
+	if (l4rtc_get_seconds_since_1970(&ts.tv_sec)) {
+		printf("WARNING: Cannot get time from RTC server.\n");
+		ts.tv_sec = 0;
+	}
+
+#else /* !L4_EXTERNAL_RTC */
 
 	s = splclock();
 	if (rtcget(&rtclk)) {
@@ -609,6 +624,8 @@ inittodr(time_t base)
 	ts.tv_sec = clock_ymdhms_to_secs(&dt) + tz.tz_minuteswest * 60;
 	if (tz.tz_dsttime)
 		ts.tv_sec -= 3600;
+
+#endif /* !L4_EXTERNAL_RTC */
 
 	if (base < ts.tv_sec - 5*SECYR)
 		printf("WARNING: file system time much less than clock time\n");
