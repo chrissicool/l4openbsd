@@ -406,7 +406,9 @@ cpu_startup()
 	initmsgbuf((caddr_t)msgbufp, round_page(MSGBUFSIZE));
 
 	printf("%s", version);
+#ifndef L4	/* L4 starts clocks later. See initclocks() */
 	startclocks();
+#endif
 
 	/*
 	 * We need to call identifycpu here early, so users have at least some

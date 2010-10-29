@@ -178,7 +178,6 @@ mc146818_write(void *sc, u_int reg, u_int datum)
 void
 startclocks(void)
 {
-#ifndef L4	/* L4 starts clocks later via initclock_func(). */
 	int s;
 
 	mtx_enter(&timer_mutex);
@@ -190,7 +189,6 @@ startclocks(void)
 	if ((s = mc146818_read(NULL, NVRAM_DIAG)) != 0)	/* XXX softc */
 		printf("RTC BIOS diagnostic error %b\n", (unsigned int) s, 
 		    NVRAM_DIAG_BITS);
-#endif
 }
 
 void
