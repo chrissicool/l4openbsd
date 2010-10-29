@@ -386,6 +386,7 @@ void	i8254_inittimecounter(void);
 void	i8254_inittimecounter_simple(void);
 
 #ifdef L4
+void	l4x_initclocks(void);
 void	l4x_delay(int);
 #endif
 
