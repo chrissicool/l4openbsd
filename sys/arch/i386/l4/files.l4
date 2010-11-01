@@ -11,6 +11,7 @@ file	arch/i386/l4/pmap.c				l4
 file	arch/i386/l4/ioport.c				l4
 file	arch/i386/l4/tamed.c				l4
 file	arch/i386/l4/irq.c				l4
+file	arch/i386/l4/dispatch.c				l4
 
 # l4lxlib
 file	arch/i386/l4/l4lxlib/l4env/task.c		l4

@@ -29,7 +29,7 @@ l4_vcpu_state_t *l4x_vcpu_state(int cpu)
 void l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct reg *regs);
 //void l4x_vcpu_handle_ipi(struct pt_regs *regs);
 
-static inline void l4x_vcpu_entry(void) {}; /* TODO implement in dispatch.c */
+void l4x_vcpu_entry(void);	/* vCPU entry point for interrupts */
 
 /* #else */
 #if 0
