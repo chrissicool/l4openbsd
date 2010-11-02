@@ -141,7 +141,7 @@ static void l4x_configuration_sanity_check(void);
 
 static int l4x_cpu_virt_phys_map_init(void);
 static inline void l4x_x86_utcb_save_orig_segment(void);
-unsigned l4x_x86_utcb_get_orig_segment(void);
+//unsigned l4x_x86_utcb_get_orig_segment(void);
 
 static void get_initial_cpu_capabilities(void);
 
@@ -766,7 +766,7 @@ static inline int l4x_handle_pagefault(unsigned long pfa, unsigned long ip,
 
 static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 {
-	struct reg regs;
+	struct trapframe regs;
 	unsigned long regs_addr;
 	extern void die(const char *msg, struct reg *regs, int err);
 	static char message[40];
@@ -782,8 +782,8 @@ static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 	 * - ...)
 	 */
 	/* Copy regs on the stack */
-	exc->sp -= sizeof(struct reg);
-	*(struct reg *)exc->sp = regs;
+	exc->sp -= sizeof(struct trapframe);
+	*(struct trapframe *)exc->sp = regs;
 	regs_addr = exc->sp;
 
 	/* Fill arguments in regs for die params */

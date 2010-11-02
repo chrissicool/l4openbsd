@@ -5,7 +5,7 @@
 
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
-#include <machine/reg.h>
+#include <machine/frame.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/vcpu.h>
@@ -26,7 +26,7 @@ l4_vcpu_state_t *l4x_vcpu_state(int cpu)
 	return l4x_vcpu_states[cpu];
 }
 
-void l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct reg *regs);
+void l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs);
 //void l4x_vcpu_handle_ipi(struct pt_regs *regs);
 
 void l4x_vcpu_entry(void);	/* vCPU entry point for interrupts */

@@ -6,7 +6,7 @@
 #include <sys/systm.h>
 #include <sys/rwlock.h>
 
-#include <machine/reg.h>
+#include <machine/frame.h>
 #include <machine/intr.h>
 #include <machine/psl.h>
 #include <machine/i8259.h>
@@ -16,27 +16,34 @@
 #include <machine/l4/vcpu.h>
 #include <machine/l4/irq.h>
 
-#define NR_REQUESTABLE I386_NSOFTINTR
+#define NR_REQUESTABLE			256
 
-static int handle_irq(int irq, struct reg *regs);
+static int handle_irq(int irq, struct trapframe *regs);
 static void init_array(void);
 
-static struct reg *irq_regs;
+static struct trapframe *irq_regs;
 static struct rwlock irq_lock;
 static l4_cap_idx_t caps[NR_REQUESTABLE];
 static int init_done = 0;
 
-static inline struct reg *
-set_irq_regs(struct reg *new_regs)
+/* On x86 all hardware interrupts end up in one of these two handler lists. */
+extern struct intrhand *intrhand[ICU_LEN];	/* (E)ISA */
+#if NIOAPIC > 0
+#error IOAPIC support not yet implemented!
+//extern struct intrhand *apic_intrhand[256];	/*  APIC  */
+#endif
+
+static inline struct trapframe *
+set_irq_regs(struct trapframe *new_regs)
 {
-	struct reg *old_regs, **pp_regs = &irq_regs;
+	struct trapframe *old_regs, **pp_regs = &irq_regs;
 
 	old_regs = *pp_regs;
 	*pp_regs = new_regs;
 	return old_regs;
 }
 
-void l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct reg *regs)
+void l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 {
 	int irq = t->i.label >> 2;
 	int s = splhigh();
@@ -62,9 +69,9 @@ void l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct reg *regs)
  * SMP cross-CPU interrupts have their own specific
  * handlers).
  */
-unsigned int do_IRQ(int irq, struct reg *regs)
+unsigned int do_IRQ(int irq, struct trapframe *regs)
 {
-	struct reg *old_regs = set_irq_regs(regs);
+	struct trapframe *old_regs = set_irq_regs(regs);
 
 	cpu_unidle();
 
@@ -83,7 +90,7 @@ unsigned int do_IRQ(int irq, struct reg *regs)
  * Note, we only run hardware IRQs here.
  */
 static int
-handle_irq(int irq, struct reg *regs)
+handle_irq(int irq, struct trapframe *regs)
 {
 	/* On x86 all interrupts end up in one of these two handler lists. */
 	struct intrhand *intrhand[ICU_LEN];	/* (E)ISA */

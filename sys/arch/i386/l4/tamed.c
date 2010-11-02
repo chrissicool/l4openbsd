@@ -8,7 +8,7 @@
 
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
-#include <machine/reg.h>
+#include <machine/frame.h>
 #include <machine/segments.h>
 
 #include <machine/l4/vcpu.h>
@@ -54,8 +54,8 @@ void l4x_global_sti(void)
 
 static void do_vcpu_irq(l4_vcpu_state_t *v)
 {
-	struct reg regs;
-	regs.r_cs = SEL_KPL;	/* kernel */
-	regs.r_eflags = 0;
+	struct trapframe regs;
+	regs.tf_cs = SEL_KPL;	/* kernel */
+	regs.tf_eflags = 0;
 	l4x_vcpu_handle_irq(v, &regs);
 }
