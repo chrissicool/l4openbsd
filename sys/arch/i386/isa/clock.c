@@ -777,10 +777,12 @@ resettodr(void)
 void
 setstatclockrate(int arg)
 {
+#ifndef L4
 	if (arg == stathz)
 		mc146818_write(NULL, MC_REGA, MC_BASE_32_KHz | MC_RATE_128_Hz);
 	else
 		mc146818_write(NULL, MC_REGA, MC_BASE_32_KHz | MC_RATE_1024_Hz);
+#endif
 }
 
 void
