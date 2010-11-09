@@ -771,7 +771,8 @@ static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 	extern void die(const char *msg, struct reg *regs, int err);
 	static char message[40];
 
-	snprintf(message, sizeof(message), "Trap: %ld", exc->trapno);
+	snprintf(message, sizeof(message), "Trap: 0x%02lx @0x%08lx",
+			exc->trapno, l4_utcb_exc_pc(exc));
 	message[sizeof(message) - 1] = 0;
 
 	memset(&regs, 0, sizeof(regs));
