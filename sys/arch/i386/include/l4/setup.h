@@ -9,6 +9,7 @@
 
 extern l4_kernel_info_t *l4lx_kinfo;
 extern unsigned int l4x_kernel_taskno;
+extern l4_cap_idx_t linux_server_thread_id;
 
 /* main memory parameters from setupmem.c */
 extern l4re_ds_t l4x_ds_mainmem;

@@ -97,6 +97,10 @@
 
 #include "isadma.h"
 
+#ifdef L4
+#include <machine/l4/l4lxapi/irq.h>
+#endif
+
 extern	paddr_t avail_end;
 
 #define	IDTVEC(name)	__CONCAT(X,name)
@@ -532,6 +536,14 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 		}
 		break;
 	}
+
+#ifdef L4
+	/* Try to bring up the IRQ on L4. */
+	if (!l4lx_irq_dev_startup(irq)) {
+		free(ih, M_DEVBUF);
+		return (NULL);
+	}
+#endif
 
 	/*
 	 * Figure out where to put the handler.

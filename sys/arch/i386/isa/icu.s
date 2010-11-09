@@ -49,6 +49,9 @@ _C_LABEL(netisr):
  *   edi - scratch for Xsoftnet
  */
 IDTVEC(spllower)
+#ifdef L4
+	call	_C_LABEL(l4x_spllower)
+#else
 	pushl	%ebx
 	pushl	%esi
 	pushl	%edi
@@ -70,6 +73,7 @@ IDTVEC(spllower)
 	popl	%edi
 	popl	%esi
 	popl	%ebx
+#endif
 	ret
 
 /*

@@ -541,7 +541,7 @@ static L4_CV void l4x_bsd_startup(void *data)
 
 	/* Initialize vCPU state now, we need it for init386()::consinit() */
 	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
-	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS;
+	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS & L4_VCPU_F_IRQ;
 	l4x_vcpu_state(0)->entry_ip = (l4_addr_t)&l4x_vcpu_entry;
 	l4x_vcpu_state(0)->user_task = L4_INVALID_CAP;
 

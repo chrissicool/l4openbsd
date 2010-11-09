@@ -18,6 +18,7 @@ file	arch/i386/l4/l4lxlib/l4env/task.c		l4
 file	arch/i386/l4/l4lxlib/l4env/thread.c		l4
 file	arch/i386/l4/l4lxlib/generic/thread_gen.c	l4
 file	arch/i386/l4/l4lxlib/l4env/memory.c		l4
+file	arch/i386/l4/l4lxlib/l4env/irq_vcpu.c		l4
 
 # drivers
 define	l4ser {[apid = -1]}
