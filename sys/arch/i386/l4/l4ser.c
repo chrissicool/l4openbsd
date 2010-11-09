@@ -138,7 +138,7 @@ static int probe_l4ser(void)
 		LOG_printf("l4ser: No interrupt, just output.\n");
 		l4ser.vcon_irq_cap = L4_INVALID_CAP;
 		irq = 0;
-	} else if ((irq = l4x_register_irq(l4ser.vcon_irq_cap)) < 0) {
+	} else if ((irq = l4x_register_irq_fixed(4, l4ser.vcon_irq_cap)) < 0) {
 		l4x_cap_free(l4ser.vcon_irq_cap);
 		l4x_cap_free(l4ser.vcon_cap);
 		L4XV_U(f);
