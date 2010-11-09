@@ -431,7 +431,7 @@ u_int l4x_get_timecount(struct timecounter *);
 void  l4x_inittimecounter(void);
 
 static struct timecounter l4x_timecounter = {
-	l4x_get_timecount, NULL, ~0u, 100, "l4-timer", 0, NULL
+	l4x_get_timecount, NULL, ~0u, 1, "l4-timer", 1000, NULL
 };
 
 u_int
