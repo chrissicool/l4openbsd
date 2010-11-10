@@ -58,7 +58,11 @@
  *
  * XXX intrframe has a lot of gunk we don't need.
  */
+#ifdef L4
+#define clockframe trapframe
+#else
 #define clockframe intrframe
+#endif
 
 #include <sys/device.h>
 #include <sys/lock.h>			/* will also get LOCKDEBUG */
@@ -236,9 +240,15 @@ void cpu_unidle(struct cpu_info *);
 extern void need_resched(struct cpu_info *);
 #define clear_resched(ci) (ci)->ci_want_resched = 0
 
+#ifdef L4
+#define	CLKF_USERMODE(frame)	USERMODE((frame)->tf_cs, (frame)->tf_eflags)
+#define	CLKF_PC(frame)		((frame)->tf_eip)
+#define	CLKF_INTR(frame)	(IDXSEL((frame)->tf_cs) == GICODE_SEL)
+#else /* !L4 */
 #define	CLKF_USERMODE(frame)	USERMODE((frame)->if_cs, (frame)->if_eflags)
 #define	CLKF_PC(frame)		((frame)->if_eip)
 #define	CLKF_INTR(frame)	(IDXSEL((frame)->if_cs) == GICODE_SEL)
+#endif /* !L4 */
 
 /*
  * This is used during profiling to integrate system time.

@@ -4,7 +4,10 @@
  * For deadlock reasons this file must _not_ use any Linux functionality!
  */
 
+#include <sys/param.h>
+#include <sys/systm.h>
 #include <sys/types.h>
+#include <sys/proc.h>
 
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
@@ -18,9 +21,7 @@
 #include <l4/sys/ipc.h>
 #include <l4/sys/utcb.h>
 
-
 static void do_vcpu_irq(l4_vcpu_state_t *v);
-
 
 void l4x_global_cli(void)
 {
@@ -54,8 +55,11 @@ void l4x_global_sti(void)
 
 static void do_vcpu_irq(l4_vcpu_state_t *v)
 {
-	struct trapframe regs;
-	regs.tf_cs = SEL_KPL;	/* kernel */
-	regs.tf_eflags = 0;
-	l4x_vcpu_handle_irq(v, &regs);
+	struct trapframe *regs;
+	struct proc *p = curproc;
+
+	regs = p->p_md.md_regs;		/* current trapframe */
+	regs->tf_cs = SEL_KPL;		/* kernel */
+	regs->tf_eflags = 0;
+	l4x_vcpu_handle_irq(v, regs);
 }

@@ -112,6 +112,7 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <i386/isa/nvram.h>
 
 #ifdef L4
+#include <sys/proc.h>
 #include <machine/l4/setup.h>
 #include <l4/sys/types.h>
 #include <l4/sys/utcb.h>
@@ -217,7 +218,12 @@ rtcdrain(void *v)
 int
 clockintr(void *arg)
 {
+#ifdef L4
+	/* This is the clock interrupt routine for the first CPU. */
+	struct clockframe *frame = curproc->p_md.md_regs;
+#else
 	struct clockframe *frame = arg;		/* not strictly necessary */
+#endif
 
 	if (timecounter->tc_get_timecount == i8254_get_timecount) {
 		if (i8254_ticked) {
@@ -467,11 +473,6 @@ l4x_initclocks(void)
 	/* Initialize callback to run hardclock(9) on every interrupt. */
 	(void)isa_intr_establish(NULL, 0, IST_PULSE, IPL_CLOCK,
 			clockintr, 0, "clock");
-
-	/*
-	 * TODO cl: Setup vCPU interrupt handling.
-	 * NOTE   : Do this along with l4x_vcpu_entry()
-	 */
 
 	/* Initialize timecounter. */
 #ifdef L4_EXTERNAL_RTC

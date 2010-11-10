@@ -59,6 +59,10 @@
 #define	GSEL(s,r)	(((s) << 3) | r)		/* a global selector */
 #define	LSEL(s,r)	(((s) << 3) | r | SEL_LDT)	/* a local selector */
 
+#ifdef L4
+#define	USERMODE(c, f)		((c & 3) == 3)
+#define	KERNELMODE(c, f)	((c & 3) == 0)
+#else /* !L4 */
 #ifdef VM86
 #define	USERMODE(c, f)		(ISPL(c) == SEL_UPL || ((f) & PSL_VM) != 0)
 #define	KERNELMODE(c, f)	(ISPL(c) == SEL_KPL && ((f) & PSL_VM) == 0)
@@ -66,6 +70,7 @@
 #define	USERMODE(c, f)		(ISPL(c) == SEL_UPL)
 #define	KERNELMODE(c, f)	(ISPL(c) == SEL_KPL)
 #endif
+#endif /* !L4 */
 
 #ifndef _LOCORE
 

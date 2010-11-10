@@ -5,6 +5,7 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/rwlock.h>
+#include <sys/proc.h>
 
 #include <uvm/uvm_extern.h>
 
@@ -48,7 +49,14 @@ extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
 void
 l4x_spllower(void)
 {
+	struct proc *p = curproc;
+	struct trapframe *tf;
 	int s;
+
+	/* prepare trapframe */
+	tf = p->p_md.md_regs;
+	tf->tf_cs |= (SEL_KPL & SEL_RPL);	/* kernel */
+	tf->tf_eflags = 0;
 
 	for (s = NIPL; s > NIPL; s--) {
 		if (MAKEIPL(s) > lapic_tpr) {
@@ -121,6 +129,8 @@ run_irq_handlers(int irq)
 	extern void isa_strayintr(int irq);
 	struct intrhand **p, *q;
 	int result = 0;
+
+	LOG_printf("%s: cl: Running IRQ%d\n", __func__, irq);
 
 	for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
 		result |= (*q->ih_fun)(q->ih_arg);
