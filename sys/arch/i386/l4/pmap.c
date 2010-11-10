@@ -1730,6 +1730,8 @@ pmap_extract(struct pmap *pmap, vaddr_t va, paddr_t *pap)
 void
 pmap_virtual_space(vaddr_t *startp, vaddr_t *endp)
 {
+//	printf("%s: pmap(9): KVA_start=0x%08lx, KVA_end=0x%08lx\n",
+//			__func__, virtual_avail, virtual_end);
 	*startp = virtual_avail;
 	*endp = virtual_end;
 }
@@ -2484,6 +2486,7 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 	if (pmap == pmap_kernel() &&
 	    !pmap_valid_entry(pmap->pm_pdir[pdei(va)])) {
 		/* Get a new kernel page table page. */
+//		printf("%s: cl: New KPT: PA=0x%08lx, VA=0x%08lx\n", __func__, pa, va);
 		pd = pmap_map_pdes(pmap);	/* locks pmap */
 		while (!pmap_alloc_ptp(pmap_kernel(), pdei(va), FALSE, 0))
 			uvm_wait("pmap_enter");
