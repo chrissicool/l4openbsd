@@ -132,12 +132,19 @@ run_irq_handlers(int irq)
 
 	LOG_printf("%s: cl: Running IRQ%d\n", __func__, irq);
 
+	curcpu()->ci_idepth++;
+
 	for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
 		result |= (*q->ih_fun)(q->ih_arg);
 		q->ih_count.ec_count++;
 	}
 	if (intrhand[irq] == NULL)
 		isa_strayintr(irq);
+
+	curcpu()->ci_idepth--;
+
+	/* Ack current handled IRQ. */
+	l4lx_irq_dev_eoi(irq);
 
 	return result;
 }
@@ -165,14 +172,9 @@ handle_irq(int irq, struct trapframe *regs)
 		curcpu()->ci_ipending |= iunmask[irq];
 		return 1; /* handled */
 	}
+
 	s = splraise(imaxlevel[irq]);
-
-	curcpu()->ci_idepth++;
 	result = run_irq_handlers(irq);
-	curcpu()->ci_idepth--;
-
-	/* TODO: everything from icu.s:Xdoreti */
-	l4lx_irq_dev_eoi(irq);
 	splx(s);
 
 	return result;
