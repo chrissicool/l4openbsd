@@ -84,7 +84,6 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		if (fp1)
 			l4_sndfpage_add_u((l4_fpage_t)fp2, fp1, &tag, utcb);
 
-		vcpu->state = 0;
 		tag = l4_thread_vcpu_resume_commit_u(L4_INVALID_CAP, tag, utcb);
 
 		if (l4_ipc_error(tag, utcb) == L4_IPC_SEMAPFAILED)
@@ -108,6 +107,8 @@ l4x_vcpu_entry(void)
 	struct user *u;
 	struct trapframe *regsp;
 	l4_vcpu_state_t *vcpu = l4x_vcpu_state(cpu);
+
+	vcpu->state = 0;
 
 //	if (vcpu->saved_state & L4_VCPU_F_USER_MODE)
 //		l4x_vcpu_entry_user_arch();
