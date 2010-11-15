@@ -3,6 +3,8 @@
 
 #include <sys/types.h>
 
+#include <machine/l4/api/config.h>
+
 #include <l4/sys/types.h>
 #include <l4/sys/kip.h>
 #include <l4/re/c/dataspace.h>
@@ -12,6 +14,9 @@ extern unsigned int l4x_kernel_taskno;
 extern l4_cap_idx_t linux_server_thread_id;
 
 /* main memory parameters from setupmem.c */
+extern char _end[];				/* end of kernel image */
+#define KVA_START	(round_page((unsigned long)_end))
+#define PA_START	(L4LX_USER_KERN_AREA_END + round_page((unsigned long)_end) - KERNBASE)
 extern l4re_ds_t l4x_ds_mainmem;
 extern l4re_ds_t l4x_ds_isa_dma;
 extern void *l4x_main_memory_start;		/* paddr_t */
@@ -33,6 +38,7 @@ void l4x_register_pointer_section(void *p_in_addr,
 void l4x_register_region(const l4re_ds_t ds, void *start,
 		int allow_noncontig, const char *tag);
 
+/* initial ramdisk */
 //void l4x_free_initrd_mem(void);
 //void l4x_load_initrd(char *command_line);
 //void l4x_setup_threads(void);

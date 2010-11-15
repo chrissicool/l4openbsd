@@ -167,6 +167,24 @@ static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu);
 
 void exit(int code);
 
+#ifdef RAMDISK_HOOKS
+
+extern u_int32_t rd_root_size;		/* from dev/rd.c */
+extern char rd_root_image[];		/* from dev/rd.c */
+
+#define L4X_MAX_RD_PATH 200
+static char l4x_rd_path[L4X_MAX_RD_PATH];
+
+void l4x_load_initrd(char **command_line);
+static int fprov_load_initrd(const char *filename,
+                             void  *rd_start,
+                             size_t size);
+int l4x_query_and_get_ds(const char *name, const char *logprefix,
+		l4_cap_idx_t *dscap, void **addr,
+		l4re_ds_stats_t *dsstat);
+
+#endif /* RAMDISK_HOOKS */
+
 /*
  * implentation
  */
@@ -551,6 +569,10 @@ static L4_CV void l4x_bsd_startup(void *data)
 
 	extern void init386(paddr_t first_avail); 	/* machdep.c */
 	init386(first_avail);
+
+#ifdef RAMDISK_HOOKS
+	l4x_load_initrd(bootargv);
+#endif
 
 	/*
 	 * At this point we have a halfway usable proc0 structure.
@@ -968,3 +990,122 @@ static int l4x_handle_clisti(l4_exc_regs_t *exc)
 /*
  * END Functions for l4x_exception_func_list[]
  */
+
+#ifdef RAMDISK_HOOKS
+
+void l4x_load_initrd(char **command_line)
+{
+	char **i_cmdl;
+	char *sa = NULL, *se;
+	char param_str[] = "l4x_rd=";
+
+	*l4x_rd_path = 0;
+	i_cmdl = command_line;
+	while (*i_cmdl) {
+		sa = strstr(*i_cmdl, param_str);
+		if (sa) {
+			sa = *i_cmdl + strlen(param_str);
+			se = sa;
+
+			while (*se && *se != ' ')
+				se++;
+			if (se - sa > L4X_MAX_RD_PATH) {
+				enter_kdebug("l4x_rd_path > L4X_MAX_RD_PATH");
+				return;
+			}
+			strncpy(l4x_rd_path, sa, se - sa);
+			LOG_printf("l4x_rd_path: %s\n", l4x_rd_path);
+		}
+		i_cmdl++;
+	}
+
+	if (*l4x_rd_path) {
+		LOG_printf("Loading ramdisk: %s... ", l4x_rd_path);
+
+		if (fprov_load_initrd(l4x_rd_path,
+		                      rd_root_image,
+		                      rd_root_size)) {
+			LOG_printf("failed\n");
+			LOG_flush();
+			return;
+		}
+
+		LOG_printf("from 0x%08lx to 0x%08lx [%ldKiB]\n",
+		           &rd_root_image[0],
+			   &rd_root_image[0] + rd_root_size - 1,
+		           rd_root_size >> 10);
+	}
+}
+
+static int fprov_load_initrd(const char *filename,
+                             void *rd_start,
+                             size_t size)
+{
+	int ret;
+	l4re_ds_stats_t dsstat;
+	l4re_ds_t l4x_initrd_ds;
+	l4_cap_idx_t *dscap = &l4x_initrd_ds;
+	l4_addr_t addr;
+	L4XV_V(f);
+
+	/*
+	 * Try to map the ramdisk way before KVA_START.
+	 */
+	addr = KVA_START/4;
+
+	if ((ret = l4x_query_and_get_ds(filename, "initrd", &l4x_initrd_ds,
+	                                (void **)&addr, &dsstat))) {
+		LOG_printf("error mapping ds %d: %s. ",
+		           ret, l4sys_errtostr(ret));
+		return -1;
+	}
+
+	/* copy the ramdisk */
+	memcpy(rd_start, (void *)addr, dsstat.size);
+	rd_root_size = dsstat.size;
+//	LOG_printf("Data copied.\n");
+
+	/* detach ds again */
+//	l4re_rm_detach(&addr);
+	l4x_cap_free(*dscap);
+//	LOG_printf("Detached DS.\n");
+
+	LOG_flush();
+	return 0;
+}
+
+int l4x_query_and_get_ds(const char *name, const char *logprefix,
+		l4_cap_idx_t *dscap, void **addr,
+		l4re_ds_stats_t *dsstat)
+{
+	int ret;
+	L4XV_V(f);
+
+	ret = l4x_re_resolve_name(name, dscap);
+	if (ret)
+		return ret;
+//	LOG_printf("Resolved name of DS\n");
+
+	L4XV_L(f);
+	if ((ret = l4re_ds_info(*dscap, dsstat)))
+		goto out;
+//	LOG_printf("Got dsinfo, size=%d, flags=%d\n", dsstat->size, dsstat->flags);
+
+	/* attach ds somewhere */
+	if ((ret = l4re_rm_attach(addr, dsstat->size,
+			L4RE_RM_SEARCH_ADDR | L4RE_RM_EAGER_MAP | L4RE_RM_READ_ONLY,
+			*dscap, 0, L4_PAGESHIFT)))
+		goto out;
+//	LOG_printf("Attached mapping at 0x%08lx\n", *addr);
+
+	L4XV_U(f);
+
+	return 0;
+
+out:
+	l4x_cap_free(*dscap);
+	L4XV_U(f);
+	return ret;
+}
+
+#endif /* RAMDISK_HOOKS */

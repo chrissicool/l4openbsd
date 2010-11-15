@@ -31,6 +31,11 @@ L4_EXTERNAL_FUNC(l4io_request_irq);
 L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
 #endif
 
+#ifdef RAMDISK_HOOKS
+L4_EXTERNAL_FUNC(l4_sleep);
+L4_EXTERNAL_FUNC(l4re_ds_info);
+#endif
+
 L4_EXTERNAL_FUNC(l4re_debug_obj_debug);
 L4_EXTERNAL_FUNC(l4re_ds_size);
 L4_EXTERNAL_FUNC(l4re_ds_phys);

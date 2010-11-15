@@ -145,10 +145,6 @@ unsigned long l4x_kvmem_size;
 l4re_ds_t l4x_ds_kvmem;
 void *l4x_kv_memory_start;	/* vaddr_t */
 
-extern char _end[];
-#define KVA_START	(round_page((unsigned long)_end))
-#define PA_START	(L4LX_USER_KERN_AREA_END + round_page((unsigned long)_end) - KERNBASE)
-
 static void setup_l4x_memory(char **cmdl,
                              vaddr_t *main_mem_startv,
                              vaddr_t *main_mem_endv,
@@ -195,7 +191,7 @@ static void setup_l4x_memory(char **cmdl,
 	l4_uint32_t dm_flags = L4RE_MA_CONTINUOUS | L4RE_MA_PINNED;
 
 	/* See if we find a mem=xxx option in the command line */
-	i_cmdl = cmdl;;
+	i_cmdl = cmdl;
 	while(*i_cmdl) {
 		if ((memstr = strstr(*i_cmdl, "mem="))
 				&& (res = memparse(memstr + 4, &memstr)))
