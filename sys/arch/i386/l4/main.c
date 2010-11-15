@@ -523,10 +523,17 @@ static L4_CV void l4x_bsd_startup(void *data)
 {
 	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
 	extern int main(void *framep);		/* see: sys/kern/init_main.c */
+	extern char **bootargv;
 
 	/* Wait for start signal */
 	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
 	LOG_printf("l4x_bsd_startup: received startup message.\n");
+
+	/* Initialize vCPU state now, we need it for init386()::consinit() */
+	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
+	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS & L4_VCPU_F_IRQ;
+	l4x_vcpu_state(0)->entry_ip = (l4_addr_t)&l4x_vcpu_entry;
+	l4x_vcpu_state(0)->user_task = L4_INVALID_CAP;
 
 	/* Enumerate our CPU type. */
 	l4x_enumerate_cpu();
@@ -536,14 +543,7 @@ static L4_CV void l4x_bsd_startup(void *data)
 	 * enumerate all available RAM according to bios_memmap from E820,
 	 * which we will skip here.
 	 */
-	extern char **bootargv;
 	l4x_memory_setup(bootargv);
-
-	/* Initialize vCPU state now, we need it for init386()::consinit() */
-	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
-	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS & L4_VCPU_F_IRQ;
-	l4x_vcpu_state(0)->entry_ip = (l4_addr_t)&l4x_vcpu_entry;
-	l4x_vcpu_state(0)->user_task = L4_INVALID_CAP;
 
 	/* Setup kernel stack and page tables, init386() needs it.  */
 	l4x_stack_setup(proc0paddr);
