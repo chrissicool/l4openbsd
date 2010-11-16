@@ -58,11 +58,20 @@ int l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page,
 	                        ds, offset, L4_PAGESHIFT))) {
 		L4XV_U(f);
 		// FIXME wrt L4_EUSED
-		printf("%s: cannot attach vpage (%lx, %lx): %d\n",
+		printf("%s: cannot attach vpage (0x%08lx, 0x%08lx): %d\n",
 		       __func__, address, page, r);
 		return -1;
 	}
 	L4XV_U(f);
+#ifdef DIAGNOSTIC
+	if (addr != address) {
+		printf("%s: ERROR: Did not attach vpage @0x%08lx."
+				"Attached to 0x%08lx instead\n",
+				__func__, address, addr);
+		l4lx_memory_unmap_virtual_page(addr);
+		return -1;
+	}
+#endif
 	return 0;
 }
 
