@@ -14,6 +14,9 @@ Build kernel:
    - find current version with
      # grep "^osr" /home/l4/openbsd/src/sys/conf/newvers.sh
  - import the /home/l4 path via NFS (needs to be the same path on both machines)
+ - adjust the kernel configuration to point to your L4 build directory
+   - edit /home/l4/openbsd/src/sys/arch/i386/conf/L4 and change the
+     makeoption L4_BUILDDIR
  - build the kernel on OpenBSD
    # cd /home/l4/openbsd/
    # mkdir obj/sys
@@ -25,13 +28,14 @@ Build kernel:
    [ lots of output => generates file: bsd ]
 
  - copy final "bsd" to l4loader directory on Linux machine
- - in l4loader directory on the Linux hosts:
+ - in l4loader directory on the Linux host:
    # make
    [ less output => generates: l4bsd ]
 
 Build ramdisk:
 
  - on your OpenBSD machine, build the complete userland
+   # mkdir -d /usr/obj
    # rm -rf /usr/obj/*
    # cd /home/l4/openbsd/src/
    # make obj
