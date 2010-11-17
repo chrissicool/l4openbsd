@@ -10,6 +10,7 @@
 #include <uvm/uvm_extern.h>
 
 #include <machine/frame.h>
+#include <machine/segments.h>
 #include <machine/intr.h>
 #include <machine/psl.h>
 #include <machine/i8259.h>
@@ -25,6 +26,13 @@
 
 #define NR_REQUESTABLE			256
 
+/*
+ * XXX trap()  should be in a header file.
+ *     Unfortunately, we get a mess of #includes if in trap.h.
+ */
+extern void trap(struct trapframe *frame);
+
+static void l4x_run_asts(struct trapframe *tf);
 static int handle_irq(int irq, struct trapframe *regs);
 static inline int run_irq_handlers(int irq);
 static void init_array(void);
@@ -66,6 +74,18 @@ l4x_spllower(void)
 			}
 		} else {
 			break;
+		}
+	}
+	l4x_run_asts(tf);
+}
+
+static void l4x_run_asts(struct trapframe *tf)
+{
+	if (aston(curproc)) {
+		curproc->p_md.md_astpending = 0;
+		if(USERMODE(tf->tf_cs, tf->tf_eflags)) {
+			tf->tf_trapno = T_ASTFLT;
+			trap(tf);
 		}
 	}
 }
@@ -176,6 +196,9 @@ handle_irq(int irq, struct trapframe *regs)
 	s = splraise(imaxlevel[irq]);
 	result = run_irq_handlers(irq);
 	splx(s);
+
+	/* icu.s:Xdoreti */
+	l4x_run_asts(regs);
 
 	return result;
 }

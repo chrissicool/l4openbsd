@@ -129,9 +129,6 @@ l4x_vcpu_entry(void)
 
 	if (l4x_vcpu_is_irq(vcpu)) {
 		l4x_vcpu_handle_irq(vcpu, regsp);
-
-//		if (aston(p))
-//			handle AST
 	} else if (l4x_vcpu_is_page_fault(vcpu)) {
 //		l4x_dispatch_page_fault(...);
 	} else {

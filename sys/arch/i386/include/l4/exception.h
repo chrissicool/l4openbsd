@@ -48,7 +48,6 @@ static inline void l4x_make_up_kernel_regs(struct trapframe *r)
 static inline void vcpu_to_ptregs(l4_vcpu_state_t *v,
                                   struct trapframe *regs)
 {
-	regs->tf_cs = 0;
 	V2P(regs, tf_eax,    &v->r, ax);
 	V2P(regs, tf_ebx,    &v->r, bx);
 	V2P(regs, tf_ecx,    &v->r, cx);
