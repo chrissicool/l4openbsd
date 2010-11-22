@@ -733,6 +733,52 @@ static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
 	return 1; // no reply
 }
 
+static inline
+l4_exc_regs_t *cast_to_utcb_exc(l4_vcpu_regs_t *vcpu_regs)
+{
+	enum { OFF = offsetof(l4_vcpu_regs_t, gs), };
+
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, gs)     - OFF != offsetof(l4_exc_regs_t, gs));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, fs)     - OFF != offsetof(l4_exc_regs_t, fs));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, di)     - OFF != offsetof(l4_exc_regs_t, edi));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, si)     - OFF != offsetof(l4_exc_regs_t, esi));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, bp)     - OFF != offsetof(l4_exc_regs_t, ebp));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, pfa)    - OFF != offsetof(l4_exc_regs_t, pfa));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, bx)     - OFF != offsetof(l4_exc_regs_t, ebx));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, dx)     - OFF != offsetof(l4_exc_regs_t, edx));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, cx)     - OFF != offsetof(l4_exc_regs_t, ecx));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, ax)     - OFF != offsetof(l4_exc_regs_t, eax));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, trapno) - OFF != offsetof(l4_exc_regs_t, trapno));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, err)    - OFF != offsetof(l4_exc_regs_t, err));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, ip)     - OFF != offsetof(l4_exc_regs_t, ip));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, flags)  - OFF != offsetof(l4_exc_regs_t, flags));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, sp)     - OFF != offsetof(l4_exc_regs_t, sp));
+
+	return (l4_exc_regs_t *)((char *)vcpu_regs + OFF);
+}
+
+/*
+ * Return true, if an exception was handled successfully.
+ */
+int l4x_vcpu_handle_kernel_exc(l4_vcpu_regs_t *vr)
+{
+	int i;
+	l4_exc_regs_t *exc = cast_to_utcb_exc(vr);
+
+	/* Check handlers for this exception. */
+	for (i = 0; i < l4x_exception_funcs; i++) {
+		struct l4x_exception_func_struct *f
+			= &l4x_exception_func_list[i];
+
+		if (f->for_vcpu
+				&& ((1 << l4_utcb_exc_typeval(exc)) & f->trap_mask)
+				&& !f->f(exc))
+			break;
+	}
+
+	return i != l4x_exception_funcs;
+}
+
 static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc)
 {
 	LOG_printf("Exception: "l4util_idfmt": pc = "l4_addr_fmt

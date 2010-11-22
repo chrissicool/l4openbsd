@@ -38,4 +38,15 @@ int bitmap_find_free_region(unsigned long *bitmap, int bits, int order);
 
 unsigned long long memparse(const char *ptr, char **retptr);
 
+/* form include/kernel.h */
+
+/* Force a compilation error if condition is true */
+#define BUILD_BUG_ON(condition) ((void)BUILD_BUG_ON_ZERO(condition))
+
+/* Force a compilation error if condition is true, but also produce a
+   result (of value 0 and type size_t), so the expression can be used
+   e.g. in a structure initializer (or where-ever else comma expressions
+   aren't permitted). */
+#define BUILD_BUG_ON_ZERO(e) (sizeof(struct { int:-!!(e); }))
+
 #endif /* __LINUX_COMPAT_H__ */

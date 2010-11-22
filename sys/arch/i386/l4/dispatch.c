@@ -26,6 +26,20 @@
 #include <l4/re/consts.h>
 #include <l4/log/log.h>
 
+
+static inline int l4x_vcpu_is_irq(l4_vcpu_state_t *vcpu);
+static inline int l4x_vcpu_is_page_fault(l4_vcpu_state_t *vcpu);
+static void l4x_evict_mem(l4_umword_t d);
+static inline void l4x_vcpu_entry_user_arch(void);
+static void l4x_vcpu_entry_kern(l4_vcpu_state_t *vcpu);
+static inline int l4x_dispatch_exception(struct proc *p,
+		struct user *u, l4_vcpu_state_t *v, struct trapframe *regs);
+static inline void l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu);
+static inline void l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
+		l4_umword_t fp1, l4_umword_t fp2, int copy_ptregs);
+void l4x_vcpu_entry(void);
+
+
 static inline int
 l4x_vcpu_is_irq(l4_vcpu_state_t *vcpu)
 {
@@ -45,6 +59,68 @@ static void l4x_evict_mem(l4_umword_t d)
 			L4_FP_OTHER_SPACES);
 }
 
+/*
+ * vCPU preparations when entering from usermode.
+ */
+static inline void
+l4x_vcpu_entry_user_arch(void)
+{
+	asm ("cld          \n"
+	     "mov %0, %%gs \n"
+	     "mov %1, %%fs \n"
+	     : : "r" (l4x_x86_utcb_get_orig_segment()),
+#ifdef MULTIPROCESSOR
+	     "r"((l4x_fiasco_gdt_entry_offset + 2) * 8 + 3)
+#else
+	     "r"(l4x_x86_utcb_get_orig_segment())
+#endif
+	     : "memory");
+}
+
+/*
+ * Special vCPU handler function for kernel entry.
+ */
+static void
+l4x_vcpu_entry_kern(l4_vcpu_state_t *vcpu)
+{
+	struct trapframe regs;
+	struct trapframe *regsp = &regs;
+	struct proc *p = curproc;
+	struct user *u = p->p_addr;
+	int copy_ptregs = 0;
+
+	if (l4x_vcpu_is_irq(vcpu)) {
+		vcpu_to_ptregs(vcpu, regsp);
+		l4x_vcpu_handle_irq(vcpu, regsp);
+		copy_ptregs = 1;
+
+	} else if (0 // this should not happen anymore
+			&& l4x_vcpu_is_page_fault(vcpu)) {
+//		l4x_vcpu_handle_kernel_pf(vcpu->r.pfa, vcpu->r.ip,
+//				l4x_vcpu_is_wr_pf(vcpu));
+	} else {
+		int ret = l4x_vcpu_handle_kernel_exc(&vcpu->r);
+
+		if (!ret) {
+			vcpu_to_ptregs(vcpu, regsp);
+			if (l4x_dispatch_exception(p, u, vcpu, regsp))
+				enter_kdebug("exception handling failed");
+			copy_ptregs = 1;
+		}
+	}
+
+#ifdef MULTIPROCESSOR
+	mb();
+#endif
+	l4x_vcpu_iret(p, u, regsp, 0, 0, copy_ptregs);
+}
+
+static inline int l4x_dispatch_exception(struct proc *p,
+		struct user *u, l4_vcpu_state_t *v, struct trapframe *regs)
+{
+	/* TODO implement exception dispatcher for (regs->tf_trapno == v->r.trapno) */
+	return 1;
+}
 
 /* Do some sanety checks. */
 static inline void
@@ -110,16 +186,16 @@ l4x_vcpu_entry(void)
 
 	vcpu->state = 0;
 
-//	if (vcpu->saved_state & L4_VCPU_F_USER_MODE)
-//		l4x_vcpu_entry_user_arch();
+	if (vcpu->saved_state & L4_VCPU_F_USER_MODE)
+		l4x_vcpu_entry_user_arch();
 
 	l4x_vcpu_entry_sanity(vcpu);
 
-//	if (!vcpu->saved_state & L4_VCPU_F_USER_MODE) {
-//		l4x_vcpu_entry_kern(vcpu);
-//		enter_kdebug("l4x_vcpu_entry_kern() returned but should not!");
-//		/* NOTREACHED */
-//	}
+	if (!vcpu->saved_state & L4_VCPU_F_USER_MODE) {
+		l4x_vcpu_entry_kern(vcpu);
+		enter_kdebug("l4x_vcpu_entry_kern() returned but should not!");
+		/* NOTREACHED */
+	}
 
 	p = curproc;			/* current thread */
 	u = p->p_addr;			/* current thread's UAREA */
@@ -132,7 +208,7 @@ l4x_vcpu_entry(void)
 	} else if (l4x_vcpu_is_page_fault(vcpu)) {
 //		l4x_dispatch_page_fault(...);
 	} else {
-//		l4x_dispatch_exception(p, u, vcpu, regsp);
+		l4x_dispatch_exception(p, u, vcpu, regsp);
 	}
 
 	l4x_vcpu_iret(p, u, regsp, -1, 0, 1);

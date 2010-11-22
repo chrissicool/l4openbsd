@@ -7,6 +7,7 @@
 
 #include <l4/sys/types.h>
 #include <l4/sys/kip.h>
+#include <l4/sys/vcpu.h>
 #include <l4/re/c/dataspace.h>
 
 extern l4_kernel_info_t *l4lx_kinfo;
@@ -49,6 +50,8 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 //void l4x_prepare_irq_thread(struct thread_info *ti, unsigned _cpu);
 
 void l4x_exit_l4linux(void);
+
+int l4x_vcpu_handle_kernel_exc(l4_vcpu_regs_t *vr);
 
 //void l4x_thread_set_pc(l4_cap_idx_t thread, void *pc);
 
