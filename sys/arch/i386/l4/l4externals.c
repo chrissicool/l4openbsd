@@ -18,6 +18,7 @@
  */
 
 L4_EXTERNAL_FUNC(LOG_printf);
+L4_EXTERNAL_FUNC(LOG_vprintf);
 L4_EXTERNAL_FUNC(LOG_flush);
 L4_EXTERNAL_FUNC(l4x_external_exit);	/* jumps back into the wrapper */
 

@@ -28,6 +28,7 @@
 #include <machine/l4/setup.h>
 #include <machine/l4/stack_id.h>
 #include <machine/l4/vcpu.h>
+#include <machine/l4/log.h>
 
 // just taken from L4Linux's arch/l4/kernel/main.c
 #include <l4/sys/err.h>
@@ -549,9 +550,11 @@ static L4_CV void l4x_bsd_startup(void *data)
 
 	/* Initialize vCPU state now, we need it for init386()::consinit() */
 	l4x_vcpu_states[0] = l4x_vcpu_state_u(l4_utcb());
-	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS & L4_VCPU_F_IRQ;
 	l4x_vcpu_state(0)->entry_ip = (l4_addr_t)&l4x_vcpu_entry;
 	l4x_vcpu_state(0)->user_task = L4_INVALID_CAP;
+	l4x_vcpu_state(0)->state = L4_VCPU_F_EXCEPTIONS;
+
+	l4lx_thread_pager_change(linux_server_thread_id, caller_id);
 
 	/* Enumerate our CPU type. */
 	l4x_enumerate_cpu();
@@ -567,24 +570,27 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4x_stack_setup(proc0paddr);
 	paddr_t first_avail = l4x_setup_kernel_ptd();
 
-	extern void init386(paddr_t first_avail); 	/* machdep.c */
-	init386(first_avail);
-
 #ifdef RAMDISK_HOOKS
 	l4x_load_initrd(bootargv);
 #endif
 
 	/*
+	 * init386() may set up interrupt handler routines.
+	 */
+	l4x_vcpu_state(0)->state |= L4_VCPU_F_IRQ;
+
+	extern void init386(paddr_t first_avail); 	/* machdep.c */
+	init386(first_avail);
+
+	/*
 	 * At this point we have a halfway usable proc0 structure.
 	 */
 
-	LOG_printf("%s: thread "l4util_idfmt".\n",
+	l4x_printf("%s: thread "l4util_idfmt".\n",
 			__func__, l4util_idstr(l4x_stack_id_get()));
 
 	linux_server_thread_id = l4x_stack_id_get();
 	l4x_create_ugate(linux_server_thread_id, 0);
-
-	l4lx_thread_pager_change(linux_server_thread_id, caller_id);
 
 	/* Finally, fasten your seatbelts... */
 	main(data);
@@ -639,6 +645,18 @@ void l4x_exit_l4linux(void)
 		outstring("IPC ERROR l4x_exit_l4linux\n");
 	l4_sleep_forever();
 	/* NOTREACHED */
+}
+
+void l4x_printf(const char *fmt, ...)
+{
+	va_list list;
+	L4XV_V(f);
+
+	va_start(list, fmt);
+	L4XV_L(f);
+	LOG_vprintf(fmt, list);
+	L4XV_U(f);
+	va_end(list);
 }
 
 
@@ -904,7 +922,9 @@ static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
 static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu)
 {
 	l4_msgtag_t r;
+	L4XV_V(flags);
 
+	L4XV_L(flags);
 	l4x_user_gate[cpu] = l4x_cap_alloc();
 	if (l4_is_invalid_cap(l4x_user_gate[cpu]))
 		LOG_printf("Error getting cap\n");
@@ -920,6 +940,7 @@ static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu)
 /* #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES */
 	l4_debugger_set_object_name(l4x_user_gate[cpu], n);
 /* #endif */
+	L4XV_U(flags);
 }
 
 /*
@@ -1092,7 +1113,6 @@ static int fprov_load_initrd(const char *filename,
 	l4re_ds_t l4x_initrd_ds;
 	l4_cap_idx_t *dscap = &l4x_initrd_ds;
 	l4_addr_t addr;
-	L4XV_V(f);
 
 	/*
 	 * Try to map the ramdisk way before KVA_START.

@@ -100,8 +100,6 @@ set_irq_regs(struct trapframe *new_regs)
 	return old_regs;
 }
 
-#include <l4/log/log.h>
-
 void l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 {
 	int irq = t->i.label >> 2;
@@ -135,7 +133,7 @@ unsigned int do_IRQ(int irq, struct trapframe *regs)
 	if (!handle_irq(irq, regs)) {
 		//ack_APIC_irq();
 
-		LOG_printf("%s: %d.%d: Error processing interrupt!\n",
+		printf("%s: %d.%d: Error processing interrupt!\n",
 				__func__, cpu_number(), irq);
 	}
 
@@ -150,7 +148,7 @@ run_irq_handlers(int irq)
 	struct intrhand **p, *q;
 	int result = 0;
 
-	LOG_printf("%s: cl: Running IRQ%d\n", __func__, irq);
+	printf("%s: cl: Running IRQ%d\n", __func__, irq);
 
 	curcpu()->ci_idepth++;
 

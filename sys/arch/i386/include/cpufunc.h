@@ -46,15 +46,21 @@
 #include <machine/specialreg.h>
 
 #ifdef L4
+
+#include <machine/l4/vcpu.h>
+
 #include <l4/sys/types.h>
 #include <l4/sys/segment.h>
-#define  L4XV_V(n)
+#include <l4/sys/vcpu.h>
+
+#define  L4XV_V(n) int n = l4x_vcpu_state(cpu_number())->state & L4_VCPU_F_IRQ
 #define  L4XV_L(n) disable_intr()
-#define  L4XV_U(n) enable_intr()
+#define  L4XV_U(n) if (n) { enable_intr(); }
 
 /* tamed.c */
 extern void l4x_global_cli(void);
 extern void l4x_global_sti(void);
+
 #endif
 
 static __inline void invlpg(u_int);

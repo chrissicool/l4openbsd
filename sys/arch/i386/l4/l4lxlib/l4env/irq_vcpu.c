@@ -8,6 +8,7 @@
 #include <sys/kernel.h>
 
 #include <machine/cpu.h>
+#include <machine/cpufunc.h>
 
 #include <machine/l4/setup.h>
 #include <machine/l4/cap_alloc.h>
@@ -104,13 +105,14 @@ static inline void attach_to_irq(int irq)
 {
 	long ret;
 	l4_cap_idx_t irq_cap = l4x_have_irqcap(irq);
+	L4XV_V(flags);
 
-// TODO	local_irq_save(flags);
+	L4XV_L(flags);
 	if ((ret  = l4_error(l4_irq_attach(irq_cap, irq << 2,
 	                                   linux_server_thread_id))))
 		dd_printf("%s: can't register to irq %u: return=%ld\n",
 		          __func__, irq, ret);
-// TODO	local_irq_restore(flags);
+	L4XV_U(flags);
 }
 
 /*
@@ -168,9 +170,11 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	l4_msgtag_t res;
 	l4_cap_idx_t timer_thread;
 	l4_cap_idx_t irq_cap;
+	L4XV_V(timer_f);
 
 	snprintf(name, 15, "timer.%d", 0);
 
+	L4XV_L(timer_f);
 	irq_cap = l4x_cap_alloc();
 	if (l4_is_invalid_cap(irq_cap))
 		enter_kdebug("Error getting timer IRQ cap!");
@@ -179,15 +183,20 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	if (l4_error(res)) {
 		LOG_printf("Failed to create timer IRQ\n");
 		l4x_cap_free(irq_cap);
+		L4XV_U(timer_f);
 		l4x_exit_l4linux();
 	}
+	L4XV_U(timer_f);
 
 //#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+	L4XV_L(timer_f);
 	l4_debugger_set_object_name(irq_cap, name);
+	L4XV_U(timer_f);
 //#endif
 
 	l4x_register_irq(irq_cap);
 
+	L4XV_L(timer_f);
 	timer_thread = l4lx_thread_create
 			(timer_irq_thread,	      /* thread function */
 	                 cpu,                         /* cpu */
@@ -199,6 +208,7 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 
 	if (l4_is_invalid_cap(timer_thread))
 		enter_kdebug("Error creating timer thread!");
+	L4XV_U(timer_f);
 
 	l4lx_irq_dev_enable(0);
 	return 1;
@@ -223,19 +233,20 @@ unsigned int l4lx_irq_dev_startup(int irq)
 	if (l4_is_invalid_cap(irq_cap)) {
 		/* No, get IRQ from IO service */
 		irq_cap = l4x_cap_alloc();
-//		unsigned long irq_f;
-// TODO		local_irq_save(irq_f);
+		L4XV_V(irq_f);
+
+		L4XV_L(irq_f);
 		if (l4_is_invalid_cap(irq_cap)
 		    || l4io_request_irq(irq, irq_cap)) {
 			/* "reset" handler ... */
 			//irq_desc[irq].chip = &no_irq_type;
 			/* ... and bail out  */
 			LOG_printf("irq-startup: did not get irq %d\n", irq);
-// TODO			local_irq_restore(irq_f);
+			L4XV_U(irq_f);
 			return 0;
 		}
 		l4x_register_irq_fixed(irq, irq_cap);
-// TODO		local_irq_restore(irq_f);
+		L4XV_U(irq_f);
 	}
 	l4lx_irq_dev_enable(irq);
 	return 1;
@@ -310,9 +321,11 @@ void l4lx_irq_dev_eoi(int irq)
 	l4_cap_idx_t irq_cap = l4x_have_irqcap(irq);
 
 	dd_printf("%s: %u\n", __func__, irq);
-// TODO	local_irq_save(flags);
+	L4XV_V(flags);
+
+	L4XV_L(flags);
 	l4_irq_unmask(irq_cap);
-// TODO	local_irq_restore(flags);
+	L4XV_U(flags);
 }
 #ifdef MULTIPROCESSOR
 /*
