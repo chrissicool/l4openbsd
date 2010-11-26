@@ -896,6 +896,12 @@ ENTRY(copyout)
 	pushl	%ebp
 	movl	%esp,%ebp
 #endif
+#ifdef L4
+	int3
+	jmp	1f
+	.ascii	"copyout"
+1:
+#endif
 	pushl	%esi
 	pushl	%edi
 	pushl	$0	
@@ -948,6 +954,12 @@ ENTRY(copyin)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp
+#endif
+#ifdef L4
+	int3
+	jmp	1f
+	.ascii	"copyin"
+1:
 #endif
 	pushl	%esi
 	pushl	%edi
