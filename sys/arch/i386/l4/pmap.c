@@ -656,10 +656,13 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot)
 {
 	pt_entry_t *pte, opte, npte;
 
+#ifdef DIAGNOSTIC
+//	pd_entry_t *kptd = pmap_kernel()->pm_pdir;
 //	printf("%s: cl: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, vtopte=%08lx\n",
-//			__func__, pa, va, PTD, pdei(va), PTD[pdei(va)], ptei(va), vtopte(va));
+//			__func__, pa, va, kptd, pdei(va), kptd[pdei(va)], ptei(va), kvtopte(va));
+#endif
 
-	pte = vtopte(va);
+	pte = kvtopte(va);
 	npte = (pa & PMAP_PA_MASK) | ((prot & VM_PROT_WRITE)? PG_RW : PG_RO) |
 	    PG_V | PG_U | PG_M | ((pa & PMAP_NOCACHE) ? PG_N : 0) |
 	    ((pa & PMAP_WC) ? pmap_pg_wc : 0);
@@ -2473,6 +2476,9 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 	pa &= PMAP_PA_MASK;	/* nuke flags from pa */
 
 #ifdef DIAGNOSTIC
+//	printf("%s: cl: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, vtopte=%08lx\n",
+//			__func__, pa, va, PTD, pdei(va), PTD[pdei(va)], ptei(va), vtopte(va));
+
 	/* sanity check: totally out of range? */
 //	if (va >= VM_MAX_KERNEL_ADDRESS)
 	if (va >= VM_MAXUSER_ADDRESS)
@@ -2800,7 +2806,7 @@ pmap_dump(struct pmap *pmap, vaddr_t sva, vaddr_t eva)
 	 * dumping a range of pages: we dump in PTP sized blocks (4MB)
 	 */
 
-	for (curva = sva ; sva < eva ; curva += NBPG) {
+	for (curva = sva ; curva < eva ; curva += NBPG) {
 
 		/* determine range of block */
 //		blkendva = i386_round_pdr(sva+1);
@@ -2811,8 +2817,8 @@ pmap_dump(struct pmap *pmap, vaddr_t sva, vaddr_t eva)
 		if (!pmap_valid_entry(pmap->pm_pdir[pdei(curva)]))
 			continue;
 
-		ptes = (pt_entry_t *)pd[pdei(va)];
-		pte = (pt_entry_t *)ptes[ptei(sva)];
+		ptes = (pt_entry_t *)pd[pdei(curva)];
+		pte = (pt_entry_t *)ptes[ptei(curva)];
 		if (!pmap_valid_entry(*pte))
 			continue;
 

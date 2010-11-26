@@ -407,13 +407,21 @@ extern int pmap_pg_g;			/* do we support PG_G? */
 
 #ifdef L4
 
-__inline static pt_entry_t *
+static __inline pt_entry_t *
 vtopte(vaddr_t va)
 {
 	pt_entry_t *ptes = (pt_entry_t *)PTD[pdei(va)];
 	return ((pt_entry_t *)&ptes[ptei(va)]);
 }
-#define kvtopte(VA)	vtopte(VA)
+
+static __inline pt_entry_t *
+kvtopte(vaddr_t kva)
+{
+	pd_entry_t *kptd = pmap_kernel()->pm_pdir;
+	pt_entry_t *ptes = (pt_entry_t *)kptd[pdei(kva)];
+	return ((pt_entry_t *)&ptes[ptei(kva)]);
+}
+
 //#define ptetov(PT)	(ptoa(PT) - 0x10000000)		// valid for KVAs
 #define vtophys(VA)	((*vtopte(VA) & PG_FRAME) | \
 			 ((unsigned)(VA) & ~PG_FRAME))
