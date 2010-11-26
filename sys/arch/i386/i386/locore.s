@@ -1026,6 +1026,12 @@ ENTRY(copyoutstr)
 	pushl	%ebp
 	movl	%esp,%ebp
 #endif
+#ifdef L4
+	int3
+	jmp	1f
+	.ascii	"copyoutstr"
+1:
+#endif
 	pushl	%esi
 	pushl	%edi
 
@@ -1081,6 +1087,12 @@ ENTRY(copyinstr)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp
+#endif
+#ifdef L4
+	int3
+	jmp	1f
+	.ascii	"copyinstr"
+1:
 #endif
 	pushl	%esi
 	pushl	%edi
