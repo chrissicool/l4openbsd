@@ -1309,7 +1309,9 @@ switch_exited:
 	/* Restore saved context. */
 
 	/* No interrupts while loading new state. */
+#ifndef L4
 	cli
+#endif
 
 	/* Record new process. */
 	movl	%edi, CPUVAR(CURPROC)
@@ -1338,8 +1340,10 @@ switch_exited:
 	movl	P_MD_TSS_SEL(%edi),%edx
 
 	/* Switch TSS. */
+#ifndef L4
 	andl	$~0x0200,4-SEL_KPL(%eax,%edx,1)
 	ltr	%dx
+#endif
 
 	/* Restore cr0 (including FPU state). */
 	movl	PCB_CR0(%ebx),%ecx
@@ -1354,10 +1358,14 @@ switch_exited:
 	orl	$CR0_TS,%ecx
 1:	
 #endif	
+#ifndef L4
 	movl	%ecx,%cr0
+#endif
 
 	/* Interrupts are okay again. */
+#ifndef L4
 	sti
+#endif
 
 	popl	%edi
 	popl	%esi
