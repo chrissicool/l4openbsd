@@ -1359,6 +1359,9 @@ pmap_alloc_ptp(struct pmap *pmap, int pde_index, boolean_t just_try,
 	if (ptp == NULL)
 		return (NULL);
 
+//	printf("%s: cl: alloced PTP=%#x for PTD=%#x\n",
+//			__func__, ptp, pmap->pm_pdir);
+
 	/* got one! */
 	atomic_clearbits_int(&ptp->pg_flags, PG_BUSY);
 	ptp->wire_count = 1;	/* no mappings yet */
@@ -1380,6 +1383,11 @@ struct vm_page *
 pmap_get_ptp(struct pmap *pmap, int pde_index, boolean_t just_try)
 {
 	struct vm_page *ptp;
+
+//	printf("%s: cl: Get index=%d for PTD=%#x %s\n", __func__,
+//			pde_index, pmap->pm_pdir,
+//			pmap_valid_entry(pmap->pm_pdir[pde_index]) ?
+//				"(valid)" : "(invalid)");
 
 	if (pmap_valid_entry(pmap->pm_pdir[pde_index])) {
 
@@ -1408,6 +1416,9 @@ pmap_drop_ptp(struct pmap *pm, vaddr_t va, struct vm_page *ptp,
 {
 	i386_atomic_testset_ul(&pm->pm_pdir[pdei(va)], 0);
 	pmap_tlb_shootpage(curcpu()->ci_curpmap, ((vaddr_t)ptes) + ptp->offset);
+
+//	printf("%s: cl: Drop pmap=%#x, PA=%#x\n", __func__, pm, ptp);
+
 #ifdef MULTIPROCESSOR
 	/*
 	 * Always shoot down the other pmap's
