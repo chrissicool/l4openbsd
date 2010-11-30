@@ -470,7 +470,11 @@ trap(struct trapframe *frame)
 		 * The last can occur during an exec() copyin where the
 		 * argument space is lazy-allocated.
 		 */
+#ifdef L4
+		if (type != (T_PAGEFLT|T_USER))
+#else
 		if (type == T_PAGEFLT && va >= KERNBASE)
+#endif
 			map = kernel_map;
 		else
 			map = &vm->vm_map;

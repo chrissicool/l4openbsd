@@ -69,8 +69,7 @@ static inline void vcpu_to_ptregs(l4_vcpu_state_t *v,
 	        regs->tf_eflags &= ~PSL_I;
 	}
 
-	regs->tf_cs |= ((v->saved_state & L4_VCPU_F_USER_MODE) ? SEL_UPL : SEL_KPL);
-//	regs->tf_cs = (regs->tf_cs & ~3) | ((v->saved_state & L4_VCPU_F_USER_MODE) ? 3 : 0);
+	regs->tf_cs = (regs->tf_cs & ~3) | ((v->saved_state & L4_VCPU_F_USER_MODE) ? SEL_UPL : SEL_KPL);
 }
 #undef V2P
 

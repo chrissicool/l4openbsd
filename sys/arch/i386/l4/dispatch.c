@@ -40,8 +40,6 @@ static inline int l4x_vcpu_is_page_fault(l4_vcpu_state_t *vcpu);
 static void l4x_evict_mem(l4_umword_t d);
 static inline void l4x_vcpu_entry_user_arch(void);
 static void l4x_vcpu_entry_kern(l4_vcpu_state_t *vcpu);
-static inline int l4x_dispatch_exception(struct proc *p,
-		struct user *u, l4_vcpu_state_t *v, struct trapframe *regs);
 static inline void l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu);
 static inline void l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		l4_umword_t fp1, l4_umword_t fp2, int copy_ptregs);
@@ -111,8 +109,8 @@ l4x_vcpu_entry_kern(l4_vcpu_state_t *vcpu)
 
 		if (!ret) {
 			vcpu_to_ptregs(vcpu, regsp);
-			if (l4x_dispatch_exception(p, u, vcpu, regsp))
-				enter_kdebug("exception handling failed");
+//			if (l4x_dispatch_exception(p, u, vcpu, regsp))
+//				enter_kdebug("exception handling failed");
 			copy_ptregs = 1;
 		}
 	}
@@ -121,13 +119,6 @@ l4x_vcpu_entry_kern(l4_vcpu_state_t *vcpu)
 	mb();
 #endif
 	l4x_vcpu_iret(p, u, regsp, 0, 0, copy_ptregs);
-}
-
-static inline int l4x_dispatch_exception(struct proc *p,
-		struct user *u, l4_vcpu_state_t *v, struct trapframe *regs)
-{
-	/* TODO implement exception dispatcher for (regs->tf_trapno == v->r.trapno) */
-	return 1;
 }
 
 /* Do some sanety checks. */
@@ -241,10 +232,20 @@ l4x_vcpu_entry(void)
 
 	if (l4x_vcpu_is_irq(vcpu)) {
 		l4x_vcpu_handle_irq(vcpu, regsp);
-	} else if (l4x_vcpu_is_page_fault(vcpu)) {
-//		l4x_dispatch_page_fault(...);
 	} else {
-		l4x_dispatch_exception(p, u, vcpu, regsp);
+		/* page fault || exception */
+		extern void trap(struct trapframe *frame);
+#if 0
+		LOG_printf("vCPU state: trapno=%d, err=%d, pfa=%08lx, "
+				"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
+				"di=%08lx, si=%08lx, ss=%08lx, sp=%08lx, "
+				"bp=%08lx, flags=%08lx\n",
+				vcpu->r.trapno, vcpu->r.err, vcpu->r.pfa,
+				vcpu->r.ax, vcpu->r.bx, vcpu->r.cx, vcpu->r.dx,
+				vcpu->r.di, vcpu->r.si, vcpu->r.ss, vcpu->r.sp,
+				vcpu->r.bp, vcpu->r.flags);
+#endif
+		trap(regsp);
 	}
 
 	l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
