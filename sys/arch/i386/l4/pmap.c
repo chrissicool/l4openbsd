@@ -2489,14 +2489,15 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 
 	/* sanity check: kernel PTPs should already have been pre-allocated */
 #endif
-	if (pmap == pmap_kernel() &&
-	    !pmap_valid_entry(pmap->pm_pdir[pdei(va)])) {
-		/* Get a new kernel page table page. */
-//		printf("%s: cl: New KPT: PA=0x%08lx, VA=0x%08lx\n", __func__, pa, va);
+	if (!pmap_valid_entry(pmap->pm_pdir[pdei(va)])) {
+		/* Get a new page table page. */
+//		printf("%s: cl: New PT: PA=0x%08lx, VA=0x%08lx\n", __func__, pa, va);
 		pd = pmap_map_pdes(pmap);	/* locks pmap */
-		while (!pmap_alloc_ptp(pmap_kernel(), pdei(va), FALSE, 0))
+		while (!pmap_alloc_ptp(pmap, pdei(va), FALSE, 0))
 			uvm_wait("pmap_enter");
 		pmap_unmap_pdes(pmap);		/* unlocks pmap */
+//		printf("%s: cl: Finally PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, vtopte=%08lx\n",
+//				__func__, pa, va, PTD, pdei(va), PTD[pdei(va)], ptei(va), vtopte(va));
 	}
 	if (pmap_initialized)
 		freepve = pmap_alloc_pv(pmap, ALLOCPV_NEED);
