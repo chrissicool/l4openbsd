@@ -32,6 +32,17 @@
  *	@(#)proc.h	7.1 (Berkeley) 5/15/91
  */
 
+#ifdef L4
+
+#include <l4/sys/types.h>
+
+enum l4x_unmap_mode_enum {
+	L4X_UNMAP_MODE_IMMEDIATELY,
+	L4X_UNMAP_MODE_SKIP,
+};
+
+#endif
+
 /*
  * Machine-dependent part of the proc structure for i386.
  */
@@ -40,6 +51,10 @@ struct mdproc {
 	int	md_flags;		/* machine-dependent flags */
 	int	md_tss_sel;		/* TSS selector */
 	int	md_astpending;
+#ifdef L4
+	l4_cap_idx_t task;		/* L4 task capability */
+	enum l4x_unmap_mode_enum l4x_unmap_mode;
+#endif
 };
 
 /* md_flags */

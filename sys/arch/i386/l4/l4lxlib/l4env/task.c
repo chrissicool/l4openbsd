@@ -5,7 +5,18 @@
  *
  */
 
+#include <sys/types.h>
+
+#include <machine/cpufunc.h>
+
 #include <machine/l4/l4lxapi/task.h>
+#include <machine/l4/cap_alloc.h>
+#include <machine/l4/user.h>
+
+#include <l4/sys/types.h>
+#include <l4/sys/factory.h>
+#include <l4/re/env.h>
+
 /*
 #include <machine/l4/l4lxapi/generic/task_gen.h>
 #include <machine/l4/l4lxapi/thread.h>
@@ -36,14 +47,14 @@ int l4lx_task_number_free(l4_cap_idx_t id)
 	l4x_cap_free(id);
 	return 0;
 }
-
+*/
 int l4lx_task_get_new_task(l4_cap_idx_t parent_id,
                            l4_cap_idx_t *id)
 {
 	*id = l4x_cap_alloc();
 	return 0;
 }
-
+/*
 #ifndef CONFIG_L4_VCPU
 int l4lx_task_create_thread_in_task(l4_cap_idx_t thread, l4_cap_idx_t task,
                                     l4_cap_idx_t pager, unsigned vcpu)
@@ -79,6 +90,7 @@ int l4lx_task_create_thread_in_task(l4_cap_idx_t thread, l4_cap_idx_t task,
 	return 1;
 }
 #endif
+*/
 
 int l4lx_task_create(l4_cap_idx_t task)
 {
@@ -94,6 +106,7 @@ int l4lx_task_create(l4_cap_idx_t task)
 	return l4_error_u(t, u);
 }
 
+/*
 static int l4lx_task_delete_obj(l4_cap_idx_t obj)
 {
 	l4_msgtag_t t;

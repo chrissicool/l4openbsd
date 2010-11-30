@@ -1,9 +1,13 @@
 /*
- * dispatcher
+ * vCPU dispatcher
  *
- * This implements the vCPU entry IP. It will be executed, when the vCPU gets
- * interrupted, for SIGILL, SIGSEGV, SIGFPE and so on. We need to generate and
- * deliver the signals to the offending process.
+ * This implements the vCPU entry IP handler. It will be executed, when the vCPU
+ * gets interrupted, for signals, traps and IRQs. We need to handle these cases.
+ *
+ * NOTE: When entering the vCPU handler, IRQ delivery was turned off by L4. We
+ *       need to re-enable it at some point. For now, we run on a GIANT LOCK, we
+ *       only ever re-enable event delivery, after we finished our job here.
+ *       That means, all functions in here are called with vCPU disabled!
  */
 
 #include <sys/param.h>
@@ -12,15 +16,19 @@
 #include <sys/proc.h>
 #include <sys/user.h>
 
+#include <uvm/uvm_extern.h>
+
 #include <machine/frame.h>
 #include <machine/cpu.h>
 
+#include <machine/l4/l4lxapi/task.h>
 #include <machine/l4/vcpu.h>
 #include <machine/l4/exception.h>
 #include <machine/l4/setup.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/kdebug.h>
+#include <l4/sys/debugger.h>
 #include <l4/sys/thread.h>
 #include <l4/sys/ipc.h>
 #include <l4/re/consts.h>
@@ -130,6 +138,34 @@ l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu)
 			&& l4x_vcpu_is_irq(vcpu)) {
 		enter_kdebug("IRQ sanety checks failed.");
 	}
+}
+
+void
+l4x_vcpu_create_user_task(struct proc *p)
+{
+
+	if (l4lx_task_get_new_task(L4_INVALID_CAP,
+				&p->p_md.task)
+			|| l4_is_invalid_cap(p->p_md.task)) {
+		printf("l4x_thread_create: No task no left for user\n");
+		return;
+	}
+
+	if (l4lx_task_create(p->p_md.task)) {
+		printf("%s: Failed to create user task\n", __func__);
+		return;
+	}
+// #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+	{
+		char s[20];
+		snprintf(s, sizeof(s), "%s", p->p_comm);
+		s[sizeof(s)-1] = 0;
+		l4_debugger_set_object_name(p->p_md.task, s);
+	}
+// #endif
+/*
+	l4x_arch_task_setup(&p->p_addr);
+*/
 }
 
 static inline void

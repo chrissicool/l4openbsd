@@ -5,7 +5,7 @@
 #ifndef __ASM_L4__L4LXAPI__TASK_H__
 #define __ASM_L4__L4LXAPI__TASK_H__
 
-//#include <l4/sys/types.h>
+#include <l4/sys/types.h>
 
 /**
  * \defgroup task (User-)Task management functions.
@@ -58,8 +58,8 @@ void l4lx_task_init(void);
  *
  * \return 0 on success, != 0 on error
  */
-//int l4lx_task_get_new_task(l4_cap_idx_t parent_id,
-//                           l4_cap_idx_t *id);
+int l4lx_task_get_new_task(l4_cap_idx_t parent_id,
+                           l4_cap_idx_t *id);
 
 /**
  * \brief Create a (user) task. The pager is the Linux server.
@@ -73,7 +73,7 @@ void l4lx_task_init(void);
  * CONFIG_L4_PRIO_USER_PROCESS.
  *
  */
-//int l4lx_task_create(l4_cap_idx_t task_no);
+int l4lx_task_create(l4_cap_idx_t task_no);
 
 //int l4lx_task_create_thread_in_task(l4_cap_idx_t thread, l4_cap_idx_t task,
 //                                    l4_cap_idx_t pager, unsigned cpu);

@@ -63,6 +63,11 @@
 
 #include "npx.h"
 
+#ifdef L4
+#include <machine/cpufunc.h>
+#include <machine/l4/vcpu.h>
+#endif
+
 /*
  * Finish a fork operation, with process p2 nearly set up.
  * Copy and update the kernel stack and pcb, making the child
@@ -121,6 +126,18 @@ cpu_fork(struct proc *p1, struct proc *p2, void *stack, size_t stacksize,
 	sf->sf_ebx = (int)arg;
 	sf->sf_eip = (int)proc_trampoline;
 	pcb->pcb_esp = (int)sf;
+
+#ifdef L4
+	/*
+	 * XXX We are already committed to the fork(), but things may fail here.
+	 *     Maybe we should ask MD to commit earlier.
+	 */
+	L4XV_V(l4lx);
+
+	L4XV_L(l4lx);
+	l4x_vcpu_create_user_task(p2);
+	L4XV_U(l4lx);
+#endif
 }
 
 /*
