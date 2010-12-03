@@ -209,7 +209,7 @@ l4x_vcpu_entry(void)
 	struct proc *p;
 	struct user *u;
 	struct trapframe *regsp;
-	l4_vcpu_state_t *vcpu = l4x_vcpu_state(cpu);
+	l4_vcpu_state_t *vcpu = l4x_vcpu_state(cpu_number());
 
 	vcpu->state = 0;
 
