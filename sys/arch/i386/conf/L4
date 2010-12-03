@@ -37,6 +37,7 @@ rmoption	BOOT_CONFIG	# support for boot -c
 option		SMALL_KERNEL
 makeoptions	DEBUG="-g"	# enable verbose debugging output
 option		DDB		# in-kernel debugger
+option		DDB_STRUCT	#    can "show struct"
 option		DIAGNOSTIC	# enable extended error-checking
 option		RAMDISK_HOOKS
 option		MINIROOTSIZE=3800
