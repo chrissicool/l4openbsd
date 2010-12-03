@@ -426,6 +426,9 @@ kvtopte(vaddr_t kva)
 #define vtophys(VA)	((*vtopte(VA) & PG_FRAME) | \
 			 ((unsigned)(VA) & ~PG_FRAME))
 
+pd_entry_t	*pmap_map_pdes(struct pmap *);
+void		pmap_unmap_pdes(struct pmap *);
+
 #endif /* L4 */
 
 /*

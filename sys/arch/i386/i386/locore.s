@@ -896,12 +896,6 @@ ENTRY(copyout)
 	pushl	%ebp
 	movl	%esp,%ebp
 #endif
-#ifdef L4
-	int3
-	jmp	1f
-	.ascii	"copyout"
-1:
-#endif
 	pushl	%esi
 	pushl	%edi
 	pushl	$0	
@@ -926,6 +920,16 @@ ENTRY(copyout)
 3:	GET_CURPCB(%edx)
 	movl	$_C_LABEL(copy_fault),PCB_ONFAULT(%edx)
 
+#ifdef L4
+	/* l4x_copyout(%esi, %edi, %eax); */
+	pushl	%eax
+	pushl	%edi
+	pushl	%esi
+	call	l4x_copyout
+	addl	$12, %esp
+	cmpl	$0, %eax
+	jne	copy_fault
+#else /* !L4 */
 	/* bcopy(%esi, %edi, %eax); */
 	cld
 	movl	%eax,%ecx
@@ -936,6 +940,7 @@ ENTRY(copyout)
 	andl	$3,%ecx
 	rep
 	movsb
+#endif /* !L4 */
 
 	popl	PCB_ONFAULT(%edx)
 	popl	%edi
@@ -954,12 +959,6 @@ ENTRY(copyin)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp
-#endif
-#ifdef L4
-	int3
-	jmp	1f
-	.ascii	"copyin"
-1:
 #endif
 	pushl	%esi
 	pushl	%edi
@@ -982,7 +981,18 @@ ENTRY(copyin)
 	cmpl	$VM_MAXUSER_ADDRESS,%edx
 	ja	_C_LABEL(copy_fault)
 
-3:	/* bcopy(%esi, %edi, %eax); */
+3:
+#ifdef L4
+	/* l4x_copyin((%esi, %edi, %eax); */
+	pushl	%eax
+	pushl	%edi
+	pushl	%esi
+	call	l4x_copyin
+	addl	$12, %esp
+	cmpl	$0, %eax
+	jne	copy_fault
+#else /* !L4 */
+	/* bcopy(%esi, %edi, %eax); */
 	cld
 	movl	%eax,%ecx
 	shrl	$2,%ecx
@@ -992,6 +1002,7 @@ ENTRY(copyin)
 	andb	$3,%cl
 	rep
 	movsb
+#endif /* !L4 */
 
 	GET_CURPCB(%edx)
 	popl	PCB_ONFAULT(%edx)
@@ -1026,12 +1037,6 @@ ENTRY(copyoutstr)
 	pushl	%ebp
 	movl	%esp,%ebp
 #endif
-#ifdef L4
-	int3
-	jmp	1f
-	.ascii	"copyoutstr"
-1:
-#endif
 	pushl	%esi
 	pushl	%edi
 
@@ -1050,6 +1055,19 @@ ENTRY(copyoutstr)
 						# i.e. make sure that %edi
 						# is below VM_MAXUSER_ADDRESS
 
+#ifdef L4
+	/* l4x_copyoutstr(%esi, %edi, %edx, %eax); */
+	movl	24+FPADD(%esp),%eax		# %eax = *lencopied
+	pushl	%eax
+	pushl	%edx
+	pushl	%edi
+	pushl	%esi
+	call	l4x_copyoutstr
+	addl	$12, %esp
+	popl	%ebx				# *lencopied
+	movl	(%ebx), %edx
+	jmp	copystr_return
+#else	/* !L4 */
 	cmpl	%edx,%eax
 	jae	1f
 	movl	%eax,%edx
@@ -1075,6 +1093,7 @@ ENTRY(copyoutstr)
 	jae	_C_LABEL(copystr_fault)
 	movl	$ENAMETOOLONG,%eax
 	jmp	copystr_return
+#endif	/* !L4 */
 
 /*
  * copyinstr(caddr_t from, caddr_t to, size_t maxlen, size_t *lencopied);
@@ -1087,12 +1106,6 @@ ENTRY(copyinstr)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp
-#endif
-#ifdef L4
-	int3
-	jmp	1f
-	.ascii	"copyinstr"
-1:
 #endif
 	pushl	%esi
 	pushl	%edi
@@ -1111,6 +1124,19 @@ ENTRY(copyinstr)
 	jbe	_C_LABEL(copystr_fault)		# Error if CF == 1 || ZF == 1
 						# i.e. make sure that %esi
 						# is below VM_MAXUSER_ADDRESS
+#ifdef L4
+	/* l4x_copyinstr(%esi, %edi, %edx, %eax); */
+	movl	24+FPADD(%esp),%eax		# %eax = *lencopied
+	pushl	%eax
+	pushl	%edx
+	pushl	%edi
+	pushl	%esi
+	call	l4x_copyinstr
+	addl	$12, %esp
+	popl	%ebx				# *lencopied
+	movl	(%ebx), %edx
+	jmp	copystr_return
+#else	/* !L4 */
 	cmpl	%edx,%eax
 	jae	1f
 	movl	%eax,%edx
@@ -1136,6 +1162,7 @@ ENTRY(copyinstr)
 	jae	_C_LABEL(copystr_fault)
 	movl	$ENAMETOOLONG,%eax
 	jmp	copystr_return
+#endif	/* !L4 */
 
 ENTRY(copystr_fault)
 	movl	$EFAULT,%eax
