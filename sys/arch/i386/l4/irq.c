@@ -70,7 +70,6 @@ l4x_spllower(void)
 		if (MAKEIPL(s) > lapic_tpr) {
 			if (curcpu()->ci_ipending & iunmask[s]) {
 				run_irq_handlers(s);
-				curcpu()->ci_ipending |= ~(1 << s);
 			}
 		} else {
 			break;
@@ -162,6 +161,7 @@ run_irq_handlers(int irq)
 	curcpu()->ci_idepth--;
 
 	/* Ack current handled IRQ. */
+	curcpu()->ci_ipending &= ~(1 << irq);	/* handled */
 	l4lx_irq_dev_eoi(irq);
 
 	return result;
