@@ -1211,6 +1211,8 @@ pmap_free_pvs(struct pmap *pmap, struct pv_entry *pvs)
 	simple_lock(&pvalloc_lock);
 
 	for ( /* null */ ; pvs != NULL ; pvs = nextpv) {
+//		printf("%s: cl: Freeing PV for VA=%#x (PTD: %#x)\n",
+//				__func__, pvs->pv_va, pvs->pv_pmap->pm_pdir);
 		nextpv = pvs->pv_next;
 		pmap_free_pv_doit(pvs);
 	}
@@ -1324,6 +1326,8 @@ pmap_remove_pv(struct vm_page *pg, struct pmap *pmap, vaddr_t va)
 	prevptr = &pg->mdpage.pv_list;		/* previous pv_entry pointer */
 	while ((pve = *prevptr) != NULL) {
 		if (pve->pv_pmap == pmap && pve->pv_va == va) {	/* match? */
+//			printf("%s: cl: Removing VA=%#lx (PTD: %#lx)\nb",
+//					__func__, va, pmap->pm_pdir);
 			*prevptr = pve->pv_next;		/* remove it! */
 			break;
 		}
@@ -1359,8 +1363,8 @@ pmap_alloc_ptp(struct pmap *pmap, int pde_index, boolean_t just_try,
 	if (ptp == NULL)
 		return (NULL);
 
-//	printf("%s: cl: alloced PTP=%#x for PTD=%#x\n",
-//			__func__, ptp, pmap->pm_pdir);
+//	printf("%s: cl: alloced PTP=%#x for PTD=%#x (paddr=%#x)\n",
+//			__func__, ptp, pmap->pm_pdir, VM_PAGE_TO_PHYS(ptp));
 
 	/* got one! */
 	atomic_clearbits_int(&ptp->pg_flags, PG_BUSY);
@@ -1933,11 +1937,17 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 	 * to keep track of the number of real PTEs in the PTP).
 	 */
 
+//	printf("%s: cl: Removing 0x%08lx -- 0x%08lx (PTD: %p)\n",
+//			__func__, startva, endva, pmap->pm_pdir);
+
 	for (/*null*/; startva < endva && (ptp == NULL || ptp->wire_count > 1)
 			     ; pte++, startva += NBPG) {
 		/* get valid pte */
 		ptes = (pt_entry_t *)pd[pdei(startva)];
 		pte = (pt_entry_t *)ptes[ptei(startva)];
+
+		if (pte == NULL)
+			continue;			/* no page table entry */
 
 		if (!pmap_valid_entry(*pte))
 			continue;			/* VA not mapped */
@@ -2034,6 +2044,8 @@ pmap_do_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flags)
 //	else
 //		shootall = 0;
 
+//	printf("%s: cl: Removing range %#x -- %#x (PTD: %#x)\n",
+//			__func__, sva, eva, pmap->pm_pdir);
 
 	for (va = sva ; va < eva ; va += NBPG) {
 		/* determine range of block */
@@ -2487,8 +2499,8 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 	pa &= PMAP_PA_MASK;	/* nuke flags from pa */
 
 #ifdef DIAGNOSTIC
-//	printf("%s: cl: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, vtopte=%08lx\n",
-//			__func__, pa, va, PTD, pdei(va), PTD[pdei(va)], ptei(va), vtopte(va));
+//	printf("%s: cl: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu\n",
+//			__func__, pa, va, pmap->pm_pdir, pdei(va), pmap->pm_pdir[pdei(va)], ptei(va));
 
 	/* sanity check: totally out of range? */
 //	if (va >= VM_MAX_KERNEL_ADDRESS)
@@ -2507,8 +2519,8 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 		while (!pmap_alloc_ptp(pmap, pdei(va), FALSE, 0))
 			uvm_wait("pmap_enter");
 		pmap_unmap_pdes(pmap);		/* unlocks pmap */
-//		printf("%s: cl: Finally PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, vtopte=%08lx\n",
-//				__func__, pa, va, PTD, pdei(va), PTD[pdei(va)], ptei(va), vtopte(va));
+//		printf("%s: cl: Finally PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu\n",
+//				__func__, pa, va, pmap->pm_pdir, pdei(va), pmap->pm_pdir[pdei(va)], ptei(va));
 	}
 	if (pmap_initialized)
 		freepve = pmap_alloc_pv(pmap, ALLOCPV_NEED);
