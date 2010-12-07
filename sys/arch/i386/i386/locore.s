@@ -1064,8 +1064,8 @@ ENTRY(copyoutstr)
 	pushl	%esi
 	call	l4x_copyoutstr
 	addl	$12, %esp
-	popl	%ebx				# *lencopied
-	movl	(%ebx), %edx
+	popl	%ecx				# *lencopied
+	movl	(%ecx), %edx
 	jmp	copystr_return
 #else	/* !L4 */
 	cmpl	%edx,%eax
@@ -1133,8 +1133,8 @@ ENTRY(copyinstr)
 	pushl	%esi
 	call	l4x_copyinstr
 	addl	$12, %esp
-	popl	%ebx				# *lencopied
-	movl	(%ebx), %edx
+	popl	%ecx				# *lencopied
+	movl	(%ecx), %edx
 	jmp	copystr_return
 #else	/* !L4 */
 	cmpl	%edx,%eax
