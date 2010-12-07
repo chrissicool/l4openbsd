@@ -245,6 +245,9 @@ l4x_vcpu_entry(void)
 				vcpu->r.di, vcpu->r.si, vcpu->r.ss, vcpu->r.sp,
 				vcpu->r.bp, vcpu->r.flags);
 #endif
+		if (l4x_vcpu_is_page_fault(vcpu))
+			regsp->tf_trapno = T_PAGEFLT;
+
 		trap(regsp);
 	}
 
