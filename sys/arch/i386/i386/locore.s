@@ -929,6 +929,7 @@ ENTRY(copyout)
 	addl	$12, %esp
 	cmpl	$0, %eax
 	jne	copy_fault
+	GET_CURPCB(%edx)
 #else /* !L4 */
 	/* bcopy(%esi, %edi, %eax); */
 	cld
@@ -991,6 +992,7 @@ ENTRY(copyin)
 	addl	$12, %esp
 	cmpl	$0, %eax
 	jne	copy_fault
+	GET_CURPCB(%edx)
 #else /* !L4 */
 	/* bcopy(%esi, %edi, %eax); */
 	cld
@@ -1063,8 +1065,8 @@ ENTRY(copyoutstr)
 	pushl	%edi
 	pushl	%esi
 	call	l4x_copyoutstr
-	addl	$12, %esp
-	popl	%ecx				# *lencopied
+	addl	$16, %esp
+	movl	24+FPADD(%esp),%ecx		# %ecx = *lencopied
 	movl	(%ecx), %edx
 	jmp	copystr_return
 #else	/* !L4 */
@@ -1132,8 +1134,8 @@ ENTRY(copyinstr)
 	pushl	%edi
 	pushl	%esi
 	call	l4x_copyinstr
-	addl	$12, %esp
-	popl	%ecx				# *lencopied
+	addl	$16, %esp
+	movl	24+FPADD(%esp),%ecx		# %ecx = *lencopied
 	movl	(%ecx), %edx
 	jmp	copystr_return
 #else	/* !L4 */
