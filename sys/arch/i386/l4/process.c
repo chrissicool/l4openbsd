@@ -13,6 +13,9 @@
 
 #include <uvm/uvm_extern.h>
 #include <machine/cpu.h>
+#include <machine/cpufunc.h>
+
+#include <machine/l4/process.h>
 
 //#define COPY_DEBUG
 #ifdef COPY_DEBUG
@@ -21,7 +24,6 @@
 #define debug_printf(...)
 #endif
 
-paddr_t	*l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type);
 int	l4x_copyout(void *, void *, size_t);
 int	l4x_copyin(void *, void *, size_t);
 int	l4x_copyoutstr(char *, char *, size_t, size_t *);
@@ -29,7 +31,8 @@ int	l4x_copyinstr(char *, char *, size_t, size_t *);
 
 /*
  * Conditionally run the page fault handler on the given map,
- * if user space address uva is not already mapped.
+ * if user space address uva is not already mapped. Update the protection
+ * bits (PG_M|PG_U), if requested.
  * Return the equivalent physical RAM address.
  */
 paddr_t *
@@ -66,7 +69,18 @@ l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 		pte = (pt_entry_t *)ptes[ptei(uva)];
 	}
 
-	return ((paddr_t *)vtophys(uva));
+	/*
+	 * Update protection flags, normally set in HW from i386.
+	 * May be useless, since pmap(9)'s pmap_enter() already sets them.
+	 */
+	pd = pmap_map_pdes(pmap);			/* lock pmap */
+	if (access_type & VM_PROT_READ)
+		pte = (pt_entry_t *)((int)pte | PG_U);
+	if (access_type & VM_PROT_WRITE)
+		pte = (pt_entry_t *)((int)pte | PG_M);
+	pmap_unmap_pdes(pmap);				/* unlock pmap */
+
+	return ((paddr_t *)(((int)pte & PG_FRAME) | (uva & ~PG_FRAME)));
 }
 
 int
@@ -75,6 +89,7 @@ l4x_copyout(void *src, void *dst, size_t len)
 	struct vm_map *map;
 	paddr_t *dst_p, upper_bound;
 	size_t copy_len;
+	L4XV_V(n);
 
 	debug_printf("l4x_copyout(%p, %p, %d)\n", src, dst, len);
 
@@ -99,7 +114,9 @@ l4x_copyout(void *src, void *dst, size_t len)
 			copy_len = (unsigned)upper_bound - (unsigned)dst_p;
 
 		debug_printf("bcopy(%p, %p, %d)\n", src, dst_p, copy_len);
+		L4XV_L(n);
 		bcopy(src, dst_p, copy_len);
+		L4XV_U(n);
 
 		src += copy_len;
 		dst += copy_len;
@@ -115,6 +132,7 @@ l4x_copyin(void *src, void *dst, size_t len)
 	struct vm_map *map;
 	paddr_t *src_p, upper_bound;
 	size_t copy_len;
+	L4XV_V(n);
 
 	debug_printf("l4x_copyin(%p, %p, %d)\n", src, dst, len);
 
@@ -138,7 +156,9 @@ l4x_copyin(void *src, void *dst, size_t len)
 			copy_len = (unsigned)upper_bound - (unsigned)src_p;
 
 		debug_printf("bcopy(%p, %p, %d)\n", src_p, dst, copy_len);
+		L4XV_L(n);
 		bcopy(src_p, dst, copy_len);
+		L4XV_U(n);
 
 		src += copy_len;
 		dst += copy_len;
@@ -159,6 +179,7 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 	char *dst_p;
 	paddr_t upper_bound;
 	size_t copy_len, copied;
+	L4XV_V(n);
 
 	debug_printf("l4x_copyoutstr(%p, %p, %d)\n", src, dst, len);
 
@@ -184,15 +205,18 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 			copy_len = (unsigned)upper_bound - (unsigned)dst_p;
 
 		/* Copy byte by byte, we might hit the terminating '\0' */
+		L4XV_L(n);
 		for (copied = 0; copied < copy_len; copied++) {
 			dst_p[copied] = src[copied];
 			if (dst_p[copied] == '\0') {
+				L4XV_U(n);
 				debug_printf("Finally copied %dB from %p to %p\n",
 						copied+1, src, dst_p);
 				*tocopy -= (copied+1); /* add current iteration */
 				return 0;
 			}
 		}
+		L4XV_U(n);
 
 		debug_printf("Copied %dB from %p to %p\n", copied, src, dst_p);
 
@@ -223,6 +247,7 @@ l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 	char *src_p;
 	paddr_t upper_bound;
 	size_t copy_len, copied;
+	L4XV_V(n);
 
 	debug_printf("l4x_copyinstr(%p, %p, %d)\n", src, dst, len);
 
@@ -247,15 +272,18 @@ l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 			copy_len = (unsigned)upper_bound - (unsigned)src_p;
 
 		/* Copy byte by byte, we might hit the terminating '\0' */
+		L4XV_L(n);
 		for (copied = 0; copied < copy_len; copied++) {
 			dst[copied] = src_p[copied];
 			if (dst[copied] == '\0') {
+				L4XV_U(n);
 				debug_printf("Finally copied %dB from %p to %p\n",
 						copied+1, src_p, dst);
 				*tocopy -= (copied+1); /* add current iteration */
 				return 0;
 			}
 		}
+		L4XV_U(n);
 
 		debug_printf("Copied %dB from %p to %p\n", copied, src_p, dst);
 
