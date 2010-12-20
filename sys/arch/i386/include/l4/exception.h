@@ -58,8 +58,8 @@ static inline void vcpu_to_ptregs(l4_vcpu_state_t *v,
 	V2P(regs, tf_eip,    &v->r, ip);
 	V2P(regs, tf_eflags, &v->r, flags);
 	V2P(regs, tf_esp,    &v->r, sp);
-	V2P(regs, tf_fs,    &v->r, fs);
-	V2P(regs, tf_gs,    &v->r, gs);
+//	V2P(regs, tf_fs,    &v->r, fs);
+//	V2P(regs, tf_gs,    &v->r, gs);
 	V2P(regs, tf_trapno,    &v->r, trapno);
 	V2P(regs, tf_err,    &v->r, err);
 	if (v->saved_state & L4_VCPU_F_IRQ) {
@@ -87,13 +87,16 @@ static inline void ptregs_to_vcpu(l4_vcpu_state_t *v,
 	P2V(regs, tf_eip,    &v->r, ip);
 	P2V(regs, tf_eflags, &v->r, flags);
 	P2V(regs, tf_esp,    &v->r, sp);
-	P2V(regs, tf_fs,    &v->r, fs);
-	P2V(regs, tf_gs,    &v->r, gs);
+//	P2V(regs, tf_fs,    &v->r, fs);
+//	P2V(regs, tf_gs,    &v->r, gs);
 	v->saved_state &= ~(L4_VCPU_F_IRQ | L4_VCPU_F_USER_MODE);
 	if (regs->tf_eflags & PSL_I)
 	        v->saved_state |= L4_VCPU_F_IRQ;
 	if (regs->tf_cs & 3)
 	        v->saved_state |= L4_VCPU_F_USER_MODE;
+
+	v->r.fs = 0;	/* XXX */
+	v->r.gs = 0;	/* XXX */
 }
 #undef P2V
 

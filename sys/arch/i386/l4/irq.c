@@ -63,8 +63,8 @@ l4x_spllower(void)
 
 	/* prepare trapframe */
 	tf = p->p_md.md_regs;
-	tf->tf_cs |= (SEL_KPL & SEL_RPL);	/* kernel */
-	tf->tf_eflags = 0;
+//	tf->tf_cs |= (SEL_KPL & SEL_RPL);	/* kernel */
+//	tf->tf_eflags = 0;
 
 	for (s = NIPL; s > NIPL; s--) {
 		if (MAKEIPL(s) > lapic_tpr) {

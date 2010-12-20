@@ -364,7 +364,7 @@ L4_CV l4_utcb_t *l4_utcb_wrap(void)
 #else
 	unsigned gsvalue;
 	__asm __volatile ("mov %%gs, %0": "=r" (gsvalue));
-	//if (gsvalue == 0x43 || gsvalue == 7)
+	if (gsvalue == 0x43 || gsvalue == 7)
 		return l4_utcb_direct();
 	return l4x_stack_utcb_get();
 #endif

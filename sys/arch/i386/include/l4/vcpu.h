@@ -11,6 +11,12 @@
 #include <l4/sys/vcpu.h>
 #include <l4/sys/utcb.h>
 
+/* vCPU FPU state for each CPU */
+struct l4x_arch_cpu_fpu_state {
+	int enabled;
+};
+struct l4x_arch_cpu_fpu_state l4x_cpu_fpu_state[MAXCPUS];
+
 static inline
 l4_vcpu_state_t *l4x_vcpu_state_u(l4_utcb_t *u)
 {

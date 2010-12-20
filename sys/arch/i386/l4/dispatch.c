@@ -25,6 +25,9 @@
 #include <machine/l4/vcpu.h>
 #include <machine/l4/exception.h>
 #include <machine/l4/setup.h>
+#include <machine/l4/process.h>
+
+#include <machine/l4/log.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/kdebug.h>
@@ -37,14 +40,31 @@
 
 static inline int l4x_vcpu_is_irq(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_page_fault(l4_vcpu_state_t *vcpu);
+static inline int l4x_vcpu_is_write_pf(l4_vcpu_state_t *vcpu);
+static inline l4_umword_t l4x_l4pfa(l4_vcpu_state_t *vcpu);
+static inline int l4x_vcpu_is_user(l4_vcpu_state_t *vcpu);
+static inline int l4x_vcpu_is_syscall(l4_vcpu_state_t *vcpu);
+void l4x_fpu_set(int on_off);
+struct l4x_arch_cpu_fpu_state *l4x_fpu_get(unsigned cpu);
+static inline int l4x_msgtag_fpu(void);
 static void l4x_evict_mem(l4_umword_t d);
 static inline void l4x_vcpu_entry_user_arch(void);
-static void l4x_vcpu_entry_kern(l4_vcpu_state_t *vcpu);
 static inline void l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu);
+static void l4x_arch_task_start_setup(struct proc *p);
+void l4x_ret_from_fork(void);
+void l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
+		struct trapframe *regsp);
 static inline void l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		l4_umword_t fp1, l4_umword_t fp2, int copy_ptregs);
 void l4x_vcpu_entry(void);
 
+/* Convert vCPU traps to trap()'s trapno. See IDTVEC's and init386(). */
+static int vcpu2trapno[] = {
+	/* 0x00 */ T_DIVIDE, T_TRCTRAP, T_NMI, T_BPTFLT, T_OFLOW, T_BOUND,
+	/* 0x06 */ T_PRIVINFLT, T_DNA, T_DOUBLEFLT, T_FPOPFLT, T_TSSFLT,
+	/* 0x0b */ T_SEGNPFLT, T_STKFLT, T_PROTFLT, T_PAGEFLT, T_RESERVED,
+	/* 0x10 */ T_MACHK, T_XFTRAP, T_ARITHTRAP, T_ALIGNFLT,
+};
 
 static inline int
 l4x_vcpu_is_irq(l4_vcpu_state_t *vcpu)
@@ -56,6 +76,47 @@ static inline int
 l4x_vcpu_is_page_fault(l4_vcpu_state_t *vcpu)
 {
 	return vcpu->r.trapno == 0xe;
+}
+
+static inline int
+l4x_vcpu_is_write_pf(l4_vcpu_state_t *vcpu)
+{
+	return((vcpu->r.trapno == 0xe) &&
+	       (vcpu->r.err & 2));
+}
+
+static inline l4_umword_t
+l4x_l4pfa(l4_vcpu_state_t *vcpu)
+{
+	return ((vcpu->r.pfa & ~3) | (vcpu->r.err & 2));
+}
+
+static inline int
+l4x_vcpu_is_user(l4_vcpu_state_t *vcpu)
+{
+	return ((vcpu->saved_state & L4_VCPU_F_USER_MODE) != 0);
+}
+
+static inline int
+l4x_vcpu_is_syscall(l4_vcpu_state_t *vcpu)
+{
+	return ((vcpu->r.trapno == 0xd) && (vcpu->r.err == 0x402));
+}
+
+void l4x_fpu_set(int on_off)
+{
+	l4x_cpu_fpu_state[cpu_number()].enabled = on_off;
+}
+
+struct l4x_arch_cpu_fpu_state *l4x_fpu_get(unsigned cpu)
+{
+	return &l4x_cpu_fpu_state[cpu];
+}
+
+static inline int l4x_msgtag_fpu(void)
+{
+	return l4x_fpu_get(cpu_number())->enabled
+		?  L4_MSGTAG_TRANSFER_FPU : 0;
 }
 
 static void l4x_evict_mem(l4_umword_t d)
@@ -81,44 +142,6 @@ l4x_vcpu_entry_user_arch(void)
 	     "r"(l4x_x86_utcb_get_orig_segment())
 #endif
 	     : "memory");
-}
-
-/*
- * Special vCPU handler function for kernel entry.
- */
-static void
-l4x_vcpu_entry_kern(l4_vcpu_state_t *vcpu)
-{
-	struct trapframe regs;
-	struct trapframe *regsp = &regs;
-	struct proc *p = curproc;
-	struct user *u = p->p_addr;
-	int copy_ptregs = 0;
-
-	if (l4x_vcpu_is_irq(vcpu)) {
-		vcpu_to_ptregs(vcpu, regsp);
-		l4x_vcpu_handle_irq(vcpu, regsp);
-		copy_ptregs = 1;
-
-	} else if (0 // this should not happen anymore
-			&& l4x_vcpu_is_page_fault(vcpu)) {
-//		l4x_vcpu_handle_kernel_pf(vcpu->r.pfa, vcpu->r.ip,
-//				l4x_vcpu_is_wr_pf(vcpu));
-	} else {
-		int ret = l4x_vcpu_handle_kernel_exc(&vcpu->r);
-
-		if (!ret) {
-			vcpu_to_ptregs(vcpu, regsp);
-//			if (l4x_dispatch_exception(p, u, vcpu, regsp))
-//				enter_kdebug("exception handling failed");
-			copy_ptregs = 1;
-		}
-	}
-
-#ifdef MULTIPROCESSOR
-	mb();
-#endif
-	l4x_vcpu_iret(p, u, regsp, 0, 0, copy_ptregs);
 }
 
 /* Do some sanety checks. */
@@ -159,31 +182,150 @@ l4x_vcpu_create_user_task(struct proc *p)
 */
 }
 
+static void
+l4x_arch_task_start_setup(struct proc *p)
+{
+	struct trapframe *tf = p->p_md.md_regs;
+	unsigned int gs = l4x_vcpu_state(cpu_number())->r.gs;
+	unsigned int v = (gs & 0xffff) >> 3;
+
+	/*
+	 * - Remember GS in FS, so that pograms can find their UTCB
+	 * - libl4sys-l4x.a uses %fs to get the UTCB address.
+	 * - Do not set GS because glibc does not seem to like if gs is not 0
+	 * - Only do this if this is the first usage of the L4 thread in
+	 *   this task, otherwise gs will have the glibc-gs
+	 * - Ensure this by checking if the segment is one of the user ones or
+	 *   another one (then it's the utcb one)
+	 */
+	if (    v < l4x_fiasco_gdt_entry_offset
+	     || v > l4x_fiasco_gdt_entry_offset + 3)
+		tf->tf_fs = gs;
+
+	/*
+	 * TODO Setup LDTs
+	 */
+}
+
+/*
+ * After fork, we only reach here after the scheduler has chosen us.
+ */
+void
+l4x_ret_from_fork(void)
+{
+	l4_utcb_t *utcb;
+	l4_vcpu_state_t *vcpu;
+	struct proc *p = curproc;
+	struct user *u = p->p_addr;
+	struct trapframe *tf = p->p_md.md_regs;
+	L4XV_V(n);
+
+	L4XV_L(n);
+	utcb = l4_utcb();
+	vcpu = l4x_vcpu_state_u(utcb);
+	L4XV_U(n);
+
+	tf->tf_cs = GSEL(GUCODE_SEL, SEL_UPL);		/* set USERMODE */
+	vcpu->saved_state |= L4_VCPU_F_USER_MODE;
+
+	l4x_vcpu_iret(p, u, tf, 0, 0, 1);
+}
+
+/*
+ * Handle user page faults differently. We need to find out, what to map
+ * into user address space first. If called after trap(struct trapframe *),
+ * execution time is cheap.
+ */
+void
+l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
+		struct trapframe *regsp)
+{
+	paddr_t *kpa;
+	vaddr_t  uva = (vaddr_t)trunc_page(vcpu->r.pfa);
+	struct vm_map *map = &p->p_vmspace->vm_map;
+	l4_umword_t upage = 0, kpage = 0;
+	unsigned fpage_size = L4_LOG2_PAGESIZE;
+
+	upage = l4x_l4pfa(vcpu);
+
+	/*
+	 * The handler should not run, since trap() already
+	 * handled the fault. Either we get a valid paddr_t
+	 * or trap() already SIGSEGV'd curproc.
+	 */
+	if (l4x_vcpu_is_write_pf(vcpu))
+		kpa = l4x_run_uvm_fault(map, uva,
+				VM_PROT_READ|VM_PROT_WRITE);
+	else
+		kpa = l4x_run_uvm_fault(map, uva, VM_PROT_READ);
+
+	if (kpa && (uva < VM_MAXUSER_ADDRESS)) {
+		upage = (upage & L4_PAGEMASK) | L4_ITEM_MAP;
+		if (l4x_vcpu_is_write_pf(vcpu))
+			kpage = l4_fpage((unsigned long)kpa, fpage_size,
+					L4_FPAGE_RW).fpage;
+		else
+			kpage = l4_fpage((unsigned long)kpa, fpage_size,
+					L4_FPAGE_RO).fpage;
+
+//		printf("%s: cl: Sending %p for user %#x\n", __func__, kpa, uva);
+		l4x_vcpu_iret(p, u, regsp, upage, kpage, 1);
+		/* NOTREACHED */
+	}
+}
+
 static inline void
 l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		l4_umword_t fp1, l4_umword_t fp2, int copy_ptregs)
 {
 	l4_utcb_t *utcb = l4_utcb();
-	l4_vcpu_state_t *vcpu = l4x_vcpu_state_u(utcb);
+	l4_vcpu_state_t *vcpu;
 	l4_msgtag_t tag;
+	L4XV_V(n);
+
+	L4XV_L(n);
+	vcpu = l4x_vcpu_state_u(utcb);
+	L4XV_U(n);
 
 	if (copy_ptregs)
 		ptregs_to_vcpu(vcpu, regs);
 	else
 		vcpu->saved_state &= ~L4_VCPU_F_USER_MODE;
 
-	if (vcpu->saved_state & L4_VCPU_F_USER_MODE) {
+	if (l4x_vcpu_is_user(vcpu)) {
 
-		/* TODO cl: implement return to user context. */
+		/* Create user thread on first invocation. */
+		if (l4_is_invalid_cap(p->p_md.task)) {
+//			printf("%s: cl: Init task capability.\n", __func__);
+			L4XV_L(n);
+			l4x_vcpu_create_user_task(p);
+			L4XV_U(n);
+			l4x_arch_task_start_setup(p);
+			vcpu->user_task = p->p_md.task;
+		}
 
+//		thread_struct_to_vcpu(vcpu, p);
+		vcpu->saved_state |= L4_VCPU_F_USER_MODE;
+
+		if (l4x_msgtag_fpu())
+			vcpu->saved_state |= L4_VCPU_F_FPU_ENABLED;
+		else
+			vcpu->saved_state &= ~L4_VCPU_F_FPU_ENABLED;
 	} else {
-		vcpu->saved_state |= L4_VCPU_F_EXCEPTIONS;
-		vcpu->saved_state &= ~(L4_VCPU_F_DEBUG_EXC | L4_VCPU_F_PAGE_FAULTS);
+		vcpu->saved_state |= L4_VCPU_F_IRQ;
+//		vcpu->saved_state &= ~(L4_VCPU_F_DEBUG_EXC | L4_VCPU_F_PAGE_FAULTS);
 		vcpu->r.gs = l4x_x86_utcb_get_orig_segment();
 	}
 
+	vcpu->saved_state |= L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS;
+
+	/*
+	 * Resume from vCPU event.
+	 * Map fp1 to the target's task vm space as fp2, if necessary.
+	 */
 	while( /* CONSTCOND */ 1 ) {
 		tag = l4_thread_vcpu_resume_start_u(utcb);
+
 		if (fp1)
 			l4_sndfpage_add_u((l4_fpage_t)fp2, fp1, &tag, utcb);
 
@@ -201,55 +343,76 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 
 /*
  * Main entry point for asynchrnonous vCPU events.
- * TODO THERE IS STILL A LOT OF WORK TODO
  */
 void
 l4x_vcpu_entry(void)
 {
 	struct proc *p;
 	struct user *u;
+	struct trapframe kernel_tf;		/* kernel mode frame */
 	struct trapframe *regsp;
-	l4_vcpu_state_t *vcpu = l4x_vcpu_state(cpu_number());
+	l4_vcpu_state_t *vcpu;
+	L4XV_V(n);
+
+	L4XV_L(n);
+	vcpu = l4x_vcpu_state(cpu_number());
+	L4XV_U(n);
 
 	vcpu->state = 0;
 
-	if (vcpu->saved_state & L4_VCPU_F_USER_MODE)
-		l4x_vcpu_entry_user_arch();
+#if 0
+	l4x_printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
+			"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
+			"di=%08lx, si=%08lx, ss=%08lx, sp=%08lx, "
+			"bp=%08lx, flags=%08lx, eip=%08lx, fs=%08lx, "
+			"gs=%08lx (%s,%s)\n",
+			vcpu->r.trapno, vcpu->r.err, vcpu->r.pfa,
+			vcpu->r.ax, vcpu->r.bx, vcpu->r.cx, vcpu->r.dx,
+			vcpu->r.di, vcpu->r.si, vcpu->r.ss, vcpu->r.sp,
+			vcpu->r.bp, vcpu->r.flags, vcpu->r.ip, vcpu->r.fs,
+			vcpu->r.gs,
+			vcpu->saved_state & L4_VCPU_F_USER_MODE ? "USR" : "KRN",
+			l4x_vcpu_is_irq(vcpu) ? "IRQ" :
+			l4x_vcpu_is_page_fault(vcpu) ? "PF" : "EXC");
+#endif
 
 	l4x_vcpu_entry_sanity(vcpu);
 
-	if (!vcpu->saved_state & L4_VCPU_F_USER_MODE) {
-		l4x_vcpu_entry_kern(vcpu);
-		enter_kdebug("l4x_vcpu_entry_kern() returned but should not!");
-		/* NOTREACHED */
-	}
-
 	p = curproc;			/* current thread */
 	u = p->p_addr;			/* current thread's UAREA */
-	regsp = p->p_md.md_regs;	/* current trapframe */
+
+	if (l4x_vcpu_is_user(vcpu)) {
+		regsp = p->p_md.md_regs;	/* current trapframe */
+		l4x_vcpu_entry_user_arch();
+	}
+
+	if (!l4x_vcpu_is_user(vcpu)) {
+		regsp = &kernel_tf;
+	}
 
 	vcpu_to_ptregs(vcpu, regsp);
 
 	if (l4x_vcpu_is_irq(vcpu)) {
 		l4x_vcpu_handle_irq(vcpu, regsp);
-	} else {
-		/* page fault || exception */
-		extern void trap(struct trapframe *frame);
-#if 0
-		LOG_printf("vCPU state: trapno=%d, err=%d, pfa=%08lx, "
-				"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
-				"di=%08lx, si=%08lx, ss=%08lx, sp=%08lx, "
-				"bp=%08lx, flags=%08lx\n",
-				vcpu->r.trapno, vcpu->r.err, vcpu->r.pfa,
-				vcpu->r.ax, vcpu->r.bx, vcpu->r.cx, vcpu->r.dx,
-				vcpu->r.di, vcpu->r.si, vcpu->r.ss, vcpu->r.sp,
-				vcpu->r.bp, vcpu->r.flags);
-#endif
-		if (l4x_vcpu_is_page_fault(vcpu))
-			regsp->tf_trapno = T_PAGEFLT;
+		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+	}
 
-		trap(regsp);
+	if (l4x_vcpu_is_user(vcpu) && l4x_vcpu_is_syscall(vcpu)) {
+		/* TODO handle syscalls */
+		enter_kdebug("syscall");
+	}
+
+	extern void trap(struct trapframe *frame);
+
+	regsp->tf_trapno = vcpu2trapno[regsp->tf_trapno];
+	trap(regsp);	/* Generic OpenBSD trap handler. */
+
+	/* Special page fault handling for user mode. */
+	if (l4x_vcpu_is_page_fault(vcpu) &&
+	    l4x_vcpu_is_user(vcpu)) {
+		l4x_handle_user_pf(vcpu, p, u, regsp);
 	}
 
 	l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+	/* NOTREACHED */
 }

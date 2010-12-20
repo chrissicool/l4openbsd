@@ -49,7 +49,9 @@
 #include <sys/malloc.h>
 #include <sys/vnode.h>
 #include <sys/buf.h>
+#ifndef L4
 #include <sys/user.h>
+#endif
 #include <sys/core.h>
 #include <sys/exec.h>
 #include <sys/ptrace.h>
@@ -66,6 +68,7 @@
 #ifdef L4
 #include <machine/cpufunc.h>
 #include <machine/l4/vcpu.h>
+#include <machine/l4/stack_id.h>
 #endif
 
 /*
@@ -113,7 +116,6 @@ cpu_fork(struct proc *p1, struct proc *p2, void *stack, size_t stacksize,
 	 * through rei().
 	 */
 	p2->p_md.md_regs = tf = (struct trapframe *)pcb->pcb_tss.tss_esp0 - 1;
-	*tf = *p1->p_md.md_regs;
 
 	/*
 	 * If specified, give the child a different stack.
@@ -132,11 +134,12 @@ cpu_fork(struct proc *p1, struct proc *p2, void *stack, size_t stacksize,
 	 * XXX We are already committed to the fork(), but things may fail here.
 	 *     Maybe we should ask MD to commit earlier.
 	 */
-	L4XV_V(l4lx);
+	struct user *u2 = p2->p_addr;
 
-	L4XV_L(l4lx);
-	l4x_vcpu_create_user_task(p2);
-	L4XV_U(l4lx);
+	p2->p_md.task = L4_INVALID_CAP;
+
+	/* Setup UTCB pointer. */
+	l4x_stack_setup(u2);
 #endif
 }
 

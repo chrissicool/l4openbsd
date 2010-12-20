@@ -1708,6 +1708,26 @@ pmap_switch(struct proc *o, struct proc *p)
 	self->ci_gdt[GUCODE_SEL].sd = pmap->pm_codeseg;
 
 	lldt(pcb->pcb_ldt_sel);
+
+#ifdef L4
+	/*
+	 * Set vCPU properties for the new task.
+	 */
+	l4_utcb_t *utcb = l4_utcb();
+	l4_vcpu_state_t *vcpu;
+	struct trapframe *tf = p->p_md.md_regs;
+	L4XV_V(n);
+
+	L4XV_L(n);
+	vcpu = l4x_vcpu_state_u(utcb);
+	L4XV_U(n);
+
+	vcpu->entry_sp = (l4_umword_t)tf;
+	vcpu->user_task = p->p_md.task;
+
+	/* TODO adjust GDT. */
+//	native_load_tls(p, cpu_number());
+#endif	/* L4 */
 }
 
 void

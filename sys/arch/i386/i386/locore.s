@@ -665,8 +665,13 @@ NENTRY(proc_trampoline)
 	pushl	%ebx
 	call	*%esi
 	addl	$4,%esp
+#ifdef L4
+	call	l4x_ret_from_fork
+	/* NOTREACHED */
+#else
 	INTRFASTEXIT
 	/* NOTREACHED */
+#endif
 
 /*****************************************************************************/
 
