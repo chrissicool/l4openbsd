@@ -2447,7 +2447,7 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 			panic("pmap_unwire: invalid (unmapped) va 0x%lx", va);
 #endif
 		if ((ptes[ptei(va)] & PG_W) != 0) {
-			i386_atomic_clearbits_l(&ptes[atop(va)], PG_W);
+			i386_atomic_clearbits_l(&ptes[ptei(va)], PG_W);
 			pmap->pm_stats.wired_count--;
 		}
 #ifdef DIAGNOSTIC
