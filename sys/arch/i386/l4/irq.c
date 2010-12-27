@@ -32,7 +32,6 @@
  */
 extern void trap(struct trapframe *frame);
 
-static void l4x_run_asts(struct trapframe *tf);
 static int handle_irq(int irq, struct trapframe *regs);
 static inline int run_irq_handlers(int irq);
 static void init_array(void);
@@ -78,7 +77,7 @@ l4x_spllower(void)
 	l4x_run_asts(tf);
 }
 
-static void l4x_run_asts(struct trapframe *tf)
+void l4x_run_asts(struct trapframe *tf)
 {
 	if (aston(curproc)) {
 		curproc->p_md.md_astpending = 0;
