@@ -49,9 +49,7 @@
 #include <sys/malloc.h>
 #include <sys/vnode.h>
 #include <sys/buf.h>
-#ifndef L4
 #include <sys/user.h>
-#endif
 #include <sys/core.h>
 #include <sys/exec.h>
 #include <sys/ptrace.h>

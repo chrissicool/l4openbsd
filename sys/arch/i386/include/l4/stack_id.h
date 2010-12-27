@@ -6,7 +6,6 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/proc.h>
-#include <sys/user.h>
 
 #include <machine/l4/l4lxapi/thread.h>
 #include <l4/sys/utcb.h>

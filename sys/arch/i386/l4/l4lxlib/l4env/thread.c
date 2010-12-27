@@ -4,6 +4,8 @@
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/user.h>
 
 #include <l4/sys/kdebug.h>
 #include <l4/sys/err.h>
@@ -25,16 +27,9 @@
 #include <machine/l4/smp.h>
 #include <machine/l4/cap_alloc.h>
 #include <machine/l4/linux_compat.h>
+
 #include <lib/libkern/libkern.h>
 
-/*
-#include <asm/generic/kthreads.h>
-#include <asm/generic/cap_alloc.h>
-#include <asm/generic/smp.h>
-#include <asm/generic/stack_id.h>
-#include <asm/api/api.h>
-#include <asm/api/macros.h>
-*/
 /* UTCB allocator */
 enum {
 	UTCB_BITMAP_ALLOC_MWORD_SIZE = 1,
