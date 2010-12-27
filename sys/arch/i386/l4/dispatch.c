@@ -361,7 +361,7 @@ l4x_vcpu_entry(void)
 	vcpu->state = 0;
 
 #if 0
-	l4x_printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
+	printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
 			"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
 			"di=%08lx, si=%08lx, ss=%08lx, sp=%08lx, "
 			"bp=%08lx, flags=%08lx, eip=%08lx, fs=%08lx, "
@@ -390,11 +390,14 @@ l4x_vcpu_entry(void)
 		regsp = &kernel_tf;
 	}
 
+	/* save registers */
 	vcpu_to_ptregs(vcpu, regsp);
 
+	/* handle IRQs */
 	if (l4x_vcpu_is_irq(vcpu)) {
 		l4x_vcpu_handle_irq(vcpu, regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+		/* NOTREACHED */
 	}
 
 	if (l4x_vcpu_is_user(vcpu) && l4x_vcpu_is_syscall(vcpu)) {
