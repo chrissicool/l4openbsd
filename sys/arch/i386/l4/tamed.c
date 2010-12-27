@@ -59,7 +59,5 @@ static void do_vcpu_irq(l4_vcpu_state_t *v)
 	struct proc *p = curproc;
 
 	regs = p->p_md.md_regs;		/* current trapframe */
-	regs->tf_cs = SEL_KPL;		/* kernel */
-	regs->tf_eflags = 0;
 	l4x_vcpu_handle_irq(v, regs);
 }
