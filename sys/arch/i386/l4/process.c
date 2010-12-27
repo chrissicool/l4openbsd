@@ -19,7 +19,13 @@
 
 //#define COPY_DEBUG
 #ifdef COPY_DEBUG
-#define debug_printf(...)	printf("copy(9): " __VA_ARGS__)
+#define debug_printf(...)				\
+	do {						\
+		L4XV_V(n);				\
+		L4XV_L(n);				\
+		printf("copy(9): " __VA_ARGS__); 	\
+		L4XV_U(n);				\
+	} while(0)
 #else
 #define debug_printf(...)
 #endif
