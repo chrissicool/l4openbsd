@@ -100,7 +100,8 @@ l4x_vcpu_is_user(l4_vcpu_state_t *vcpu)
 static inline int
 l4x_vcpu_is_syscall(l4_vcpu_state_t *vcpu)
 {
-	return ((vcpu->r.trapno == 0xd) && (vcpu->r.err == 0x402));
+	return (l4x_vcpu_is_user(vcpu) &&
+			(vcpu->r.trapno == 0xd) && (vcpu->r.err == 0x402));
 }
 
 void l4x_fpu_set(int on_off)
@@ -400,9 +401,15 @@ l4x_vcpu_entry(void)
 		/* NOTREACHED */
 	}
 
-	if (l4x_vcpu_is_user(vcpu) && l4x_vcpu_is_syscall(vcpu)) {
-		/* TODO handle syscalls */
-		enter_kdebug("syscall");
+	/* handle syscalls */
+	if (l4x_vcpu_is_syscall(vcpu)) {
+		extern void syscall(struct trapframe *);
+
+		regsp->tf_eip += 2;	/* return behind "int 0x80" */
+		syscall(regsp);
+		l4x_run_asts(regsp);
+		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+		/* NOTREACHED */
 	}
 
 	extern void trap(struct trapframe *frame);
