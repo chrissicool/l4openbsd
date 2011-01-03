@@ -1072,6 +1072,8 @@ ENTRY(copyoutstr)
 	call	l4x_copyoutstr
 	addl	$16, %esp
 	movl	24+FPADD(%esp),%ecx		# %ecx = *lencopied
+	testl	%ecx, %ecx
+	jz	copystr_return
 	movl	(%ecx), %edx
 	jmp	copystr_return
 #else	/* !L4 */
@@ -1141,6 +1143,8 @@ ENTRY(copyinstr)
 	call	l4x_copyinstr
 	addl	$16, %esp
 	movl	24+FPADD(%esp),%ecx		# %ecx = *lencopied
+	testl	%ecx, %ecx
+	jz	copystr_return
 	movl	(%ecx), %edx
 	jmp	copystr_return
 #else	/* !L4 */

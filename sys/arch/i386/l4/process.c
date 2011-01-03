@@ -194,7 +194,8 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 		return EFAULT;
 
 	map = &curproc->p_vmspace->vm_map;
-	*tocopy = len;
+	if (tocopy)
+		*tocopy = len;
 
 	/* loop for each page */
 	while (len > 0) {
@@ -218,7 +219,8 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 				L4XV_U(n);
 				debug_printf("Finally copied %dB from %p to %p\n",
 						copied+1, src, dst_p);
-				*tocopy -= (copied+1); /* add current iteration */
+				if (tocopy)
+					*tocopy -= (copied+1); /* add current iteration */
 				return 0;
 			}
 		}
@@ -229,7 +231,8 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 		src += copy_len;
 		dst += copy_len;
 		len -= copy_len;
-		*tocopy -= copy_len;
+		if (tocopy)
+			*tocopy -= copy_len;
 	}
 
 	/* There really should be no mapping, but check anyway. */
@@ -262,7 +265,9 @@ l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 		return EFAULT;
 
 	map = &curproc->p_vmspace->vm_map;
-	*tocopy = len;
+
+	if (tocopy)
+		*tocopy = len;
 
 	/* loop for each page */
 	while (len > 0) {
@@ -285,7 +290,8 @@ l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 				L4XV_U(n);
 				debug_printf("Finally copied %dB from %p to %p\n",
 						copied+1, src_p, dst);
-				*tocopy -= (copied+1); /* add current iteration */
+				if (tocopy)
+					*tocopy -= (copied+1); /* add current iteration */
 				return 0;
 			}
 		}
@@ -296,7 +302,8 @@ l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 		src += copy_len;
 		dst += copy_len;
 		len -= copy_len;
-		*tocopy -= copy_len;
+		if (tocopy)
+			*tocopy -= copy_len;
 	}
 
 	/* There really should be no mapping, but check anyway. */
