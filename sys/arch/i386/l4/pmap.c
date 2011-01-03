@@ -816,7 +816,7 @@ pmap_bootstrap(vaddr_t kva_start)
 		for (kva = VM_MIN_KERNEL_ADDRESS ; kva < virtual_avail ;
 		     kva += PAGE_SIZE) {
 			pte = (pt_entry_t *)pd[pdei(kva)];
-//			if (pmap_valid_entry((pt_entry_t *)pte[ptei(kva)]))
+//			if (pmap_valid_entry(pte[ptei(kva)]))
 //				pte[ptei(kva)] |= PG_G;
 		}
 	}
