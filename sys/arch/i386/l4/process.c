@@ -83,7 +83,7 @@ l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 	if (access_type & VM_PROT_READ)
 		pte = (pt_entry_t *)((int)pte | PG_U);
 	if (access_type & VM_PROT_WRITE)
-		pte = (pt_entry_t *)((int)pte | PG_M);
+		pte = (pt_entry_t *)((int)pte | PG_M | PG_U);
 	pmap_unmap_pdes(pmap);				/* unlock pmap */
 
 	return ((paddr_t *)(((int)pte & PG_FRAME) | (uva & ~PG_FRAME)));
