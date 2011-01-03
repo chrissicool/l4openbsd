@@ -82,6 +82,19 @@
 
 #include <machine/l4/l4lxapi/memory.h>
 
+//#define PMAP_DEBUG
+#ifdef PMAP_DEBUG
+#define pdb_printf(...)					\
+	do {						\
+		L4XV_V(n);				\
+		L4XV_L(n);				\
+		printf("pmap(9): " __VA_ARGS__);	\
+		L4XV_U(n);				\
+	} while(0)
+#else
+#define pdb_printf(...)
+#endif
+
 /*
  * general info:
  *
@@ -656,10 +669,10 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot)
 {
 	pt_entry_t *pte, opte, npte;
 
-#ifdef DIAGNOSTIC
-//	pd_entry_t *kptd = pmap_kernel()->pm_pdir;
-//	printf("%s: cl: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, vtopte=%08lx\n",
-//			__func__, pa, va, kptd, pdei(va), kptd[pdei(va)], ptei(va), kvtopte(va));
+#ifdef PMAP_DEBUG
+	pd_entry_t *kptd = pmap_kernel()->pm_pdir;
+	pdb_printf("%s: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, vtopte=%08lx\n",
+			__func__, pa, va, kptd, pdei(va), kptd[pdei(va)], ptei(va), kvtopte(va));
 #endif
 
 	pte = kvtopte(va);
@@ -679,7 +692,6 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot)
 		pmap_tlb_shootpage(pmap_kernel(), va);
 		pmap_tlb_shootwait();
 	}
-//	printf("%s: pmap(9): Mapping PA=0x%08lx -> VA=0x%08lx\n", __func__, pa, va);
 	l4lx_memory_map_virtual_page(va, pa, prot);
 }
 
@@ -707,7 +719,7 @@ pmap_kremove(vaddr_t sva, vsize_t len)
 		if (opte & PG_PVLIST)
 			panic("pmap_kremove: PG_PVLIST mapping for 0x%lx", va);
 #endif
-//		printf("%s: pmap(9): Unmapping VA=0x%08lx\n", __func__, va);
+		pdb_printf("%s: Unmapping KVA=0x%08lx\n", __func__, va);
 		l4lx_memory_unmap_virtual_page(va);
 	}
 	pmap_tlb_shootrange(pmap_kernel(), sva, eva);
@@ -1211,8 +1223,8 @@ pmap_free_pvs(struct pmap *pmap, struct pv_entry *pvs)
 	simple_lock(&pvalloc_lock);
 
 	for ( /* null */ ; pvs != NULL ; pvs = nextpv) {
-//		printf("%s: cl: Freeing PV for VA=%#x (PTD: %#x)\n",
-//				__func__, pvs->pv_va, pvs->pv_pmap->pm_pdir);
+		pdb_printf("%s: Freeing PV for VA=%#x (PTD: %#x)\n",
+				__func__, pvs->pv_va, pvs->pv_pmap->pm_pdir);
 		nextpv = pvs->pv_next;
 		pmap_free_pv_doit(pvs);
 	}
@@ -1326,8 +1338,8 @@ pmap_remove_pv(struct vm_page *pg, struct pmap *pmap, vaddr_t va)
 	prevptr = &pg->mdpage.pv_list;		/* previous pv_entry pointer */
 	while ((pve = *prevptr) != NULL) {
 		if (pve->pv_pmap == pmap && pve->pv_va == va) {	/* match? */
-//			printf("%s: cl: Removing VA=%#lx (PTD: %#lx)\nb",
-//					__func__, va, pmap->pm_pdir);
+			pdb_printf("%s: Removing VA=%p (PTD: %p)\n",
+					__func__, va, pmap->pm_pdir);
 			*prevptr = pve->pv_next;		/* remove it! */
 			break;
 		}
@@ -1363,8 +1375,8 @@ pmap_alloc_ptp(struct pmap *pmap, int pde_index, boolean_t just_try,
 	if (ptp == NULL)
 		return (NULL);
 
-//	printf("%s: cl: alloced PTP=%#x for PTD=%#x (paddr=%#x)\n",
-//			__func__, ptp, pmap->pm_pdir, VM_PAGE_TO_PHYS(ptp));
+	pdb_printf("%s: alloced PTP=%#x for PTD=%#x (paddr=%#x)\n",
+			__func__, ptp, pmap->pm_pdir, VM_PAGE_TO_PHYS(ptp));
 
 	/* got one! */
 	atomic_clearbits_int(&ptp->pg_flags, PG_BUSY);
@@ -1388,10 +1400,10 @@ pmap_get_ptp(struct pmap *pmap, int pde_index, boolean_t just_try)
 {
 	struct vm_page *ptp;
 
-//	printf("%s: cl: Get index=%d for PTD=%#x %s\n", __func__,
-//			pde_index, pmap->pm_pdir,
-//			pmap_valid_entry(pmap->pm_pdir[pde_index]) ?
-//				"(valid)" : "(invalid)");
+	pdb_printf("%s: Get index=%d for PTD=%#x %s\n", __func__,
+			pde_index, pmap->pm_pdir,
+			pmap_valid_entry(pmap->pm_pdir[pde_index]) ?
+				"(valid)" : "(invalid)");
 
 	if (pmap_valid_entry(pmap->pm_pdir[pde_index])) {
 
@@ -1421,7 +1433,7 @@ pmap_drop_ptp(struct pmap *pm, vaddr_t va, struct vm_page *ptp,
 	i386_atomic_testset_ul(&pm->pm_pdir[pdei(va)], 0);
 	pmap_tlb_shootpage(curcpu()->ci_curpmap, ((vaddr_t)ptes) + ptp->offset);
 
-//	printf("%s: cl: Drop pmap=%#x, PA=%#x\n", __func__, pm, ptp);
+	pdb_printf("%s: Drop pmap=%#x, PTP=%#x\n", __func__, pm, ptp);
 
 #ifdef MULTIPROCESSOR
 	/*
@@ -1484,6 +1496,7 @@ pmap_pinit(struct pmap *pmap)
 		panic("pmap_pinit: kernel_map out of virtual space!");
 	(void) pmap_extract(pmap_kernel(), (vaddr_t)pmap->pm_pdir,
 			    (paddr_t *)&pmap->pm_pdirpa);
+	pdb_printf("%s: Initializing pmap %p (PTD: %p)\n", __func__, pmap, pmap->pm_pdir);
 #ifdef L4
 	l4lx_memory_map_virtual_page((vaddr_t)pmap->pm_pdir, pmap->pm_pdirpa,
 			PG_V | PG_KW);
@@ -1547,6 +1560,7 @@ pmap_destroy(struct pmap *pmap)
 		pg->wire_count = 0;
 		uvm_pagefree(pg);
 	}
+	pdb_printf("%s: Smashing pmap %p with PTD %p.\n", __func__, pmap, pmap->pm_pdir);
 
 	uvm_km_free(kernel_map, (vaddr_t)pmap->pm_pdir, NBPG);
 #ifdef L4
@@ -1768,8 +1782,8 @@ pmap_extract(struct pmap *pmap, vaddr_t va, paddr_t *pap)
 void
 pmap_virtual_space(vaddr_t *startp, vaddr_t *endp)
 {
-//	printf("%s: pmap(9): KVA_start=0x%08lx, KVA_end=0x%08lx\n",
-//			__func__, virtual_avail, virtual_end);
+	pdb_printf("%s: KVA_start=0x%08lx, KVA_end=0x%08lx\n",
+			__func__, virtual_avail, virtual_end);
 	*startp = virtual_avail;
 	*endp = virtual_end;
 }
@@ -1957,8 +1971,8 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 	 * to keep track of the number of real PTEs in the PTP).
 	 */
 
-//	printf("%s: cl: Removing 0x%08lx -- 0x%08lx (PTD: %p)\n",
-//			__func__, startva, endva, pmap->pm_pdir);
+	pdb_printf("%s: Removing %#x -- %#x (PTD: %p, PTP %p)\n",
+			__func__, startva, endva, pmap->pm_pdir, ptp);
 
 	for (/*null*/; startva < endva && (ptp == NULL || ptp->wire_count > 1)
 			     ; startva += NBPG) {
@@ -2066,8 +2080,8 @@ pmap_do_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flags)
 //	else
 //		shootall = 0;
 
-//	printf("%s: cl: Removing range %#x -- %#x (PTD: %#x)\n",
-//			__func__, sva, eva, pmap->pm_pdir);
+	pdb_printf("%s: Removing range %#x -- %#x (PTD: %#x, flags: %lu)\n",
+			__func__, sva, eva, pmap->pm_pdir, flags);
 
 	for (va = sva ; va < eva ; va += NBPG) {
 		/* determine range of block */
@@ -2125,9 +2139,10 @@ pmap_do_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flags)
 				va, blkendva, flags);
 #ifdef L4
 		/* Remove mapping, if it was a kernel page. */
-//		printf("%s: pmap(9): Removing PA=0x%08lx -> VA=0x%08lx\n", __func__, va);
-		if (pmap == pmap_kernel())
+		if (pmap == pmap_kernel()) {
+			pdb_printf("%s: Removing KVA=0x%08lx\n", __func__, va);
 			l4lx_memory_unmap_virtual_page(va);
+		}
 #endif
 
 		/* If PTP is no longer being used, free it. */
@@ -2444,6 +2459,8 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 		pd = pmap_map_pdes(pmap);		/* locks pmap */
 		ptes = (pt_entry_t *)pd[pdei(va)];
 
+		pdb_printf("%s: Unwiring %#x for pmap %p (PDE %#x, PTE %#x)\n",
+				__func__, va, pmap, pd[pdei(va)], ptes[ptei(va)]);
 #ifdef DIAGNOSTIC
 		if (!pmap_valid_entry(ptes[ptei(va)]))
 			panic("pmap_unwire: invalid (unmapped) va 0x%lx", va);
@@ -2521,8 +2538,8 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 	pa &= PMAP_PA_MASK;	/* nuke flags from pa */
 
 #ifdef DIAGNOSTIC
-//	printf("%s: cl: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu\n",
-//			__func__, pa, va, pmap->pm_pdir, pdei(va), pmap->pm_pdir[pdei(va)], ptei(va));
+	pdb_printf("%s: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, prot=%lu, flags=%lu\n",
+			__func__, pa, va, pmap->pm_pdir, pdei(va), pmap->pm_pdir[pdei(va)], ptei(va), prot, flags);
 
 	/* sanity check: totally out of range? */
 //	if (va >= VM_MAX_KERNEL_ADDRESS)
@@ -2536,13 +2553,13 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 #endif
 	if (!pmap_valid_entry(pmap->pm_pdir[pdei(va)])) {
 		/* Get a new page table page. */
-//		printf("%s: cl: New PT: PA=0x%08lx, VA=0x%08lx\n", __func__, pa, va);
+		pdb_printf("%s: New PT: PA=0x%08lx, VA=0x%08lx\n", __func__, pa, va);
 		pd = pmap_map_pdes(pmap);	/* locks pmap */
 		while (!pmap_alloc_ptp(pmap, pdei(va), FALSE, 0))
 			uvm_wait("pmap_enter");
 		pmap_unmap_pdes(pmap);		/* unlocks pmap */
-//		printf("%s: cl: Finally PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu\n",
-//				__func__, pa, va, pmap->pm_pdir, pdei(va), pmap->pm_pdir[pdei(va)], ptei(va));
+		pdb_printf("%s: Finally PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu\n",
+				__func__, pa, va, pmap->pm_pdir, pdei(va), pmap->pm_pdir[pdei(va)], ptei(va));
 	}
 	if (pmap_initialized)
 		freepve = pmap_alloc_pv(pmap, ALLOCPV_NEED);
@@ -2588,6 +2605,7 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 		 * change since we are replacing/changing a valid
 		 * mapping.  wired count might change...
 		 */
+		pdb_printf("%s: Replace previous valid mapping.\n", __func__);
 
 		if (wired && (opte & PG_W) == 0)
 			wired_count++;
@@ -2679,7 +2697,6 @@ enter_now:
 	/*
 	 * at this point pg is !NULL if we want the PG_PVLIST bit set
 	 */
-
 	npte = pa | protection_codes[prot] | PG_V;
 	pmap_exec_account(pmap, va, opte, npte);
 	if (wired)
@@ -2708,6 +2725,10 @@ enter_now:
 		npte |= pmap_pg_wc;
 
 	opte = i386_atomic_testset_ul(&ptes[ptei(va)], npte);
+
+	pdb_printf("%s: pg=%p, pve=%p, opte=%p, npte=%p\n",
+			__func__, pg, pve, opte, npte);
+
 	if (ptp)
 		ptp->wire_count += ptp_count;
 	pmap->pm_stats.resident_count += resident_count;
@@ -2715,10 +2736,11 @@ enter_now:
 
 #ifdef L4
 	/* Map only kernel pages into KVA */
-//	printf("%s: pmap(9): Entering PA=0x%08lx -> VA=0x%08lx\n", __func__, pa, va);
-	if (pmap == pmap_kernel())
+	if (pmap == pmap_kernel()) {
+		pdb_printf("%s: Entering PA=0x%08lx -> KVA=0x%08lx\n", __func__, pa, va);
 		l4lx_memory_map_virtual_page(va, pa,
 				pmap_pg_g | (PG_u | PG_RW));
+	}
 #endif
 	if (pmap_valid_entry(opte)) {
 		if (nocache && (opte & PG_N) == 0)
