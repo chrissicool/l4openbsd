@@ -1437,8 +1437,10 @@ ENTRY(cpu_idle_cycle)
 	call	*%eax
 	ret
 1:
+#ifndef L4
 	sti
 	hlt
+#endif
 	ret
 
 ENTRY(cpu_idle_leave)
