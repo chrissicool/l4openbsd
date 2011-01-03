@@ -1961,11 +1961,13 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 //			__func__, startva, endva, pmap->pm_pdir);
 
 	for (/*null*/; startva < endva && (ptp == NULL || ptp->wire_count > 1)
-			     ; pte++, startva += NBPG) {
+			     ; startva += NBPG) {
 		/* get valid pte */
 		ptes = (pt_entry_t *)pd[pdei(startva)];
-		pte = (pt_entry_t *)ptes[ptei(startva)];
+		if (ptes == NULL)
+			continue;			/* no page directory entry */
 
+		pte = (pt_entry_t *)&ptes[ptei(startva)];
 		if (pte == NULL)
 			continue;			/* no page table entry */
 
@@ -1986,7 +1988,7 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 			ptp->wire_count--;		/* dropping a PTE */
 
 		/*
-		 * Unnecessary work if not PG_VLIST.
+		 * Unnecessary work if not PG_PVLIST.
 		 */
 		pg = PHYS_TO_VM_PAGE(opte & PG_FRAME);
 
@@ -2397,7 +2399,7 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 		for (curva = va; curva < blockend; curva += PAGE_SIZE) {
 
 			ptes = (pt_entry_t *)pd[pdei(curva)];
-			spte = (pt_entry_t *)ptes[ptei(va)];
+			spte = (pt_entry_t *)&ptes[ptei(curva)];
 
 			if (!pmap_valid_entry(*spte))	/* no mapping? */
 				continue;
@@ -2406,7 +2408,7 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 			npte = (opte & ~PG_PROT) | md_prot;
 
 			if (npte != opte) {
-				pmap_exec_account(pmap, va, *spte, npte);
+				pmap_exec_account(pmap, curva, *spte, npte);
 				i386_atomic_clearbits_l(spte,
 				    (~md_prot & opte) & PG_PROT);
 				i386_atomic_setbits_l(spte, md_prot);
@@ -2862,7 +2864,7 @@ pmap_dump(struct pmap *pmap, vaddr_t sva, vaddr_t eva)
 			continue;
 
 		ptes = (pt_entry_t *)pd[pdei(curva)];
-		pte = (pt_entry_t *)ptes[ptei(curva)];
+		pte = (pt_entry_t *)&ptes[ptei(curva)];
 		if (!pmap_valid_entry(*pte))
 			continue;
 
