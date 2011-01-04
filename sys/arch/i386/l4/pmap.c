@@ -1497,10 +1497,6 @@ pmap_pinit(struct pmap *pmap)
 	(void) pmap_extract(pmap_kernel(), (vaddr_t)pmap->pm_pdir,
 			    (paddr_t *)&pmap->pm_pdirpa);
 	pdb_printf("%s: Initializing pmap %p (PTD: %p)\n", __func__, pmap, pmap->pm_pdir);
-#ifdef L4
-	l4lx_memory_map_virtual_page((vaddr_t)pmap->pm_pdir, pmap->pm_pdirpa,
-			PG_V | PG_KW);
-#endif
 
 	/* init PDP */
 	/* zero init area */
