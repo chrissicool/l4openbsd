@@ -359,7 +359,7 @@ l4x_vcpu_entry(void)
 	vcpu = l4x_vcpu_state(cpu_number());
 	L4XV_U(n);
 
-	vcpu->state = 0;
+	vcpu->state = L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS;
 
 #if 0
 	printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
@@ -406,6 +406,13 @@ l4x_vcpu_entry(void)
 		extern void syscall(struct trapframe *);
 
 		regsp->tf_eip += 2;	/* return behind "int 0x80" */
+
+		/*
+		 * Since we might go to sleep (think of wait4()), make damn sure
+		 * that we have IRQs enabled!
+		 */
+		vcpu->state |= L4_VCPU_F_IRQ;
+
 		syscall(regsp);
 		l4x_run_asts(regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
