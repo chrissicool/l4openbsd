@@ -102,6 +102,22 @@ i486_atomic_cas_int(volatile u_int *ptr, u_int expect, u_int set)
 #define atomic_setbits_int i386_atomic_setbits_l
 #define atomic_clearbits_int i386_atomic_clearbits_l
 
+#ifdef L4
+
+static __inline void
+i386_atomic_inc_i(volatile int *ptr)
+{
+	__asm volatile(LOCK " incl %0" : "=m" (*ptr) : "m" (*ptr) : "memory");
+}
+
+static __inline void
+i386_atomic_dec_i(volatile int *ptr)
+{
+	__asm volatile(LOCK " decl %0" : "=m" (*ptr) : "m" (*ptr) : "memory");
+}
+
+#endif
+
 #undef LOCK
 
 #endif /* defined(_KERNEL) && !defined(_LOCORE) */

@@ -148,7 +148,7 @@ run_irq_handlers(int irq)
 
 	printf("%s: cl: Running IRQ%d\n", __func__, irq);
 
-	curcpu()->ci_idepth++;
+	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
 	for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
 		result |= (*q->ih_fun)(q->ih_arg);
@@ -157,7 +157,7 @@ run_irq_handlers(int irq)
 	if (intrhand[irq] == NULL)
 		isa_strayintr(irq);
 
-	curcpu()->ci_idepth--;
+	i386_atomic_dec_i(&curcpu()->ci_idepth);
 
 	/* Ack current handled IRQ. */
 	curcpu()->ci_ipending &= ~(1 << irq);	/* handled */
