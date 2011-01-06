@@ -67,6 +67,20 @@
 #include <machine/cpufunc.h>
 #include <machine/l4/vcpu.h>
 #include <machine/l4/stack_id.h>
+
+/*
+ * Copy the trapframe from p1 to p2, so that p2 will leave the fork()
+ * with a valid register set.
+ */
+static inline void
+l4x_copy_regs(struct proc *p1, struct proc *p2)
+{
+	struct trapframe *tf1 = p1->p_md.md_regs;
+	struct trapframe *tf2 = p2->p_md.md_regs;
+
+	*tf2 = *tf1;
+}
+
 #endif
 
 /*
@@ -114,6 +128,11 @@ cpu_fork(struct proc *p1, struct proc *p2, void *stack, size_t stacksize,
 	 * through rei().
 	 */
 	p2->p_md.md_regs = tf = (struct trapframe *)pcb->pcb_tss.tss_esp0 - 1;
+
+#ifdef L4
+	/* copy tf from old to new proc */
+	l4x_copy_regs(p1, p2);
+#endif
 
 	/*
 	 * If specified, give the child a different stack.
