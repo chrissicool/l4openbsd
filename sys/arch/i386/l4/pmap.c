@@ -1680,6 +1680,9 @@ pmap_activate(struct proc *p)
 int nlazy_cr3_hit;
 int nlazy_cr3;
 
+/*
+ * We need to be executed with vCPU IRQs disabled.
+ */
 void
 pmap_switch(struct proc *o, struct proc *p)
 {
@@ -1726,11 +1729,8 @@ pmap_switch(struct proc *o, struct proc *p)
 	l4_utcb_t *utcb = l4_utcb();
 	l4_vcpu_state_t *vcpu;
 	struct trapframe *tf = p->p_md.md_regs;
-	L4XV_V(n);
 
-	L4XV_L(n);
 	vcpu = l4x_vcpu_state_u(utcb);
-	L4XV_U(n);
 
 	vcpu->entry_sp = (l4_umword_t)tf;
 	vcpu->user_task = p->p_md.task;
