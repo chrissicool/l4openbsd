@@ -37,6 +37,20 @@
 #include <l4/re/consts.h>
 #include <l4/log/log.h>
 
+//#define TRAP_DEBUG
+#ifdef TRAP_DEBUG
+#include <kern/syscalls.c>
+extern char *trap_type[];
+#define dbg_printf(...)				\
+	do {						\
+		L4XV_V(n);				\
+		L4XV_L(n);				\
+		printf("trap: " __VA_ARGS__);		\
+		L4XV_U(n);				\
+	} while(0)
+#else
+#define dbg_printf(...)
+#endif
 
 static inline int l4x_vcpu_is_irq(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_page_fault(l4_vcpu_state_t *vcpu);
@@ -361,8 +375,7 @@ l4x_vcpu_entry(void)
 
 	vcpu->state = L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS;
 
-#if 0
-	printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
+	dbg_printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
 			"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
 			"di=%08lx, si=%08lx, ss=%08lx, sp=%08lx, "
 			"bp=%08lx, flags=%08lx, eip=%08lx, fs=%08lx, "
@@ -375,7 +388,6 @@ l4x_vcpu_entry(void)
 			vcpu->saved_state & L4_VCPU_F_USER_MODE ? "USR" : "KRN",
 			l4x_vcpu_is_irq(vcpu) ? "IRQ" :
 			l4x_vcpu_is_page_fault(vcpu) ? "PF" : "EXC");
-#endif
 
 	l4x_vcpu_entry_sanity(vcpu);
 
@@ -406,7 +418,8 @@ l4x_vcpu_entry(void)
 		extern void syscall(struct trapframe *);
 
 		regsp->tf_eip += 2;	/* return behind "int 0x80" */
-
+		dbg_printf("%s: Executing syscall: %s (%d)\n", __func__,
+				syscallnames[regsp->tf_eax], regsp->tf_eax);
 		/*
 		 * Since we might go to sleep (think of wait4()), make damn sure
 		 * that we have IRQs enabled!
@@ -422,6 +435,8 @@ l4x_vcpu_entry(void)
 	extern void trap(struct trapframe *frame);
 
 	regsp->tf_trapno = vcpu2trapno[regsp->tf_trapno];
+	dbg_printf("%s: Executing trap: %s (%d)\n", __func__,
+			trap_type[regsp->tf_trapno], regsp->tf_trapno);
 	trap(regsp);	/* Generic OpenBSD trap handler. */
 
 	/* Special page fault handling for user mode. */
