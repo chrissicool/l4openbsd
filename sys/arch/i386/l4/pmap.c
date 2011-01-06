@@ -2377,6 +2377,9 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 //	if ((eva - sva > 32 * PAGE_SIZE) && pmap != pmap_kernel())
 //		shootall = 1;
 
+	pdb_printf("%s: PTD=%p, sva=%p, eva=%p, prot=%x\n", __func__,
+			pmap->pm_pdir, sva, eva, prot);
+
 	for (va = sva; va < eva; va = blockend) {
 		blockend = (va & PD_MASK) + NBPD;
 		if (blockend > eva)
