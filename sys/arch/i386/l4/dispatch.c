@@ -172,15 +172,16 @@ l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu)
 void
 l4x_vcpu_create_user_task(struct proc *p)
 {
+	struct pmap *pmap = p->p_vmspace->vm_map.pmap;
 
 	if (l4lx_task_get_new_task(L4_INVALID_CAP,
-				&p->p_md.task)
-			|| l4_is_invalid_cap(p->p_md.task)) {
+				&pmap->task)
+			|| l4_is_invalid_cap(pmap->task)) {
 		printf("l4x_thread_create: No task no left for user\n");
 		return;
 	}
 
-	if (l4lx_task_create(p->p_md.task)) {
+	if (l4lx_task_create(pmap->task)) {
 		printf("%s: Failed to create user task\n", __func__);
 		return;
 	}
@@ -189,7 +190,7 @@ l4x_vcpu_create_user_task(struct proc *p)
 		char s[20];
 		snprintf(s, sizeof(s), "%s", p->p_comm);
 		s[sizeof(s)-1] = 0;
-		l4_debugger_set_object_name(p->p_md.task, s);
+		l4_debugger_set_object_name(pmap->task, s);
 	}
 // #endif
 /*
@@ -296,6 +297,7 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	l4_utcb_t *utcb = l4_utcb();
 	l4_vcpu_state_t *vcpu;
 	l4_msgtag_t tag;
+	struct pmap *pmap = p->p_vmspace->vm_map.pmap;
 	L4XV_V(n);
 
 	L4XV_L(n);
@@ -310,13 +312,13 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	if (l4x_vcpu_is_user(vcpu)) {
 
 		/* Create user thread on first invocation. */
-		if (l4_is_invalid_cap(p->p_md.task)) {
+		if (l4_is_invalid_cap(pmap->task)) {
 //			printf("%s: cl: Init task capability.\n", __func__);
 			L4XV_L(n);
 			l4x_vcpu_create_user_task(p);
 			L4XV_U(n);
 			l4x_arch_task_start_setup(p);
-			vcpu->user_task = p->p_md.task;
+			vcpu->user_task = pmap->task;
 		}
 
 //		thread_struct_to_vcpu(vcpu, p);

@@ -48,6 +48,7 @@
 
 #ifdef L4
 #include <machine/l4/api/config.h>
+#include <l4/sys/types.h>
 #endif
 
 /*
@@ -300,6 +301,9 @@ struct pmap {
 	union descriptor *pm_ldt;	/* user-set LDT */
 	int pm_ldt_len;			/* number of LDT entries */
 	int pm_ldt_sel;			/* LDT selector */
+#ifdef L4
+	l4_cap_idx_t task;		/* L4 task capability */
+#endif
 };
 
 /* pm_flags */

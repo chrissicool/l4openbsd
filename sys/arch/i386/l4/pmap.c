@@ -1511,6 +1511,10 @@ pmap_pinit(struct pmap *pmap)
 	pmap->pm_ldt_len = 0;
 	pmap->pm_ldt_sel = GSEL(GLDT_SEL, SEL_KPL);
 
+#ifdef L4
+	pmap->task = L4_INVALID_CAP;
+#endif
+
 	/*
 	 * we need to lock pmaps_lock to prevent nkpde from changing on
 	 * us.   note that there is no need to splvm to protect us from
@@ -1733,7 +1737,7 @@ pmap_switch(struct proc *o, struct proc *p)
 	vcpu = l4x_vcpu_state_u(utcb);
 
 	vcpu->entry_sp = (l4_umword_t)tf;
-	vcpu->user_task = p->p_md.task;
+	vcpu->user_task = pmap->task;
 
 	/* TODO adjust GDT. */
 //	native_load_tls(p, cpu_number());

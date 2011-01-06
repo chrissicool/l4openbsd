@@ -147,13 +147,7 @@ cpu_fork(struct proc *p1, struct proc *p2, void *stack, size_t stacksize,
 	pcb->pcb_esp = (int)sf;
 
 #ifdef L4
-	/*
-	 * XXX We are already committed to the fork(), but things may fail here.
-	 *     Maybe we should ask MD to commit earlier.
-	 */
 	struct user *u2 = p2->p_addr;
-
-	p2->p_md.task = L4_INVALID_CAP;
 
 	/* Setup UTCB pointer. */
 	l4x_stack_setup(u2);
