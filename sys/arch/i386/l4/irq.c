@@ -146,8 +146,6 @@ run_irq_handlers(int irq)
 	struct intrhand **p, *q;
 	int result = 0;
 
-	printf("%s: cl: Running IRQ%d\n", __func__, irq);
-
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
 	for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
