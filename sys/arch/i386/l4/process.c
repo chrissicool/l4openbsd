@@ -15,8 +15,6 @@
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
 
-#include <machine/l4/process.h>
-
 //#define COPY_DEBUG
 #ifdef COPY_DEBUG
 #define debug_printf(...)				\
@@ -34,60 +32,6 @@ int	l4x_copyout(void *, void *, size_t);
 int	l4x_copyin(void *, void *, size_t);
 int	l4x_copyoutstr(char *, char *, size_t, size_t *);
 int	l4x_copyinstr(char *, char *, size_t, size_t *);
-
-/*
- * Conditionally run the page fault handler on the given map,
- * if user space address uva is not already mapped. Update the protection
- * bits (PG_M|PG_U), if requested.
- * Return the equivalent physical RAM address.
- */
-paddr_t *
-l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
-{
-	struct pmap *pmap = map->pmap;
-	pd_entry_t *pd;
-	pt_entry_t *ptes, *pte;
-
-	if (pmap == NULL)
-		return NULL;
-
-	pd = pmap_map_pdes(pmap);			/* lock pmap */
-	ptes = (pt_entry_t *)pd[pdei(uva)];
-	pmap_unmap_pdes(pmap);				/* unlock pmap */
-
-	if (!ptes && !pmap_valid_entry((pt_entry_t)ptes)) {
-		if (uvm_fault(map, uva, 0, access_type))
-			return NULL;
-
-		debug_printf("Page was not mapped in\n");
-		pd = pmap_map_pdes(pmap);		/* lock pmap */
-		ptes = (pt_entry_t *)pd[pdei(uva)];
-		pmap_unmap_pdes(pmap);			/* unlock pmap */
-	}
-
-	pte = (pt_entry_t *)ptes[ptei(uva)];
-	if (!pte && !pmap_valid_entry((pt_entry_t)pte)) {
-		/* This should not happen, but better safe than sorry. */
-		if (uvm_fault(map, uva, 0, access_type))
-			return NULL;
-
-		debug_printf("Page was not mapped in\n");
-		pte = (pt_entry_t *)ptes[ptei(uva)];
-	}
-
-	/*
-	 * Update protection flags, normally set in HW from i386.
-	 * May be useless, since pmap(9)'s pmap_enter() already sets them.
-	 */
-	pd = pmap_map_pdes(pmap);			/* lock pmap */
-	if (access_type & VM_PROT_READ)
-		pte = (pt_entry_t *)((int)pte | PG_U);
-	if (access_type & VM_PROT_WRITE)
-		pte = (pt_entry_t *)((int)pte | PG_M | PG_U);
-	pmap_unmap_pdes(pmap);				/* unlock pmap */
-
-	return ((paddr_t *)(((int)pte & PG_FRAME) | (uva & ~PG_FRAME)));
-}
 
 int
 l4x_copyout(void *src, void *dst, size_t len)

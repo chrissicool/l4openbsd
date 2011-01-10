@@ -25,7 +25,6 @@
 #include <machine/l4/vcpu.h>
 #include <machine/l4/exception.h>
 #include <machine/l4/setup.h>
-#include <machine/l4/process.h>
 
 #include <machine/l4/log.h>
 

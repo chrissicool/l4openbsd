@@ -80,7 +80,12 @@
 #include <sys/msgbuf.h>
 #include <stand/boot/bootarg.h>
 
+#include <machine/l4/log.h>
 #include <machine/l4/l4lxapi/memory.h>
+
+#include <l4/sys/types.h>
+#include <l4/sys/task.h>
+#include <l4/sys/ipc.h>
 
 //#define PMAP_DEBUG
 #ifdef PMAP_DEBUG
@@ -340,6 +345,7 @@ caddr_t vmmap; /* XXX: used by mem.c... it should really uvm_map_reserve it */
  * local prototypes
  */
 
+void		 l4x_remove_pte(struct pmap *, vaddr_t, int);
 struct pv_entry	*pmap_add_pvpage(struct pv_page *, boolean_t);
 struct vm_page	*pmap_alloc_ptp(struct pmap *, int, boolean_t, pt_entry_t);
 struct pv_entry	*pmap_alloc_pv(struct pmap *, int); /* see codes below */
@@ -378,6 +384,132 @@ void			pmap_pinit(pmap_t);
 void			pmap_zero_phys(paddr_t);
 
 void	setcslimit(struct pmap *, struct trapframe *, struct pcb *, vaddr_t);
+
+/*
+ * p m a p   L 4   s p e c i f i c   f u n c t i o n s
+ */
+
+/*
+ * Conditionally run the page fault handler on the given map,
+ * if user space address uva is not already mapped. Update the protection
+ * bits (PG_M|PG_U), if requested.
+ * Return the equivalent physical RAM address.
+ */
+paddr_t *
+l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
+{
+	struct pmap *pmap = map->pmap;
+	pd_entry_t *pd;
+	pt_entry_t *ptes, *pte;
+	u_int32_t md_prot;
+
+	if (pmap == NULL)
+		return NULL;
+
+	pd = pmap_map_pdes(pmap);			/* lock pmap */
+	ptes = (pt_entry_t *)pd[pdei(uva)];
+	pmap_unmap_pdes(pmap);				/* unlock pmap */
+
+	/* step 1: check the page directory entry */
+	if (!ptes && !pmap_valid_entry((pt_entry_t)ptes)) {
+		pdb_printf("%s: Attempting uvm_fault(%p, %p, 0, %d)\n",
+				__func__, map, uva, access_type);
+		if (uvm_fault(map, uva, 0, access_type))
+			return NULL;
+
+		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
+		pdb_printf("  => no page table\n");
+		pd = pmap_map_pdes(pmap);		/* lock pmap */
+		ptes = (pt_entry_t *)pd[pdei(uva)];
+		pmap_unmap_pdes(pmap);			/* unlock pmap */
+	}
+
+	pte = &ptes[ptei(uva)];
+
+	/* step 2: check the page table entry */
+	if (!*pte && !pmap_valid_entry(*pte)) {
+		pdb_printf("%s: Attempting uvm_fault((%p, %p, 0, %d)\n",
+				__func__, map, uva, access_type);
+		if (uvm_fault(map, uva, 0, access_type))
+			return NULL;
+
+		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
+		pdb_printf("  => no page table entry\n");
+		pte = &ptes[ptei(uva)];
+	}
+
+	md_prot = protection_codes[access_type];
+
+	/* step 3: check permissions */
+	if ((md_prot & PG_RW) && (*pte & ~PG_RW)) {
+		pdb_printf("%s: Attempting uvm_fault((%p, %p, 0, %d)\n",
+				__func__, map, uva, access_type);
+		if (uvm_fault(map, uva, 0, access_type))
+			return NULL;
+
+		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
+		pdb_printf("  => wrong permissions\n");
+	}
+
+
+	/*
+	 * Update protection flags, normally set in HW from i386.
+	 * May be useless, since pmap(9)'s pmap_enter() already sets them.
+	 */
+	pd = pmap_map_pdes(pmap);			/* lock pmap */
+	if (access_type & VM_PROT_READ)
+		*pte |= PG_U;
+	if (access_type & VM_PROT_WRITE)
+		*pte |= (PG_M | PG_U);
+	pmap_unmap_pdes(pmap);				/* unlock pmap */
+
+	return ((paddr_t *)((*pte & PG_FRAME) | (uva & ~PG_FRAME)));
+}
+
+/*
+ * When removing a pte, we need to remove the flex-page from the
+ * L4 task. We accomplish this by trying to free the va on pmap->task.
+ */
+void
+l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
+{
+	l4_msgtag_t tag;
+	L4XV_V(n);
+
+	pdb_printf("  %s: Removing %s%s%s bit(s) from %p (PTD: %p)\n", __func__,
+			(flush_rights & L4_FPAGE_RO) ? "R" : "",
+			(flush_rights & L4_FPAGE_W)  ? "W" : "",
+			(flush_rights & L4_FPAGE_X)  ? "X" : "",
+			va, pmap->pm_pdir);
+	if (pmap == pmap_kernel()) {
+		if (l4lx_memory_unmap_virtual_page(va)) {
+			/* The following warning should be there. Turns out,
+			 * OpenBSD tries to be uber-secure by removing PTEs on
+			 * unavailable pages.
+			 */
+			//l4x_printf("Unmap non-existant kernel page @%p.\n",
+			//		va);
+		}
+	} else {
+		if (l4_is_invalid_cap(pmap->task)) {
+			/*
+			 * This happens, if we lazy allocate the L4 task. pmap(9)
+			 * will work on the address space before. We resolve this
+			 * at pagefault time. So, no error messages here.
+			 */
+			//l4x_printf("Unmap non-existant task page @%p.\n",
+			//		va);
+			return;
+		}
+		L4XV_L(n);
+		tag = l4_task_unmap(pmap->task,
+				l4_fpage(va & PAGE_MASK, NBPG, flush_rights),
+				L4_FP_ALL_SPACES);
+		L4XV_U(n);
+		if (l4_error(tag))
+			l4x_printf("Unmap error %ld\n",	l4_error(tag));
+	}
+}
 
 /*
  * p m a p   i n l i n e   h e l p e r   f u n c t i o n s
@@ -1993,6 +2125,9 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 
 		/* atomically save the old PTE and zero it */
 		opte = i386_atomic_testset_ul(pte, 0);
+#ifdef L4
+		l4x_remove_pte(pmap, startva, L4_FPAGE_RWX);
+#endif
 
 		if (opte & PG_W)
 			pmap->pm_stats.wired_count--;
@@ -2321,6 +2456,13 @@ pmap_clear_attrs(struct vm_page *pg, int clearbits)
 			result = TRUE;
 			i386_atomic_clearbits_l(&ptes[ptei(pve->pv_va)],
 			    (opte & clearbits));
+#ifdef L4
+			/* We only need to care about R/W -> R/O mappings. */
+			if (pmap_valid_entry(opte))
+				if ((opte & PG_RW) && ((opte & clearbits) & ~PG_RW) &&
+				    (opte & PG_RO) && ((opte & clearbits) & PG_RO))
+					l4x_remove_pte(pve->pv_pmap, pve->pv_va, L4_FPAGE_W);
+#endif
 			pmap_tlb_shootpage(pve->pv_pmap, pve->pv_va);
 		}
 		pmap_unmap_pdes(pve->pv_pmap);	/* unlocks pmap */
@@ -2367,6 +2509,9 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 	u_int32_t md_prot;
 	vaddr_t va, curva;
 //	int shootall = 0;
+#ifdef L4
+	int type;
+#endif
 
 	pd = pmap_map_pdes(pmap);		/* locks pmap */
 
@@ -2430,6 +2575,14 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 				i386_atomic_clearbits_l(spte,
 				    (~md_prot & opte) & PG_PROT);
 				i386_atomic_setbits_l(spte, md_prot);
+#ifdef L4
+				if ((opte & PG_RW) && (npte & ~PG_RW))
+					type = L4_FPAGE_W;
+				if ((opte & PG_RO) && (npte & ~PG_RO))
+					type |= L4_FPAGE_RO;
+
+				l4x_remove_pte(pmap, curva, type);
+#endif
 			}
 		}
 	}
@@ -2640,6 +2793,7 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 		/*
 		 * changing PAs: we must remove the old one first
 		 */
+		l4x_remove_pte(pmap, va, L4_FPAGE_RWX);
 
 		/*
 		 * if current mapping is on a pvlist,
