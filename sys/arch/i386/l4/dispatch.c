@@ -310,7 +310,6 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 
 		/* Create user thread on first invocation. */
 		if (l4_is_invalid_cap(pmap->task)) {
-//			printf("%s: cl: Init task capability.\n", __func__);
 			L4XV_L(n);
 			l4x_vcpu_create_user_task(p);
 			L4XV_U(n);
