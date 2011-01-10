@@ -2618,8 +2618,8 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 		pd = pmap_map_pdes(pmap);		/* locks pmap */
 		ptes = (pt_entry_t *)pd[pdei(va)];
 
-		pdb_printf("%s: Unwiring %#x for pmap %p (PDE %#x, PTE %#x)\n",
-				__func__, va, pmap, pd[pdei(va)], ptes[ptei(va)]);
+		pdb_printf("%s: Unwiring %p for PTD=%p (PDE %#x, PTE %#x)\n",
+				__func__, va, pmap->pm_pdir, pd[pdei(va)], ptes[ptei(va)]);
 #ifdef DIAGNOSTIC
 		if (!pmap_valid_entry(ptes[ptei(va)]))
 			panic("pmap_unwire: invalid (unmapped) va 0x%lx", va);
@@ -2630,8 +2630,15 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 		}
 #ifdef DIAGNOSTIC
 		else {
+#ifdef not_for_L4
+			/*
+			 * This happens on L4, if the PA changed on pmap_enter()
+			 * and running l4x_run_uvm_fault() afterwards. So this
+			 * function will be presented a valid va.
+			 */
 			printf("pmap_unwire: wiring for pmap %p va 0x%lx "
 			       "didn't change!\n", pmap, va);
+#endif
 		}
 #endif
 		pmap_unmap_pdes(pmap);		/* unlocks map */
