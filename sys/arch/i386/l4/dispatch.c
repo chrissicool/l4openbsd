@@ -257,6 +257,7 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 {
 	paddr_t *kpa;
 	vaddr_t  uva = (vaddr_t)trunc_page(vcpu->r.pfa);
+	vm_prot_t prot = VM_PROT_READ;
 	struct vm_map *map = &p->p_vmspace->vm_map;
 	l4_umword_t upage = 0, kpage = 0;
 	unsigned fpage_size = L4_LOG2_PAGESIZE;
@@ -268,11 +269,8 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 	 * handled the fault. Either we get a valid paddr_t
 	 * or trap() already SIGSEGV'd curproc.
 	 */
-	if (l4x_vcpu_is_write_pf(vcpu))
-		kpa = l4x_run_uvm_fault(map, uva,
-				VM_PROT_READ|VM_PROT_WRITE);
-	else
-		kpa = l4x_run_uvm_fault(map, uva, VM_PROT_READ);
+	prot |= l4x_vcpu_is_write_pf(vcpu) ? VM_PROT_WRITE : 0;
+	kpa = l4x_run_uvm_fault(map, uva, prot);
 
 	if (kpa && (uva < VM_MAXUSER_ADDRESS)) {
 		upage = (upage & L4_PAGEMASK) | L4_ITEM_MAP;
