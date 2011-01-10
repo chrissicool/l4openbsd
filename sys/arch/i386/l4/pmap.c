@@ -1565,7 +1565,7 @@ pmap_drop_ptp(struct pmap *pm, vaddr_t va, struct vm_page *ptp,
 	i386_atomic_testset_ul(&pm->pm_pdir[pdei(va)], 0);
 	pmap_tlb_shootpage(curcpu()->ci_curpmap, ((vaddr_t)ptes) + ptp->offset);
 
-	pdb_printf("%s: Drop pmap=%#x, PTP=%#x\n", __func__, pm, ptp);
+	pdb_printf("%s: Drop PTP=%p from PTD=%p\n", __func__, ptp, pm->pm_pdir);
 
 #ifdef MULTIPROCESSOR
 	/*
@@ -2443,6 +2443,9 @@ pmap_clear_attrs(struct vm_page *pg, int clearbits)
 		atomic_clearbits_int(&pg->pg_flags, clearflags);
 
 	for (pve = pg->mdpage.pv_list; pve != NULL; pve = pve->pv_next) {
+		pdb_printf("%s: Clear attrs %d on PTD: %p\n",
+				__func__, clearbits, pve->pv_pmap->pm_pdir);
+
 		pd = pmap_map_pdes(pve->pv_pmap);	/* locks pmap */
 		ptes = (pt_entry_t *)pd[pdei(pve->pv_va)];
 #ifdef DIAGNOSTIC
