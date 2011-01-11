@@ -2913,6 +2913,9 @@ init386(paddr_t first_avail)
 	boothowto = 0;
 
 	kb = (int) im;		/* keep gcc -Wall -Werror happy */
+
+	/* set the idle function */
+	cpu_idle_cycle_fcn = &l4x_global_halt;
 #endif
 
 	proc0.p_addr = proc0paddr;

@@ -61,3 +61,17 @@ static void do_vcpu_irq(l4_vcpu_state_t *v)
 	regs = p->p_md.md_regs;		/* current trapframe */
 	l4x_vcpu_handle_irq(v, regs);
 }
+
+/*
+ * Halt the current vCPU, if there is nothing to do.
+ */
+void
+l4x_global_halt(void)
+{
+	l4_vcpu_state_t *v = l4x_vcpu_state(cpu_number());
+	l4x_global_cli();
+	v->i.tag = l4_ipc_wait(l4_utcb(), &v->i.label, L4_IPC_NEVER);
+	if (!l4_msgtag_has_error(v->i.tag))
+		do_vcpu_irq(v);
+	l4x_global_sti();
+}

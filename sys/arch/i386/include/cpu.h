@@ -339,6 +339,10 @@ extern void (*cpu_idle_enter_fcn)(void);
 extern void (*cpu_idle_cycle_fcn)(void);
 extern void (*cpu_idle_leave_fcn)(void);
 
+#ifdef L4
+void l4x_global_halt(void);
+#endif
+
 /* apm.c */
 extern int cpu_apmwarn;
 
