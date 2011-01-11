@@ -346,10 +346,13 @@ l4x_delay(int n)
 {
 	l4_timeout_t to;
 	l4_utcb_t *u = l4_utcb();
+	L4XV_V(f);
 
 	if (n > 0) {
+		L4XV_L(f);
 		l4_rcv_timeout(l4util_micros2l4to(n), &to);
 		l4_ipc_receive(L4_INVALID_CAP, u, to);
+		L4XV_U(f);
 	}
 }
 #endif /* L4 */
