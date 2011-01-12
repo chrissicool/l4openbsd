@@ -1,4 +1,9 @@
 ##
+# rewritten i386-specific files
+
+file	arch/i386/l4/pmap.c				l4
+
+##
 # specify all L4 components here
 
 file	arch/i386/l4/main.c				l4
@@ -7,7 +12,6 @@ file	arch/i386/l4/bsd_compat.c			l4
 file	arch/i386/l4/linux_compat.c			l4
 file	arch/i386/l4/l4externals.c			l4
 file	arch/i386/l4/setupmem.c				l4
-file	arch/i386/l4/pmap.c				l4
 file	arch/i386/l4/ioport.c				l4
 file	arch/i386/l4/tamed.c				l4
 file	arch/i386/l4/irq.c				l4
