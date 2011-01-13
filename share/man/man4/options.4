@@ -70,6 +70,9 @@ the i386 architecture port and may only be used in conjunction with the
 option.
 .It Cd option L4_EXTERNAL_RTC
 Enable the use of the L4 runtime environment's RTC.
+.It Cd option L4_TIMECOUNTER
+Emulate a timer device, using the timecounter kernel API.
+If this option is not specified, L4 will use the i8254 timer.
 .Sh COMPATIBILITY OPTIONS
 .Bl -ohang
 .It Cd option COMPAT_43

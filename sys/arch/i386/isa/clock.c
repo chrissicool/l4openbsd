@@ -431,7 +431,7 @@ calibrate_cyclecounter(void)
 #endif
 }
 
-#ifdef L4_EXTERNAL_RTC
+#ifdef L4_TIMECOUNTER
 /*
  * Define a timecounter.
  */
@@ -440,17 +440,13 @@ u_int l4x_get_timecount(struct timecounter *);
 void  l4x_inittimecounter(void);
 
 static struct timecounter l4x_timecounter = {
-	l4x_get_timecount, NULL, ~0u, 1, "l4-timer", 1000, NULL
+	l4x_get_timecount, NULL, ~0u, 1000000, "l4-tc", 30000, NULL
 };
 
 u_int
 l4x_get_timecount(struct timecounter *tc)
 {
-	l4_uint32_t l4rtc_result;
-	if (l4rtc_get_seconds_since_1970(&l4rtc_result))
-		printf("WARNING: Cannot get timecount from RTC server.\n");
-
-	return(l4rtc_result);
+	return(l4lx_kinfo->clock);
 }
 
 void
@@ -460,7 +456,7 @@ l4x_inittimecounter(void)
 }
 
 
-#endif /* L4_EXTERNAL_RTC */
+#endif /* L4_TIMECOUNTER */
 
 #ifdef L4
 void
@@ -478,7 +474,7 @@ l4x_initclocks(void)
 			clockintr, 0, "clock");
 
 	/* Initialize timecounter. */
-#ifdef L4_EXTERNAL_RTC
+#ifdef L4_TIMECOUNTER
 	l4x_inittimecounter();
 #else
 	i8254_inittimecounter();

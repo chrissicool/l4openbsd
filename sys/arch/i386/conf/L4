@@ -24,7 +24,8 @@ makeoptions     L4_BUILDDIR="/home/cc/TU-Berlin/fiasco/l4-svn/src/l4/builddir"
 option		L4_MEMSIZE="32"	# Default memory size (in MB).
 				# Override with mem=xxx boot parameter.
 option		ARCH_x86	# provide L4re with our architecture
-option		L4_EXTERNAL_RTC	# use L4re's RTC
+option		L4_EXTERNAL_RTC	# use L4re's RTC server
+option		L4_TIMECOUNTER	# emulate timer device
 option		L4_SERIAL_CONS	# enable serial console
 
 ##
