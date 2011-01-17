@@ -1359,9 +1359,7 @@ switch_exited:
 	/* Restore saved context. */
 
 	/* No interrupts while loading new state. */
-#ifdef L4
-	call	_C_LABEL(l4x_global_cli)
-#else
+#ifndef L4
 	cli
 #endif
 
@@ -1415,9 +1413,7 @@ switch_exited:
 #endif
 
 	/* Interrupts are okay again. */
-#ifdef L4
-	call	_C_LABEL(l4x_global_sti)
-#else
+#ifndef L4
 	sti
 #endif
 
