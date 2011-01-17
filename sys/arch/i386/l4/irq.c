@@ -184,7 +184,7 @@ handle_irq(int irq, struct trapframe *regs)
 
 	/* Check current splx(9) level */
 	if (iminlevel[irq] < lapic_tpr) {
-		curcpu()->ci_ipending |= iunmask[irq];
+		curcpu()->ci_ipending |= (1 << irq);
 		return 1; /* handled */
 	}
 
