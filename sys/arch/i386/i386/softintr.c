@@ -41,6 +41,15 @@
 
 #include <uvm/uvm_extern.h>
 
+#ifdef L4
+#include <net/netisr.h>
+#define NETISR_MAX		sizeof(netisr)
+#define BIT(n)			(1 << n)
+#define CPL			lapic_tpr
+
+void	*i386_softintr_netisrs[NETISR_MAX];
+#endif	/* L4 */
+
 struct i386_soft_intr i386_soft_intrs[I386_NSOFTINTR];
 
 const int i386_soft_intr_to_ssir[I386_NSOFTINTR] = {
@@ -66,7 +75,121 @@ softintr_init(void)
 		mtx_init(&si->softintr_lock, IPL_HIGH);
 		si->softintr_ssir = i386_soft_intr_to_ssir[i];
 	}
+
+#ifdef L4
+	/*
+	 * Establish handlers for legacy network interrupts.
+	 * This code is inspired by NetBSD's generic softint framework.
+	 */
+#define DONETISR(n, f)							\
+	i386_softintr_netisrs[(n)] = &(f)
+#include <net/netisr_dispatch.h>
+
+#endif
 }
+
+#ifdef L4
+
+/*
+ * Run all network related soft interrupts. Do not run masked
+ * service routines.
+ */
+void
+l4x_run_netisrs(void)
+{
+	int i;
+	void (*f)(void);
+
+	/* Execute all unmasked network service routines. */
+	for (i = 0; i < NETISR_MAX; i++) {
+		if ((netisr & BIT(i))) {
+			f = i386_softintr_netisrs[BIT(i)];
+			(*f)();
+		}
+	}
+}
+
+/*
+ * Run all softintrs on a given CPL. This is basically a wrapper
+ * around softintr_dispatch() to prepare it like icu.s does.
+ */
+void
+l4x_exec_softintr(int ipl)
+{
+	int spl;
+	int which;
+
+	spl = CPL;
+	CPL = which;
+
+	switch (ipl) {
+	case IPL_SOFTCLOCK:
+		which = I386_SOFTINTR_SOFTCLOCK;
+		break;
+
+	case IPL_SOFTNET:
+		which = I386_SOFTINTR_SOFTNET;
+		break;
+
+	case IPL_TTY:
+	case IPL_SOFTTTY:
+		which = I386_SOFTINTR_SOFTTTY;
+		break;
+
+	default:
+		panic("l4x_exec_softintr");
+	}
+
+#ifdef MULTIPROCESSOR
+	i386_softintlock();
+#endif
+
+	/*
+	 * SOFTNET needs special treatment. Run netisrs!
+	 * As seen in icu.s.
+	 */
+	if (ipl == IPL_SOFTNET)
+		l4x_run_netisrs();
+
+	softintr_dispatch(which);
+
+#ifdef MULTIPROCESSOR
+	i386_softintunlock();
+#endif
+
+	CPL = spl;
+}
+
+/*
+ * Execute all possible softintrs, if
+ *
+ *   1) CPL is low enough
+ *   2) They were requested to run
+ */
+void
+l4x_run_softintr(void)
+{
+	struct cpu_info *ci = curcpu();
+
+
+	if ((CPL < IPL_SOFTTTY) &&
+			((ci->ci_ipending & BIT(SIR_TTY)) & IUNMASK(CPL))) {
+		l4x_exec_softintr(IPL_SOFTTTY);
+		i386_atomic_clearbits_l(&ci->ci_ipending, BIT(SIR_TTY));
+	}
+	if ((CPL < IPL_SOFTNET) &&
+			((ci->ci_ipending & BIT(SIR_NET)) & IUNMASK(CPL))) {
+		l4x_exec_softintr(IPL_SOFTNET);
+		i386_atomic_clearbits_l(&ci->ci_ipending, BIT(SIR_NET));
+	}
+	if ((CPL < IPL_SOFTCLOCK) &&
+			((ci->ci_ipending & BIT(SIR_CLOCK)) & IUNMASK(CPL))) {
+		l4x_exec_softintr(IPL_SOFTCLOCK);
+		i386_atomic_clearbits_l(&ci->ci_ipending, BIT(SIR_CLOCK));
+	}
+}
+
+#endif	/* L4 */
 
 /*
  * softintr_dispatch:

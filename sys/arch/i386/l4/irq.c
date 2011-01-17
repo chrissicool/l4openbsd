@@ -175,7 +175,7 @@ handle_irq(int irq, struct trapframe *regs)
 {
 	int s, result = 0;
 
-	/* Sanety checks. */
+	/* handle only hardware IRQs */
 	if (irq > ICU_LEN)
 		return 0;
 
@@ -190,10 +190,10 @@ handle_irq(int irq, struct trapframe *regs)
 
 	s = splraise(imaxlevel[irq]);
 	result = run_irq_handlers(irq);
-	splx(s);
+	splx(s);		/* run all held back IRQs */
 
-	/* icu.s:Xdoreti */
-	l4x_run_asts(regs);
+	l4x_run_softintr();	/* handle softintrs */
+	l4x_run_asts(regs);	/* run ASTs */
 
 	return result;
 }

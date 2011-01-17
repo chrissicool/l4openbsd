@@ -196,6 +196,12 @@ do {									\
 	}								\
 	mtx_leave(&__si->softintr_lock);				\
 } while (/*CONSTCOND*/ 0)
-#endif /* _LOCORE */
 
+#ifdef L4
+void	l4x_run_netisrs(void);
+void	l4x_exec_softintr(int);
+void	l4x_run_softintr(void);
+#endif
+
+#endif /* _LOCORE */
 #endif /* !_I386_INTR_H_ */
