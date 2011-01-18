@@ -110,8 +110,9 @@ enum {
 	L4LX_TASK_DELETE_SPACE  = 1,
 	L4LX_TASK_DELETE_THREAD = 2,
 };
-int l4lx_task_delete_thread(l4_cap_idx_t thread);
-int l4lx_task_delete_task(l4_cap_idx_t task, unsigned option);
 */
+
+int l4lx_task_delete_thread(l4_cap_idx_t thread);
+//int l4lx_task_delete_task(l4_cap_idx_t task, unsigned option);
 
 #endif /* ! __ASM_L4__L4LXAPI__TASK_H__ */

@@ -5,6 +5,8 @@
  *
  */
 
+#include <sys/param.h>
+#include <sys/systm.h>
 #include <sys/types.h>
 
 #include <machine/cpufunc.h>
@@ -106,7 +108,7 @@ int l4lx_task_create(l4_cap_idx_t task)
 	return l4_error_u(t, u);
 }
 
-/*
+
 static int l4lx_task_delete_obj(l4_cap_idx_t obj)
 {
 	l4_msgtag_t t;
@@ -123,14 +125,14 @@ static int l4lx_task_delete_obj(l4_cap_idx_t obj)
 int l4lx_task_delete_thread(l4_cap_idx_t thread)
 {
 	unsigned int r;
-	if (unlikely(r = l4lx_task_delete_obj(thread))) {
-		printk("Failed to kill thread %lx %d\n", thread, r);
+	if ((r = l4lx_task_delete_obj(thread))) {
+		printf("Failed to kill thread %lx %d\n", thread, r);
 		return 0;
 	}
 	return 1;
 }
 
-
+/*
 int l4lx_task_delete_task(l4_cap_idx_t task, unsigned foo)
 {
 	unsigned int r;

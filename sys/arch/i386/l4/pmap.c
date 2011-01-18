@@ -82,6 +82,7 @@
 
 #include <machine/l4/log.h>
 #include <machine/l4/l4lxapi/memory.h>
+#include <machine/l4/l4lxapi/task.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/task.h>
@@ -1696,7 +1697,12 @@ pmap_destroy(struct pmap *pmap)
 
 	uvm_km_free(kernel_map, (vaddr_t)pmap->pm_pdir, NBPG);
 #ifdef L4
+	/* Unmap PTD in KVA. */
 	l4lx_memory_unmap_virtual_page((vaddr_t) pmap->pm_pdir);
+
+	/* Get rid of L4 task. */
+	l4lx_task_delete_thread(pmap->task);
+	pmap->task = L4_INVALID_CAP;
 #endif
 	pmap->pm_pdir = NULL;
 
