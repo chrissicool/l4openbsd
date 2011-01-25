@@ -119,7 +119,7 @@ l4x_copyin(void *src, void *dst, size_t len)
 }
 
 /*
- * Unless copyoutstr(9), we return the number of bytes left to copy
+ * Unlike copyoutstr(9), we return the number of bytes left to copy
  * in *tocopy, so the caller's computings work right. [locore.s]
  */
 int
@@ -190,7 +190,7 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 }
 
 /*
- * Unless copyinstr(9), we return the number of bytes left to copy
+ * Unlike copyinstr(9), we return the number of bytes left to copy
  * in *tocopy, so the caller's computings work right. [locore.s]
  */
 int
