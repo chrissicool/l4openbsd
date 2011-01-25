@@ -187,7 +187,7 @@ l4x_vcpu_create_user_task(struct proc *p)
 // #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
 	{
 		char s[20];
-		snprintf(s, sizeof(s), "%s", p->p_comm);
+		snprintf(s, sizeof(s), "l4bsd.%s", p->p_comm);
 		s[sizeof(s)-1] = 0;
 		l4_debugger_set_object_name(pmap->task, s);
 	}

@@ -110,7 +110,7 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 	l4_cap_idx_t l4cap;
 	l4_sched_param_t schedp;
 	l4_msgtag_t res;
-	char l4lx_name[20] = "l4lx.";
+	char l4lx_name[20] = "l4bsd.";
 	l4_utcb_t *utcb;
 	l4_umword_t *sp = stack_pointer;
 
