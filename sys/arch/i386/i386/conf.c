@@ -194,6 +194,11 @@ cdev_decl(pci);
 #include "amdmsr.h"
 #include "vscsi.h"
 
+#ifdef L4
+#include "l4ser.h"
+cdev_decl(l4ser);
+#endif
+
 struct cdevsw	cdevsw[] =
 {
 	cdev_cn_init(1,cn),		/* 0: virtual console */
@@ -308,6 +313,11 @@ struct cdevsw	cdevsw[] =
 	cdev_amdmsr_init(NAMDMSR,amdmsr),	/* 89: amdmsr */
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 90: vscsi */
 	cdev_disk_init(1,diskmap),	/* 91: disk mapper */
+#ifdef NL4SER
+	cdev_tty_init(1, l4ser),	/* 92: L4 serial driver */
+#else
+	cdev_notdef(),
+#endif
 };
 int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
 

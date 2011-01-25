@@ -29,4 +29,4 @@ file	arch/i386/l4/l4lxlib/l4env/irq_vcpu.c		l4
 define	l4ser {[apid = -1]}
 device	l4ser
 attach	l4ser at isa
-file	arch/i386/l4/dev/l4ser.c			l4ser
+file	arch/i386/l4/dev/l4ser.c			l4ser needs-flag
