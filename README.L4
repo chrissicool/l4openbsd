@@ -38,6 +38,7 @@ Build ramdisk:
    # mkdir -d /usr/obj
    # rm -rf /usr/obj/*
    # cd /home/l4/openbsd/src/
+   # echo "BSDSRCDIR=/home/l4/openbsd/src/" >> /etc/mk.conf
    # make obj
    # make depend && make
    [ lots of output => builds obj files in /usr/obj ]
@@ -52,3 +53,11 @@ Run:
  - treat "l4bsd" as if it was vmlinu[xz] from L4Linux
  - treat "mr.fs" as if it was the initrd from L4Linux
    (load as command line parameter lx_rd=rom/mr.fs)
+
+General hints:
+
+  If you need debugging symbols in your userland binaries, add DEBUG and/or
+  DEBUGLIBS to /etc/mk.conf. See mk.conf(5) for details.
+
+  To add support for debugging symbols in your kernel, add the DEBUG kernel
+  config(8) option. (NOTE: This is known to be broken at the moment.)
