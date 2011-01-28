@@ -538,10 +538,12 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 	}
 
 #ifdef L4
-	/* Try to bring up the IRQ on L4. */
-	if (!l4lx_irq_dev_startup(irq)) {
-		free(ih, M_DEVBUF);
-		return (NULL);
+	/*  Register with IO server when establishing first handler. */
+	if (intrhand[irq] == NULL) {
+		if (!l4lx_irq_dev_startup(irq)) {
+			free(ih, M_DEVBUF);
+			return (NULL);
+		}
 	}
 #endif
 
