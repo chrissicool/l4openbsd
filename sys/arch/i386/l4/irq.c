@@ -41,7 +41,7 @@ static struct rwlock irq_lock;
 static l4_cap_idx_t caps[NR_REQUESTABLE];
 static int init_done = 0;
 
-/* On x86 all hardware interrupts end up in one of these two handler lists. */
+/* On x86 all hardware interrupts end up in this handler list. */
 extern struct intrhand *intrhand[ICU_LEN];	/* (E)ISA */
 extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
 #if NIOAPIC > 0
@@ -128,12 +128,13 @@ unsigned int do_IRQ(int irq, struct trapframe *regs)
 
 	cpu_unidle();
 
-	if (!handle_irq(irq, regs)) {
+	handle_irq(irq, regs);
+/*	if (!handle_irq(irq, regs)) {
 		//ack_APIC_irq();
-
 		printf("%s: %d.%d: Error processing interrupt!\n",
 				__func__, cpu_number(), irq);
 	}
+*/
 
 	set_irq_regs(old_regs);
 	return 1;
@@ -144,13 +145,15 @@ run_irq_handlers(int irq)
 {
 	extern void isa_strayintr(int irq);
 	struct intrhand **p, *q;
-	int result = 0;
+	int r, result = 0;
 
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
 	for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
-		result |= (*q->ih_fun)(q->ih_arg);
-		q->ih_count.ec_count++;
+		r = (*q->ih_fun)(q->ih_arg);
+		if (r != 0)
+			q->ih_count.ec_count++;
+		result |= r;
 	}
 	if (intrhand[irq] == NULL)
 		isa_strayintr(irq);
