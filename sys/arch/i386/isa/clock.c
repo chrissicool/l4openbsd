@@ -470,7 +470,7 @@ l4x_initclocks(void)
 	stathz = 0;
 
 	/* Initialize callback to run hardclock(9) on every interrupt. */
-	(void)isa_intr_establish(NULL, 0, IST_PULSE, IPL_CLOCK,
+	(void)isa_intr_establish(NULL, 0, IST_EDGE, IPL_CLOCK,
 			clockintr, 0, "clock");
 
 	/* Initialize timecounter. */
