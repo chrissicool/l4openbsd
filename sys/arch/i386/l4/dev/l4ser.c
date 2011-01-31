@@ -1,6 +1,6 @@
 /*
  * l4ser - pseudo serial driver for OpenBSD/L4
- * Copyright (C) 2010  Christian Ludwig
+ * Copyright (C) 2010, 2011  Christian Ludwig
  *
  * Large parts of this driver were taken from L4Linux. Other parts are taken
  * from the OpenBSD "com" driver. Copyrights and restrictions apply.
@@ -33,6 +33,9 @@
 #include <sys/types.h>
 #include <sys/errno.h>
 
+#include <dev/isa/isavar.h>
+
+#include <machine/atomic.h>
 #include <machine/l4/irq.h>
 #include <machine/l4/vcpu.h>
 #include <machine/l4/cap_alloc.h>
@@ -51,6 +54,7 @@
 cons_decl(l4ser);
 cdev_decl(l4ser);
 void l4serstart(struct tty *);
+int  l4serintr(void *);
 
 void l4ser_attach(struct device *, struct device *, void *);
 int  l4ser_match(struct device *parent, void *v, void *aux);
@@ -63,7 +67,6 @@ static int probe_l4ser(void);
 struct l4ser_softc {
 	struct device	sc_dev;
 	struct tty	*sc_tty;
-	int		enabled;
 };
 
 struct cfattach l4ser_ca = {
@@ -83,18 +86,47 @@ static struct l4ser_uart {
 } l4ser;
 
 /*
+ * === LOWLEVEL INTERFACE ===
+ */
+
+int
+l4serintr(void *arg)
+{
+	struct l4ser_softc *sc = arg;
+	struct tty *tp;
+	int c, i = 0;
+
+	if ((tp = sc->sc_tty) == NULL)
+		return 0;
+
+	/* Fetch max. 20 character at once into line. */
+	do {
+		if ((c = l4sercngetc(NODEV)) != -1) {
+			(*linesw[tp->t_line].l_rint)(c, tp);
+		}
+	} while ((c != -1) && (i++ < 20));
+
+	ttwakeup(tp);
+	return -1;
+}
+
+/*
  * === AUTOCONF INTERFACE ===
  */
 
 int
 l4ser_match(struct device *parent, void *match, void *aux)
 {
-	struct l4ser_softc *sc = aux;
 /*	struct cfdata *cf = match;		*/
-/*	struct isa_attach_args *iaa = aux;	*/
+	struct isa_attach_args *iaa = aux;
+
+	/* Sanety check, IRQ needs to be the same as clock. */
+	if (iaa->ia_irq != 0) {
+		printf("ERROR: l4ser configured irq %d != 0.\n", iaa->ia_irq);
+		return 0;
+	}
 
 	if (!probe_l4ser()) {
-		sc->enabled = 1;
 		return 1;
 	}
 
@@ -104,7 +136,16 @@ l4ser_match(struct device *parent, void *match, void *aux)
 void
 l4ser_attach(struct device *parent, struct device *self, void *aux)
 {
+	struct l4ser_softc *sc = (void *)self;
+	struct isa_attach_args *iaa = aux;
+
 	printf("\n");
+
+	/*
+	 * We share the IRQ with the clock, so we can fetch keys on every tick.
+	 */
+	isa_intr_establish(iaa->ia_ic, iaa->ia_irq, IST_EDGE, IPL_TTY,
+			l4serintr, sc, sc->sc_dev.dv_xname);
 }
 
 int
@@ -154,24 +195,15 @@ l4serclose(dev_t dev, int fflag, int devtype, struct proc *p)
 	struct tty *tp = sc->sc_tty;
 
 	(*linesw[tp->t_line].l_close)(tp, fflag, p);
-
 	return ttyclose(tp);
 }
 
 int
 l4serread(dev_t dev, struct uio *uio, int ioflag)
 {
-	int c;
 	struct l4ser_softc *sc = l4ser_cd.cd_devs[minor(dev)];
 	struct tty *tp = sc->sc_tty;
 	
-	c = l4sercngetc(dev);
-	if (c == -1)
-		return EBUSY;
-
-	/* Inject character into line. */
-	(*linesw[tp->t_line].l_rint)(c, tp);
-
 	return (*linesw[tp->t_line].l_read)(tp, uio, ioflag);
 }
 
@@ -202,18 +234,21 @@ l4serioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 	return ENOTTY;
 }
 
+/*
+ * Called after write routine from TTY layer to trigger the work.
+ */
 void
 l4serstart(struct tty *tp)
 {
 	int c, s;
 
 	s = spltty();
-	c = getc(&tp->t_rawq);
+	do {
+		if ((c = getc(&tp->t_outq)) != -1)
+			l4sercnputc(NODEV, c);
+	} while (c != -1);
 	ttwakeupwr(tp);
 	splx(s);
-
-	if (c != -1)
-		l4sercnputc(NODEV, c);
 }
 
 int
