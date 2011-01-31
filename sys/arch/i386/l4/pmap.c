@@ -477,19 +477,10 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 	l4_msgtag_t tag;
 	L4XV_V(n);
 
-	pdb_printf("  %s: Removing %s%s%s bit(s) from %p (PTD: %p)\n", __func__,
-			(flush_rights & L4_FPAGE_RO) ? "R" : "",
-			(flush_rights & L4_FPAGE_W)  ? "W" : "",
-			(flush_rights & L4_FPAGE_X)  ? "X" : "",
-			va, pmap->pm_pdir);
 	if (pmap == pmap_kernel()) {
+		pdb_printf("%s: Removing KVA=%p\n", __func__, va);
 		if (l4lx_memory_unmap_virtual_page(va)) {
-			/* The following warning should be there. Turns out,
-			 * OpenBSD tries to be uber-secure by removing PTEs on
-			 * unavailable pages.
-			 */
-			//l4x_printf("Unmap non-existant kernel page @%p.\n",
-			//		va);
+			l4x_printf("Unmap non-existant kernel page %p.\n", va);
 		}
 	} else {
 		if (l4_is_invalid_cap(pmap->task)) {
@@ -502,6 +493,12 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 			//		va);
 			return;
 		}
+		pdb_printf("  %s: Removing %s%s%s bit(s) from %p (PTD: %p)\n",
+				__func__,
+				(flush_rights & L4_FPAGE_RO) ? "R" : "",
+				(flush_rights & L4_FPAGE_W)  ? "W" : "",
+				(flush_rights & L4_FPAGE_X)  ? "X" : "",
+				va, pmap->pm_pdir);
 		L4XV_L(n);
 		tag = l4_task_unmap(pmap->task,
 				l4_fpage(va & PAGE_MASK, NBPG, flush_rights),
@@ -1566,7 +1563,8 @@ pmap_drop_ptp(struct pmap *pm, vaddr_t va, struct vm_page *ptp,
 	i386_atomic_testset_ul(&pm->pm_pdir[pdei(va)], 0);
 	pmap_tlb_shootpage(curcpu()->ci_curpmap, ((vaddr_t)ptes) + ptp->offset);
 
-	pdb_printf("%s: Drop PTP=%p from PTD=%p\n", __func__, ptp, pm->pm_pdir);
+	pdb_printf("%s: Drop PTP=%p from PTD=%p wcnt=%d\n",
+			__func__, ptp, pm->pm_pdir, ptp->wire_count);
 
 #ifdef MULTIPROCESSOR
 	/*
@@ -1877,6 +1875,7 @@ pmap_switch(struct proc *o, struct proc *p)
 	vcpu->entry_sp = (l4_umword_t)tf;
 	vcpu->user_task = pmap->task;
 
+	pdb_printf("switch: old(%d), new(%d)\n", o ? o->p_pid : 0, p->p_pid);
 	/* TODO adjust GDT. */
 //	native_load_tls(p, cpu_number());
 #endif	/* L4 */
@@ -2278,13 +2277,6 @@ pmap_do_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flags)
 //		    va, blkendva, flags);
 		pmap_remove_ptes(pmap, ptp, (vaddr_t)&ptes[ptei(va)],
 				va, blkendva, flags);
-#ifdef L4
-		/* Remove mapping, if it was a kernel page. */
-		if (pmap == pmap_kernel()) {
-			pdb_printf("%s: Removing KVA=0x%08lx\n", __func__, va);
-			l4lx_memory_unmap_virtual_page(va);
-		}
-#endif
 
 		/* If PTP is no longer being used, free it. */
 		if (ptp && ptp->wire_count <= 1) {
