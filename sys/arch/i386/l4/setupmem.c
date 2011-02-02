@@ -422,7 +422,7 @@ l4x_setup_kernel_ptd(void)
 		nkpde = NKPTP_MAX;
 
 	/* Clear physical memory for a page directory and bootstrap tables. */
-	memset((void *)(PA_START+pa_off), 0, (nkpde+1) * NBPG);
+	bzero((void *)(PA_START+pa_off), (nkpde+1) * NBPG);
 
 	/* Map our PTD  */
 	l4lx_memory_map_virtual_page((vaddr_t)(KVA_START+kva_off),
@@ -435,8 +435,8 @@ l4x_setup_kernel_ptd(void)
 
 	/* Reserve nkpde page tables. */
 	for (i = pdei(KVA_START); i < pdei(KVA_START) + nkpde; i++) {
-		pd[i] = (pd_entry_t)(PA_START + pa_off) |
-			(PG_V | PG_KW | PG_M | PG_U);
+		pd[i] = (pd_entry_t)((PA_START + pa_off) |
+				     (PG_V | PG_KW | PG_M | PG_U));
 		pa_off += PAGE_SIZE;
 	}
 

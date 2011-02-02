@@ -801,7 +801,7 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot)
 
 #ifdef PMAP_DEBUG
 	pd_entry_t *kptd = pmap_kernel()->pm_pdir;
-	pdb_printf("%s: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, vtopte=%08lx\n",
+	pdb_printf("%s: Got PA=0x%08lx for VA=%08lx, PTD=%08lx, pdei=%lu, PT=%08lx, ptei=%lu, kvtopte=%08lx\n",
 			__func__, pa, va, kptd, pdei(va), kptd[pdei(va)], ptei(va), kvtopte(va));
 #endif
 
@@ -821,6 +821,9 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot)
 		/* NB. - this should not happen. */
 		pmap_tlb_shootpage(pmap_kernel(), va);
 		pmap_tlb_shootwait();
+
+		/* ... but just in case ... */
+		l4lx_memory_unmap_virtual_page(va);
 	}
 	l4lx_memory_map_virtual_page(va, pa, prot);
 }
@@ -1505,8 +1508,8 @@ pmap_alloc_ptp(struct pmap *pmap, int pde_index, boolean_t just_try,
 	if (ptp == NULL)
 		return (NULL);
 
-	pdb_printf("%s: alloced PTP=%#x for PTD=%#x (paddr=%#x)\n",
-			__func__, ptp, pmap->pm_pdir, VM_PAGE_TO_PHYS(ptp));
+	pdb_printf("%s: alloced PTP=%p for PTD=%p, pdei=%d (paddr=%p)\n",
+			__func__, ptp, pmap->pm_pdir, pde_index, VM_PAGE_TO_PHYS(ptp));
 
 	/* got one! */
 	atomic_clearbits_int(&ptp->pg_flags, PG_BUSY);
@@ -2771,13 +2774,14 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 
 	if (pmap_valid_entry(opte)) {
 
+		pdb_printf("%s: Replace previous valid mapping (PA=%p).\n",
+				__func__, (opte & PG_FRAME) | (va & ~PG_FRAME));
+
 		/*
 		 * first, calculate pm_stats updates.  resident count will not
 		 * change since we are replacing/changing a valid
 		 * mapping.  wired count might change...
 		 */
-		pdb_printf("%s: Replace previous valid mapping.\n", __func__);
-
 		if (wired && (opte & PG_W) == 0)
 			wired_count++;
 		else if (!wired && (opte & PG_W) != 0)
