@@ -408,11 +408,11 @@ l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 		return NULL;
 
 	pd = pmap_map_pdes(pmap);			/* lock pmap */
-	ptes = (pt_entry_t *)pd[pdei(uva)];
+	ptes = (pt_entry_t *)(pd[pdei(uva)] & PG_FRAME);
 	pmap_unmap_pdes(pmap);				/* unlock pmap */
 
 	/* step 1: check the page directory entry */
-	if (!ptes && !pmap_valid_entry((pt_entry_t)ptes)) {
+	if (!pmap_valid_entry(pmap->pm_pdir[pdei(uva)])) {
 		pdb_printf("%s: Attempting uvm_fault(%p, %p, 0, %d)\n",
 				__func__, map, uva, access_type);
 		if (uvm_fault(map, uva, 0, access_type))
@@ -421,14 +421,14 @@ l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
 		pdb_printf("  => no page table\n");
 		pd = pmap_map_pdes(pmap);		/* lock pmap */
-		ptes = (pt_entry_t *)pd[pdei(uva)];
+		ptes = (pt_entry_t *)(pd[pdei(uva)] & PG_FRAME);
 		pmap_unmap_pdes(pmap);			/* unlock pmap */
 	}
 
 	pte = &ptes[ptei(uva)];
 
 	/* step 2: check the page table entry */
-	if (!*pte && !pmap_valid_entry(*pte)) {
+	if (!pmap_valid_entry(*pte)) {
 		pdb_printf("%s: Attempting uvm_fault((%p, %p, 0, %d)\n",
 				__func__, map, uva, access_type);
 		if (uvm_fault(map, uva, 0, access_type))
@@ -1899,7 +1899,7 @@ pmap_extract(struct pmap *pmap, vaddr_t va, paddr_t *pap)
 	if (pmap_valid_entry(pmap->pm_pdir[pdei(va)])) {
 		pd = pmap_map_pdes(pmap);		/* locks pmap */
 //		pte = ptes[atop(va)];
-		ptes = (pt_entry_t *)pd[pdei(va)];
+		ptes = (pt_entry_t *)(pd[pdei(va)] & PG_FRAME);
 		pte = ptes[ptei(va)];
 		pmap_unmap_pdes(pmap);			/* unlocks pmap */
 		if (!pmap_valid_entry(pte))
@@ -1943,7 +1943,9 @@ pmap_zero_page(struct vm_page *pg)
 void
 pmap_zero_phys(paddr_t pa)
 {
-	pagezero((void *)pa, PAGE_SIZE);
+	paddr_t page = (pa & PG_FRAME);
+	pdb_printf("%s: Zeroing %p\n", __func__, pa);
+	pagezero((void *) page, PAGE_SIZE);
 #if 0
 #ifdef MULTIPROCESSOR
 	int id = cpu_number();
@@ -1971,7 +1973,9 @@ pmap_zero_phys(paddr_t pa)
 boolean_t
 pmap_zero_page_uncached(paddr_t pa)
 {
-	pagezero((void *) pa, PAGE_SIZE);
+	paddr_t page = (pa & PG_FRAME);
+	pdb_printf("%s: Zeroing %p\n", __func__, pa);
+	pagezero((void *) page, PAGE_SIZE);
 #if 0
 #ifdef MULTIPROCESSOR
 	int id = cpu_number();
@@ -2047,7 +2051,10 @@ pmap_copy_page(struct vm_page *srcpg, struct vm_page *dstpg)
 	paddr_t srcpa = VM_PAGE_TO_PHYS(srcpg);
 	paddr_t dstpa = VM_PAGE_TO_PHYS(dstpg);
 
-	bcopy((void *)srcpa, (void *)dstpa, PAGE_SIZE);
+	paddr_t srcpage = srcpa & PG_FRAME;
+	paddr_t dstpage = dstpa & PG_FRAME;
+
+	bcopy((void *)srcpage, (void *)dstpage, PAGE_SIZE);
 #if 0
 #ifdef MULTIPROCESSOR
 	int id = cpu_number();
@@ -2113,11 +2120,11 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 
 	for (/*null*/; startva < endva && (ptp == NULL || ptp->wire_count > 1)
 			     ; startva += NBPG) {
-		/* get valid pte */
-		ptes = (pt_entry_t *)pd[pdei(startva)];
-		if (ptes == NULL)
+		if (!pmap_valid_entry(pd[pdei(startva)]))
 			continue;			/* no page directory entry */
 
+		/* get valid pte */
+		ptes = (pt_entry_t *)(pd[pdei(startva)] & PG_FRAME);
 		pte = (pt_entry_t *)&ptes[ptei(startva)];
 		if (pte == NULL)
 			continue;			/* no page table entry */
@@ -2229,7 +2236,7 @@ pmap_do_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flags)
 		if (blkendva > eva)
 			blkendva = eva;
 
-		ptes = (pt_entry_t *)pd[pdei(va)];
+		ptes = (pt_entry_t *)(pd[pdei(va)] & PG_FRAME);
 
 		/*
 		 * XXXCDC: our PTE mappings should never be removed
@@ -2325,7 +2332,7 @@ pmap_page_remove(struct vm_page *pg)
 
 	for (pve = pg->mdpage.pv_list ; pve != NULL ; pve = pve->pv_next) {
 		pd = pmap_map_pdes(pve->pv_pmap);	/* locks pmap */
-		ptes = (pt_entry_t *)pd[pdei(pve->pv_va)];
+		ptes = (pt_entry_t *)(pd[pdei(pve->pv_va)] & PG_FRAME);
 
 #ifdef DIAGNOSTIC
 		if (pve->pv_ptp && (pve->pv_pmap->pm_pdir[pdei(pve->pv_va)] &
@@ -2402,9 +2409,9 @@ pmap_test_attrs(struct vm_page *pg, int testbits)
 	for (pve = pg->mdpage.pv_list; pve != NULL && mybits == 0;
 	    pve = pve->pv_next) {
 		pd = pmap_map_pdes(pve->pv_pmap);	/* lock pmap */
-		ptes = (pt_entry_t *)pd[pdei(pve->pv_va)];
+		ptes = (pt_entry_t *)(pd[pdei(pve->pv_va)] & PG_FRAME);
 		pte = (pt_entry_t)ptes[ptei(pve->pv_va)];
-		pmap_unmap_pdes(pve->pv_pmap);
+		pmap_unmap_pdes(pve->pv_pmap);		/* unlock pmap */
 		mybits |= (pte & testbits);
 	}
 	PMAP_HEAD_TO_MAP_UNLOCK();
@@ -2445,7 +2452,7 @@ pmap_clear_attrs(struct vm_page *pg, int clearbits)
 				__func__, clearbits, pve->pv_pmap->pm_pdir);
 
 		pd = pmap_map_pdes(pve->pv_pmap);	/* locks pmap */
-		ptes = (pt_entry_t *)pd[pdei(pve->pv_va)];
+		ptes = (pt_entry_t *)(pd[pdei(pve->pv_va)] & PG_FRAME);
 #ifdef DIAGNOSTIC
 		if (!pmap_valid_entry(pve->pv_pmap->pm_pdir[pdei(pve->pv_va)]))
 			panic("pmap_change_attrs: mapping without PTP "
@@ -2466,7 +2473,7 @@ pmap_clear_attrs(struct vm_page *pg, int clearbits)
 #endif
 			pmap_tlb_shootpage(pve->pv_pmap, pve->pv_va);
 		}
-		pmap_unmap_pdes(pve->pv_pmap);	/* unlocks pmap */
+		pmap_unmap_pdes(pve->pv_pmap);		/* unlocks pmap */
 	}
 
 	PMAP_HEAD_TO_MAP_UNLOCK();
@@ -2562,7 +2569,7 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 //		for (/*null */; spte < epte ; spte++, va += PAGE_SIZE) {
 		for (curva = va; curva < blockend; curva += PAGE_SIZE) {
 
-			ptes = (pt_entry_t *)pd[pdei(curva)];
+			ptes = (pt_entry_t *)(pd[pdei(curva)] & PG_FRAME);
 			spte = (pt_entry_t *)&ptes[ptei(curva)];
 
 			if (!pmap_valid_entry(*spte))	/* no mapping? */
@@ -2593,7 +2600,7 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 		pmap_tlb_shootrange(pmap, sva, eva);
 
 	pmap_tlb_shootwait(); */
-	pmap_unmap_pdes(pmap);		/* unlocks pmap */
+	pmap_unmap_pdes(pmap);			/* unlocks pmap */
 }
 
 /*
@@ -2614,7 +2621,7 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 
 	if (pmap_valid_entry(pmap->pm_pdir[pdei(va)])) {
 		pd = pmap_map_pdes(pmap);		/* locks pmap */
-		ptes = (pt_entry_t *)pd[pdei(va)];
+		ptes = (pt_entry_t *)(pd[pdei(va)] & PG_FRAME);
 
 		pdb_printf("%s: Unwiring %p for PTD=%p (PDE %#x, PTE %#x)\n",
 				__func__, va, pmap->pm_pdir, pd[pdei(va)], ptes[ptei(va)]);
@@ -2639,7 +2646,7 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 #endif
 		}
 #endif
-		pmap_unmap_pdes(pmap);		/* unlocks map */
+		pmap_unmap_pdes(pmap);			/* unlocks map */
 	}
 #ifdef DIAGNOSTIC
 	else {
@@ -2739,7 +2746,7 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 	 */
 
 	pd = pmap_map_pdes(pmap);		/* locks pmap */
-	ptes = (pt_entry_t *)pd[pdei(va)];
+	ptes = (pt_entry_t *)(pd[pdei(va)] & PG_FRAME);
 
 	if (pmap == pmap_kernel()) {
 		ptp = NULL;
@@ -3050,7 +3057,7 @@ pmap_dump(struct pmap *pmap, vaddr_t sva, vaddr_t eva)
 		if (!pmap_valid_entry(pmap->pm_pdir[pdei(curva)]))
 			continue;
 
-		ptes = (pt_entry_t *)pd[pdei(curva)];
+		ptes = (pt_entry_t *)(pd[pdei(curva)] & PG_FRAME);
 		pte = (pt_entry_t *)&ptes[ptei(curva)];
 		if (!pmap_valid_entry(*pte))
 			continue;

@@ -414,7 +414,7 @@ extern int pmap_pg_g;			/* do we support PG_G? */
 static __inline pt_entry_t *
 vtopte(vaddr_t va)
 {
-	pt_entry_t *ptes = (pt_entry_t *)PTD[pdei(va)];
+	pt_entry_t *ptes = (pt_entry_t *)(PTD[pdei(va)] & PG_FRAME);
 	return ((pt_entry_t *)&ptes[ptei(va)]);
 }
 
@@ -422,7 +422,7 @@ static __inline pt_entry_t *
 kvtopte(vaddr_t kva)
 {
 	pd_entry_t *kptd = pmap_kernel()->pm_pdir;
-	pt_entry_t *ptes = (pt_entry_t *)kptd[pdei(kva)];
+	pt_entry_t *ptes = (pt_entry_t *)(kptd[pdei(kva)] & PG_FRAME);
 	return ((pt_entry_t *)&ptes[ptei(kva)]);
 }
 
