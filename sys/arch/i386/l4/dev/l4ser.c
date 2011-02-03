@@ -54,6 +54,7 @@
 cons_decl(l4ser);
 cdev_decl(l4ser);
 void l4serstart(struct tty *);
+int  l4serparam(struct tty *, struct termios *);
 int  l4serintr(void *);
 
 void l4ser_attach(struct device *, struct device *, void *);
@@ -93,10 +94,10 @@ int
 l4serintr(void *arg)
 {
 	struct l4ser_softc *sc = arg;
-	struct tty *tp;
+	struct tty *tp = sc->sc_tty;
 	int c, i = 0;
 
-	if ((tp = sc->sc_tty) == NULL)
+	if (tp == NULL || (tp->t_state & TS_ISOPEN) == 0)
 		return 0;
 
 	/* Fetch max. 20 character at once into line. */
@@ -158,20 +159,21 @@ l4seropen(dev_t dev, int oflags, int devtype, struct proc *p)
 	if (!l4ser_cd.cd_ndevs || (sc = l4ser_cd.cd_devs[minor(dev)]) == NULL)
 		return ENXIO;
 
-	if ((tp = sc->sc_tty) == NULL) {
+	if ((tp = sc->sc_tty) == NULL)
 		tp = sc->sc_tty = ttymalloc(0);
-	}
 	else if ((tp->t_state & TS_ISOPEN) && (tp->t_state & TS_XCLUDE)
 			&& suser(p, 0) != 0)
 		return EBUSY;
 
 	tp->t_oproc = l4serstart;
+	tp->t_param = l4serparam;
 	tp->t_dev = dev;
 	if ((tp->t_state & TS_ISOPEN) == 0) {
 		struct termios t;
 
 		t.c_ispeed = t.c_ospeed = TTYDEF_SPEED;
 		t.c_cflag = TTYDEF_CFLAG;
+		(void)l4serparam(tp, &t);
 		tp->t_iflag = TTYDEF_IFLAG;
 		tp->t_oflag = TTYDEF_OFLAG;
 		tp->t_lflag = TTYDEF_LFLAG;
@@ -235,6 +237,23 @@ l4serioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 }
 
 /*
+ * Set tp parameters from t
+ */
+int
+l4serparam(struct tty *tp, struct termios *t)
+{
+	/* input/output speeds should match */
+	if (t->c_ispeed && t->c_ispeed != t->c_ospeed)
+		return EINVAL;
+
+	tp->t_ispeed = t->c_ispeed;
+	tp->t_ospeed = t->c_ospeed;
+	tp->t_cflag = t->c_cflag;
+
+	return 0;
+}
+
+/*
  * Called after write routine from TTY layer to trigger the work.
  */
 void
@@ -243,10 +262,15 @@ l4serstart(struct tty *tp)
 	int c, s;
 
 	s = spltty();
+	if (tp->t_outq.c_cc == 0)
+		goto out;
+
 	do {
 		if ((c = getc(&tp->t_outq)) != -1)
 			l4sercnputc(NODEV, c);
 	} while (c != -1);
+
+out:
 	ttwakeupwr(tp);
 	splx(s);
 }
