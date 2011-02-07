@@ -73,10 +73,10 @@ void l4x_vcpu_entry(void);
 
 /* Convert vCPU traps to trap()'s trapno. See IDTVEC's and init386(). */
 static int vcpu2trapno[] = {
-	/* 0x00 */ T_DIVIDE, T_TRCTRAP, T_NMI, T_BPTFLT, T_OFLOW, T_BOUND,
-	/* 0x06 */ T_PRIVINFLT, T_DNA, T_DOUBLEFLT, T_FPOPFLT, T_TSSFLT,
-	/* 0x0b */ T_SEGNPFLT, T_STKFLT, T_PROTFLT, T_PAGEFLT, T_RESERVED,
-	/* 0x10 */ T_MACHK, T_XFTRAP, T_ARITHTRAP, T_ALIGNFLT,
+	/* 00 */ T_DIVIDE, T_TRCTRAP, T_NMI, T_BPTFLT, T_OFLOW, T_BOUND,
+	/* 06 */ T_PRIVINFLT, T_DNA, T_DOUBLEFLT, T_FPOPFLT, T_TSSFLT,
+	/* 11 */ T_SEGNPFLT, T_STKFLT, T_PROTFLT, T_PAGEFLT, T_RESERVED,
+	/* 16 */ T_ARITHTRAP, T_ALIGNFLT, T_MACHK, T_XFTRAP,
 };
 
 static inline int
