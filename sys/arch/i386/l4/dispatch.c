@@ -416,8 +416,9 @@ l4x_vcpu_entry(void)
 		extern void syscall(struct trapframe *);
 
 		regsp->tf_eip += 2;	/* return behind "int 0x80" */
-		dbg_printf("%s: Executing syscall: %s (%d)\n", __func__,
-				syscallnames[regsp->tf_eax], regsp->tf_eax);
+		dbg_printf("%s: Executing syscall: %s (%d) for %d\n", __func__,
+				syscallnames[regsp->tf_eax], regsp->tf_eax,
+				curproc->p_pid);
 		/*
 		 * Since we might go to sleep (think of wait4()), make damn sure
 		 * that we have IRQs enabled!
