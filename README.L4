@@ -37,14 +37,15 @@ Build ramdisk:
  - on your OpenBSD machine, build the complete userland
    # mkdir -d /usr/obj
    # rm -rf /usr/obj/*
-   # cd /home/l4/openbsd/src/
-   # echo "BSDSRCDIR=/home/l4/openbsd/src/" >> /etc/mk.conf
+   # set BSDSRCDIR=/home/l4/openbsd/src/
+   # set BSDOBJDIR=/home/l4/openbsd/obj/
+   # cd $BSDSRCDIR
+   # echo "BSDSRCDIR=$BSDSRCDIR" >> /etc/mk.conf
+   # echo "BSDOBJDIR=$BSDOBJDIR" >> /etc/mk.conf
    # make obj
-   # make depend && make
-   [ lots of output => builds obj files in /usr/obj ]
-     (Your installed OpenBSD version must(!) match the sources.)
-     (Note, this step takes approximately 1GB of space in /usr/obj)
-   # cd /home/l4/openbsd/src/distrib/`uname -m`/ramdisk_cd/
+   # cd $BSDSRCDIR/distrib/special
+   # make
+   # cd $BSDSRCDIR/distrib/`uname -m`/ramdisk_cd/
    # make mr.fs
 
  - copy the resulting obj/mr.fs file to your Linux machine
