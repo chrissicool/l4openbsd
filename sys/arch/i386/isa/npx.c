@@ -62,6 +62,10 @@
 #include <machine/specialreg.h>
 #include <machine/i8259.h>
 
+#ifdef L4
+#include <machine/l4/vcpu.h>
+#endif
+
 #include <dev/isa/isareg.h>
 #include <dev/isa/isavar.h>
 
@@ -94,8 +98,13 @@
 #define	fp_divide_by_0()	__asm("fldz; fld1; fdiv %st,%st(1); fwait")
 #define	frstor(addr)		__asm("frstor %0" : : "m" (*addr))
 #define	fwait()			__asm("fwait")
+#ifdef L4
+#define	clts()			l4x_fpu_set(1)
+#define	stts()			l4x_fpu_set(0)
+#else /* !L4 */
 #define	clts()			__asm("clts")
 #define	stts()			lcr0(rcr0() | CR0_TS)
+#endif /* !L4 */
 
 int npxintr(void *);
 static int npxprobe1(struct isa_attach_args *);
@@ -127,8 +136,13 @@ enum npx_type {
 };
 
 static	enum npx_type		npx_type;
+#ifdef L4
+u_int		npx_intrs_while_probing;
+u_int		npx_traps_while_probing;
+#else
 static	volatile u_int		npx_intrs_while_probing;
 static	volatile u_int		npx_traps_while_probing;
+#endif
 
 extern int i386_fpu_present;
 extern int i386_fpu_exception;
@@ -280,8 +294,21 @@ npxprobe(struct device *parent, void *match, void *aux)
 		ia->ia_irq = IRQUNK;	/* Don't want the interrupt vector */
 		ia->ia_iosize = 16;
 		ia->ia_msize = 0;
+#ifdef L4
+		l4x_fpu_set(1);
+#endif
 		return 1;
 	}
+#ifdef L4
+	else {
+		/*
+		 * L4 only supports FPU support through CPUID at the moment.
+		 * There is no good reason, but I want to keep the code invasion
+		 * small.
+		 */
+		return 0;
+	}
+#endif /* !L4 */
 
 	/*
 	 * This routine is now just a wrapper for npxprobe1(), to install
@@ -385,7 +412,9 @@ npxattach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
+#ifndef L4
 	npxinit(&cpu_info_primary);
+#endif
 	i386_fpu_present = 1;
 
 	if (i386_use_fxsave)
@@ -431,7 +460,9 @@ npxintr(void *arg)
 	/*
 	 * Clear the interrupt latch.
 	 */
+#ifndef L4
 	outb(0xf0, 0);
+#endif
 	/*
 	 * If we're saving, ignore the interrupt.  The FPU will happily
 	 * generate another one when we restore the state later.

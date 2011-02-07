@@ -62,6 +62,7 @@ mainbus0 at root
 cpu0		at mainbus?
 bios0		at mainbus0
 isa0		at mainbus0
+npx0		at isa? port 0xf0 irq 13	# math coprocessor
 l4ser0		at isa0 port 0x3f8 irq 0	# L4 serial port driver
 
 pseudo-device	loop	1			# network loop device

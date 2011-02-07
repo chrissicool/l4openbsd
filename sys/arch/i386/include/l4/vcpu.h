@@ -16,6 +16,8 @@ struct l4x_arch_cpu_fpu_state {
 	int enabled;
 };
 struct l4x_arch_cpu_fpu_state l4x_cpu_fpu_state[MAXCPUS];
+struct l4x_arch_cpu_fpu_state *l4x_fpu_get(unsigned cpu);
+void l4x_fpu_set(int on_off);
 
 static inline
 l4_vcpu_state_t *l4x_vcpu_state_u(l4_utcb_t *u)

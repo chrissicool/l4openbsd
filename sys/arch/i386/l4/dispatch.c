@@ -21,6 +21,8 @@
 #include <machine/frame.h>
 #include <machine/cpu.h>
 
+#include "npx.h"
+
 #include <machine/l4/l4lxapi/task.h>
 #include <machine/l4/vcpu.h>
 #include <machine/l4/exception.h>
@@ -57,8 +59,6 @@ static inline int l4x_vcpu_is_write_pf(l4_vcpu_state_t *vcpu);
 static inline l4_umword_t l4x_l4pfa(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_user(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_syscall(l4_vcpu_state_t *vcpu);
-void l4x_fpu_set(int on_off);
-struct l4x_arch_cpu_fpu_state *l4x_fpu_get(unsigned cpu);
 static inline int l4x_msgtag_fpu(void);
 static void l4x_evict_mem(l4_umword_t d);
 static inline void l4x_vcpu_entry_user_arch(void);
@@ -436,6 +436,15 @@ l4x_vcpu_entry(void)
 	regsp->tf_trapno = vcpu2trapno[regsp->tf_trapno];
 	dbg_printf("%s: Executing trap: %s (%d)\n", __func__,
 			trap_type[regsp->tf_trapno], regsp->tf_trapno);
+#if NNPX > 0
+	extern int (*npxdna_func)(struct cpu_info *);	/* isa/npx.c */
+	/* Treat FPU traps special */
+	if ((regsp->tf_trapno == T_DNA) &&
+	    (npxdna_func(curcpu()) != 0)) {
+		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+		/* NOTREACHED */
+	}
+#endif
 	trap(regsp);	/* Generic OpenBSD trap handler. */
 
 	/* Special page fault handling for user mode. */
