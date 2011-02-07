@@ -103,6 +103,10 @@ l4serintr(void *arg)
 	/* Fetch max. 20 character at once into line. */
 	do {
 		if ((c = l4sercngetc(NODEV)) != -1) {
+#ifdef L4SER_DDB_KEY
+			if (c == L4SER_DDB_KEY)
+				Debugger();
+#endif
 			(*linesw[tp->t_line].l_rint)(c, tp);
 		}
 	} while ((c != -1) && (i++ < 20));
