@@ -23,12 +23,6 @@ _start:
 
 	jmp l4start
 .previous
-.section ".bss"
-ENTRY(swapper_pg_dir)
-	.fill 1024,4,0
-ENTRY(empty_zero_page)
-	.fill 4096,1,0
-.previous
 #endif
 
 #ifdef ARCH_arm
