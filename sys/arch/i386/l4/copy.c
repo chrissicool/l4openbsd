@@ -58,7 +58,7 @@ l4x_copyout(void *src, void *dst, size_t len)
 
 		upper_bound = round_page((paddr_t)dst_p + 1);
 
-		if ((unsigned)dst_p+len <= upper_bound)
+		if ((unsigned)dst_p+len < upper_bound)
 			copy_len = len;
 		else
 			copy_len = (unsigned)upper_bound - (unsigned)dst_p;
@@ -100,7 +100,7 @@ l4x_copyin(void *src, void *dst, size_t len)
 
 		upper_bound = round_page((paddr_t)src_p + 1);
 
-		if ((unsigned)src_p+len <= upper_bound)
+		if ((unsigned)src_p+len < upper_bound)
 			copy_len = len;
 		else
 			copy_len = (unsigned)upper_bound - (unsigned)src_p;
@@ -150,7 +150,7 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 
 		upper_bound = round_page((paddr_t)dst_p + 1);
 
-		if ((unsigned)dst_p+len <= upper_bound)
+		if ((unsigned)dst_p+len < upper_bound)
 			copy_len = len;
 		else
 			copy_len = (unsigned)upper_bound - (unsigned)dst_p;
@@ -221,7 +221,7 @@ l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 
 		upper_bound = round_page((paddr_t)src_p + 1);
 
-		if ((unsigned)src_p+len <= upper_bound)
+		if ((unsigned)src_p+len < upper_bound)
 			copy_len = len;
 		else
 			copy_len = (unsigned)upper_bound - (unsigned)src_p;
