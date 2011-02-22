@@ -50,5 +50,6 @@ L4_EXTERNAL_FUNC(l4re_rm_free_area_srv);
 L4_EXTERNAL_FUNC(l4re_rm_show_lists_srv);
 L4_EXTERNAL_FUNC(l4re_util_cap_alloc);
 L4_EXTERNAL_FUNC(l4re_util_cap_free);
+L4_EXTERNAL_FUNC(l4re_util_kumem_alloc);
 
 L4_EXTERNAL_FUNC(l4sys_errtostr);

@@ -8,6 +8,7 @@
 #include <sys/systm.h>
 #include <sys/types.h>
 #include <sys/proc.h>
+#include <sys/user.h>
 
 #include <machine/cpu.h>
 #include <machine/cpufunc.h>
@@ -15,6 +16,7 @@
 #include <machine/segments.h>
 
 #include <machine/l4/vcpu.h>
+#include <machine/l4/stack_id.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/vcpu.h>
@@ -22,35 +24,26 @@
 #include <l4/sys/utcb.h>
 
 static void do_vcpu_irq(l4_vcpu_state_t *v);
+static void l4x_srv_setup_recv_wrap(l4_utcb_t *utcb);
+
+static void
+l4x_srv_setup_recv_wrap(l4_utcb_t *utcb)
+{
+	/*
+	 * There is a "bug" in older libvcpu,
+	 * which need this function to be present.
+	 */
+}
 
 void l4x_global_cli(void)
 {
-	l4x_vcpu_state(cpu_number())->state &= ~L4_VCPU_F_IRQ;
-#ifdef MULTIPROCESSOR
-	mfence();
-#endif
+	l4vcpu_irq_disable(l4x_stack_vcpu_state_get());
 }
 
 void l4x_global_sti(void)
 {
-	l4_vcpu_state_t *v = l4x_vcpu_state(cpu_number());
-	while (/* CONSTCOND */ 1) {
-		v->state |= L4_VCPU_F_IRQ;
-#ifdef MULTIPROCESSOR
-		mfence();
-#endif
-
-		if (!(v->sticky_flags & L4_VCPU_SF_IRQ_PENDING))
-			break;
-
-		v->state &= ~L4_VCPU_F_IRQ;
-#ifdef MULTIPROCESSOR
-		mfence();
-#endif
-		v->i.tag = l4_ipc_wait(l4_utcb(), &v->i.label, L4_IPC_NEVER);
-		if (!l4_msgtag_has_error(v->i.tag))
-			do_vcpu_irq(v);
-	}
+	l4vcpu_irq_enable(l4x_stack_vcpu_state_get(), l4x_stack_utcb_get(),
+			do_vcpu_irq, l4x_srv_setup_recv_wrap);
 }
 
 static void do_vcpu_irq(l4_vcpu_state_t *v)
@@ -72,10 +65,6 @@ static void do_vcpu_irq(l4_vcpu_state_t *v)
 void
 l4x_global_halt(void)
 {
-	l4_vcpu_state_t *v = l4x_vcpu_state(cpu_number());
-	l4x_global_cli();
-	v->i.tag = l4_ipc_wait(l4_utcb(), &v->i.label, L4_IPC_NEVER);
-	if (!l4_msgtag_has_error(v->i.tag))
-		do_vcpu_irq(v);
-	l4x_global_sti();
+	l4vcpu_halt(l4x_stack_vcpu_state_get(), l4x_stack_utcb_get(),
+			do_vcpu_irq, l4x_srv_setup_recv_wrap);
 }

@@ -148,9 +148,15 @@ cpu_fork(struct proc *p1, struct proc *p2, void *stack, size_t stacksize,
 
 #ifdef L4
 	struct user *u2 = p2->p_addr;
+	l4_utcb_t *utcb;
+	L4XV_V(n);
+
+	L4XV_L(n);
+	utcb = l4_utcb();
+	L4XV_U(n);
 
 	/* Setup UTCB pointer. */
-	l4x_stack_setup(u2);
+	l4x_stack_setup(u2, utcb, cpu_number());
 #endif
 }
 

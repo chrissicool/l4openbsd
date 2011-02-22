@@ -5,6 +5,8 @@
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/user.h>
 #include <sys/kernel.h>
 
 #include <machine/cpu.h>
@@ -109,7 +111,7 @@ static inline void attach_to_irq(int irq)
 
 	L4XV_L(flags);
 	if ((ret  = l4_error(l4_irq_attach(irq_cap, irq << 2,
-	                                   linux_server_thread_id))))
+	                                   l4x_cpu_thread_get_cap(cpu_number())))));
 		dd_printf("%s: can't register to irq %u: return=%ld\n",
 		          __func__, irq, ret);
 	L4XV_U(flags);
@@ -139,11 +141,8 @@ void L4_CV timer_irq_thread(void *data)
 {
 	l4_timeout_t to;
 	l4_kernel_clock_t pint;
-//	struct thread_info *ctx = current_thread_info();
 	l4_utcb_t *u = l4_utcb();
 	l4_cap_idx_t irq_cap = *(l4_cap_idx_t *)data;
-
-//	l4x_prepare_irq_thread(ctx, cpu);
 
 	LOG_printf("%s: Starting timer IRQ thread.\n", __func__);
 
@@ -168,23 +167,29 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	char name[15];
 	int cpu = cpu_number();
 	l4_msgtag_t res;
-	l4_cap_idx_t timer_thread;
+	l4lx_thread_t timer_thread;
 	l4_cap_idx_t irq_cap;
 	L4XV_V(timer_f);
 
-	snprintf(name, 15, "timer.%d", 0);
+	snprintf(name, 15, "l4bsd.timer.%d", 0);
 
 	L4XV_L(timer_f);
 	irq_cap = l4x_cap_alloc();
-	if (l4_is_invalid_cap(irq_cap))
-		enter_kdebug("Error getting timer IRQ cap!");
+	if (l4_is_invalid_cap(irq_cap)) {
+		printf("Cap alloc failed for timer\n");
+		l4x_exit_l4linux();
+		/* NOTREACHED */
+		return 0;
+	}
 
 	res = l4_factory_create_irq(l4re_env()->factory, irq_cap);
 	if (l4_error(res)) {
-		LOG_printf("Failed to create timer IRQ\n");
+		printf("Failed to create timer IRQ\n");
 		l4x_cap_free(irq_cap);
 		L4XV_U(timer_f);
 		l4x_exit_l4linux();
+		/* NOTREACHED */
+		return 0;
 	}
 	L4XV_U(timer_f);
 
@@ -203,11 +208,15 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 			 NULL,			      /* stack */
 			 &irq_cap, sizeof(irq_cap),   /* data */
 			 -1,                          /* prio */
-			 0,                           /* flags */
-			 name);			      /* name */
+			 0,                           /* vcpup */
+			 "timer.0");		      /* name */
 
-	if (l4_is_invalid_cap(timer_thread))
-		enter_kdebug("Error creating timer thread!");
+	if (!l4lx_thread_is_valid(timer_thread)) {
+		printf("Error creating timer thread!");
+		l4x_exit_l4linux();
+		/* NOTREACHED */
+		return 0;
+	}
 	L4XV_U(timer_f);
 
 	l4lx_irq_dev_enable(0);

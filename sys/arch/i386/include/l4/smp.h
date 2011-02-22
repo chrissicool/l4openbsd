@@ -30,7 +30,6 @@ void do_l4x_smp_process_IPI(int vector, struct pt_regs *regs);
 
 void l4x_cpu_spawn(int cpu, struct task_struct *idle);
 void l4x_cpu_release(int cpu);
-l4_cap_idx_t l4x_cpu_thread_get(int cpu);
 struct task_struct *l4x_cpu_idle_get(int cpu);
 void l4x_smp_broadcast_timer(void);
 void l4x_send_IPI_mask_bitmask(unsigned long, int);
@@ -56,11 +55,6 @@ void l4x_load_percpu_gdt_descriptor(struct desc_struct *gdt);
 
 #else
 /* UP Systems */
-
-static inline l4_cap_idx_t l4x_cpu_thread_get(int _cpu)
-{
-	return linux_server_thread_id;
-}
 
 static inline int l4x_IPI_pending_tac(int cpu)
 {

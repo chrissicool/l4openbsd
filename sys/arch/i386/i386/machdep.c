@@ -2901,14 +2901,6 @@ init386(paddr_t first_avail)
 	bios_memmap_t *im;
 
 #ifdef L4
-	/*
-	 * Since we never ran locore.s, we need to setup some variables
-	 * on our own.
-	 */
-	struct proc *p;
-	curproc = p = &proc0;
-	p->p_cpu = curcpu();
-
 	bootapiver = BOOTARG_APIVER;
 	boothowto = 0;
 

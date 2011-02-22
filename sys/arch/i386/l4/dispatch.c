@@ -26,6 +26,7 @@
 #include <machine/l4/l4lxapi/task.h>
 #include <machine/l4/vcpu.h>
 #include <machine/l4/exception.h>
+#include <machine/l4/stack_id.h>
 #include <machine/l4/setup.h>
 
 #include <machine/l4/log.h>
@@ -40,6 +41,7 @@
 
 //#define TRAP_DEBUG
 #ifdef TRAP_DEBUG
+#include <machine/l4/log.h>
 #include <kern/syscalls.c>
 extern char *trap_type[];
 #define dbg_printf(...)				\
@@ -53,13 +55,11 @@ extern char *trap_type[];
 #define dbg_printf(...)
 #endif
 
-static inline int l4x_vcpu_is_irq(l4_vcpu_state_t *vcpu);
-static inline int l4x_vcpu_is_page_fault(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_write_pf(l4_vcpu_state_t *vcpu);
 static inline l4_umword_t l4x_l4pfa(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_user(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_syscall(l4_vcpu_state_t *vcpu);
-static inline int l4x_msgtag_fpu(void);
+static inline int l4x_msgtag_fpu(int cpunum);
 static void l4x_evict_mem(l4_umword_t d);
 static inline void l4x_vcpu_entry_user_arch(void);
 static inline void l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu);
@@ -79,22 +79,12 @@ static int vcpu2trapno[] = {
 	/* 16 */ T_ARITHTRAP, T_ALIGNFLT, T_MACHK, T_XFTRAP,
 };
 
-static inline int
-l4x_vcpu_is_irq(l4_vcpu_state_t *vcpu)
-{
-	return vcpu->r.trapno == 0xfe;
-}
 
-static inline int
-l4x_vcpu_is_page_fault(l4_vcpu_state_t *vcpu)
-{
-	return vcpu->r.trapno == 0xe;
-}
 
 static inline int
 l4x_vcpu_is_write_pf(l4_vcpu_state_t *vcpu)
 {
-	return((vcpu->r.trapno == 0xe) &&
+	return(l4vcpu_is_page_fault_entry(vcpu) &&
 	       (vcpu->r.err & 2));
 }
 
@@ -127,9 +117,9 @@ struct l4x_arch_cpu_fpu_state *l4x_fpu_get(unsigned cpu)
 	return &l4x_cpu_fpu_state[cpu];
 }
 
-static inline int l4x_msgtag_fpu(void)
+static inline int l4x_msgtag_fpu(int cpunum)
 {
-	return l4x_fpu_get(cpu_number())->enabled
+	return l4x_fpu_get(cpunum)->enabled
 		?  L4_MSGTAG_TRANSFER_FPU : 0;
 }
 
@@ -163,7 +153,7 @@ static inline void
 l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu)
 {
 	if (!(vcpu->saved_state & L4_VCPU_F_IRQ)
-			&& l4x_vcpu_is_irq(vcpu)) {
+			&& l4vcpu_is_irq_entry(vcpu)) {
 		enter_kdebug("IRQ sanety checks failed.");
 	}
 }
@@ -228,17 +218,10 @@ l4x_arch_task_start_setup(struct proc *p)
 void
 l4x_ret_from_fork(void)
 {
-	l4_utcb_t *utcb;
-	l4_vcpu_state_t *vcpu;
 	struct proc *p = curproc;
 	struct user *u = p->p_addr;
 	struct trapframe *tf = p->p_md.md_regs;
-	L4XV_V(n);
-
-	L4XV_L(n);
-	utcb = l4_utcb();
-	vcpu = l4x_vcpu_state_u(utcb);
-	L4XV_U(n);
+	l4_vcpu_state_t *vcpu = l4x_stack_vcpu_state_get();
 
 	tf->tf_cs = GSEL(GUCODE_SEL, SEL_UPL);		/* set USERMODE */
 	vcpu->saved_state |= L4_VCPU_F_USER_MODE;
@@ -291,14 +274,14 @@ static inline void
 l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		l4_umword_t fp1, l4_umword_t fp2, int copy_ptregs)
 {
-	l4_utcb_t *utcb = l4_utcb();
-	l4_vcpu_state_t *vcpu;
 	l4_msgtag_t tag;
+	l4_utcb_t *utcb;
 	struct pmap *pmap = p->p_vmspace->vm_map.pmap;
+	l4_vcpu_state_t *vcpu = l4x_stack_vcpu_state_get();
 	L4XV_V(n);
 
 	L4XV_L(n);
-	vcpu = l4x_vcpu_state_u(utcb);
+	utcb = l4_utcb();
 	L4XV_U(n);
 
 	if (copy_ptregs)
@@ -320,17 +303,32 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 //		thread_struct_to_vcpu(vcpu, p);
 		vcpu->saved_state |= L4_VCPU_F_USER_MODE;
 
-		if (l4x_msgtag_fpu())
+		if (l4x_msgtag_fpu(cpu_number()))
 			vcpu->saved_state |= L4_VCPU_F_FPU_ENABLED;
 		else
 			vcpu->saved_state &= ~L4_VCPU_F_FPU_ENABLED;
 	} else {
-		vcpu->saved_state |= L4_VCPU_F_IRQ;
+//		vcpu->saved_state |= L4_VCPU_F_IRQ;
 //		vcpu->saved_state &= ~(L4_VCPU_F_DEBUG_EXC | L4_VCPU_F_PAGE_FAULTS);
 		vcpu->r.gs = l4x_x86_utcb_get_orig_segment();
 	}
 
-	vcpu->saved_state |= L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS;
+
+	dbg_printf("vCPU exit: trapno=%d, err=%d, pfa=%08lx, "
+			"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
+			"di=%08lx, si=%08lx, ss=%08lx, sp=%08lx, "
+			"bp=%08lx, flags=%08lx, eip=%08lx, fs=%08lx, "
+			"gs=%08lx (%s,%s)\n",
+			vcpu->r.trapno, vcpu->r.err, vcpu->r.pfa,
+			vcpu->r.ax, vcpu->r.bx, vcpu->r.cx, vcpu->r.dx,
+			vcpu->r.di, vcpu->r.si, vcpu->r.ss, vcpu->r.sp,
+			vcpu->r.bp, vcpu->r.flags, vcpu->r.ip, vcpu->r.fs,
+			vcpu->r.gs,
+			copy_ptregs ? "USR" : "KRN",
+			l4vcpu_is_irq_entry(vcpu) ? "IRQ" :
+			l4vcpu_is_page_fault_entry(vcpu) ? "PF" : "EXC");
+
+	vcpu->saved_state |= L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS | L4_VCPU_F_IRQ;
 
 	/*
 	 * Resume from vCPU event.
@@ -347,6 +345,8 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		if (l4_ipc_error(tag, utcb) == L4_IPC_SEMAPFAILED)
 			l4x_evict_mem(fp2);
 		else {
+			LOG_printf("l4x: resume returned: %d\n",
+					l4_ipc_error(tag, utcb));
 			enter_kdebug("IRET returned");
 			while( /* CONSTCOND */ 1 ) ;
 			/* NOTREACHED */
@@ -373,20 +373,6 @@ l4x_vcpu_entry(void)
 
 	vcpu->state = L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS;
 
-	dbg_printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
-			"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
-			"di=%08lx, si=%08lx, ss=%08lx, sp=%08lx, "
-			"bp=%08lx, flags=%08lx, eip=%08lx, fs=%08lx, "
-			"gs=%08lx (%s,%s)\n",
-			vcpu->r.trapno, vcpu->r.err, vcpu->r.pfa,
-			vcpu->r.ax, vcpu->r.bx, vcpu->r.cx, vcpu->r.dx,
-			vcpu->r.di, vcpu->r.si, vcpu->r.ss, vcpu->r.sp,
-			vcpu->r.bp, vcpu->r.flags, vcpu->r.ip, vcpu->r.fs,
-			vcpu->r.gs,
-			vcpu->saved_state & L4_VCPU_F_USER_MODE ? "USR" : "KRN",
-			l4x_vcpu_is_irq(vcpu) ? "IRQ" :
-			l4x_vcpu_is_page_fault(vcpu) ? "PF" : "EXC");
-
 	l4x_vcpu_entry_sanity(vcpu);
 
 	p = curproc;			/* current thread */
@@ -404,8 +390,22 @@ l4x_vcpu_entry(void)
 	/* save registers */
 	vcpu_to_ptregs(vcpu, regsp);
 
+	dbg_printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
+			"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
+			"di=%08lx, si=%08lx, ss=%08lx, sp=%08lx, "
+			"bp=%08lx, flags=%08lx, eip=%08lx, fs=%08lx, "
+			"gs=%08lx (%s,%s)\n",
+			vcpu->r.trapno, vcpu->r.err, vcpu->r.pfa,
+			vcpu->r.ax, vcpu->r.bx, vcpu->r.cx, vcpu->r.dx,
+			vcpu->r.di, vcpu->r.si, vcpu->r.ss, vcpu->r.sp,
+			vcpu->r.bp, vcpu->r.flags, vcpu->r.ip, vcpu->r.fs,
+			vcpu->r.gs,
+			vcpu->saved_state & L4_VCPU_F_USER_MODE ? "USR" : "KRN",
+			l4vcpu_is_irq_entry(vcpu) ? "IRQ" :
+			l4vcpu_is_page_fault_entry(vcpu) ? "PF" : "EXC");
+
 	/* handle IRQs */
-	if (l4x_vcpu_is_irq(vcpu)) {
+	if (l4vcpu_is_irq_entry(vcpu)) {
 		l4x_vcpu_handle_irq(vcpu, regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
 		/* NOTREACHED */
@@ -425,6 +425,9 @@ l4x_vcpu_entry(void)
 		 */
 		vcpu->state |= L4_VCPU_F_IRQ;
 
+		/* syscalls always return to userspace */
+		vcpu->saved_state |= L4_VCPU_F_USER_MODE;
+
 		syscall(regsp);
 		l4x_run_asts(regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
@@ -434,25 +437,26 @@ l4x_vcpu_entry(void)
 	extern void trap(struct trapframe *frame);
 
 	regsp->tf_trapno = vcpu2trapno[regsp->tf_trapno];
-	dbg_printf("%s: Executing trap: %s (%d)\n", __func__,
-			trap_type[regsp->tf_trapno], regsp->tf_trapno);
+	dbg_printf("%s: Executing trap: %s (%d) [%s]\n", __func__,
+			trap_type[regsp->tf_trapno], regsp->tf_trapno,
+			l4x_vcpu_is_user(vcpu) ? "USR" : "KRN");
 #if NNPX > 0
 	extern int (*npxdna_func)(struct cpu_info *);	/* isa/npx.c */
 	/* Treat FPU traps special */
 	if ((regsp->tf_trapno == T_DNA) &&
 	    (npxdna_func(curcpu()) != 0)) {
-		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+		l4x_vcpu_iret(p, u, regsp, -1, 0, l4x_vcpu_is_user(vcpu));
 		/* NOTREACHED */
 	}
 #endif
 	trap(regsp);	/* Generic OpenBSD trap handler. */
 
 	/* Special page fault handling for user mode. */
-	if (l4x_vcpu_is_page_fault(vcpu) &&
+	if (l4vcpu_is_page_fault_entry(vcpu) &&
 	    l4x_vcpu_is_user(vcpu)) {
 		l4x_handle_user_pf(vcpu, p, u, regsp);
 	}
 
-	l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+	l4x_vcpu_iret(p, u, regsp, -1, 0, l4x_vcpu_is_user(vcpu));
 	/* NOTREACHED */
 }

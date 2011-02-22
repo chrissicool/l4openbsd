@@ -145,7 +145,7 @@ unsigned long l4x_kvmem_size;
 l4re_ds_t l4x_ds_kvmem;
 void *l4x_kv_memory_start;	/* vaddr_t */
 
-static void setup_l4x_memory(char **cmdl,
+static void l4x_setup_memory(char **cmdl,
                              vaddr_t *main_mem_startv,
                              vaddr_t *main_mem_endv,
                              vaddr_t *isa_dma_mem_startv,
@@ -159,7 +159,7 @@ void l4x_memory_setup(char **cmdl)
 {
 	paddr_t mem_startp, mem_endp, isa_startp, isa_endp;
 
-	setup_l4x_memory(cmdl, &mem_startp, &mem_endp, &isa_startp, &isa_endp);
+	l4x_setup_memory(cmdl, &mem_startp, &mem_endp, &isa_startp, &isa_endp);
 
 	if (!mem_startp)
 		enter_kdebug("Could not get requested main memory!");
@@ -173,7 +173,7 @@ void l4x_memory_setup(char **cmdl)
 	avail_end = mem_endp;
 }
 
-static void setup_l4x_memory(char **cmdl,
+static void l4x_setup_memory(char **cmdl,
                              paddr_t *main_mem_startp,
                              paddr_t *main_mem_endp,
                              paddr_t *isa_dma_mem_startp,

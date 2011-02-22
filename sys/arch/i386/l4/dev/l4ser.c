@@ -36,6 +36,7 @@
 #include <dev/isa/isavar.h>
 
 #include <machine/atomic.h>
+#include <machine/cpufunc.h>
 #include <machine/l4/irq.h>
 #include <machine/l4/vcpu.h>
 #include <machine/l4/cap_alloc.h>

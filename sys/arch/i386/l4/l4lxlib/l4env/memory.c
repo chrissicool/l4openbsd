@@ -4,12 +4,13 @@
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/types.h>
 #include <machine/pte.h>
+#include <machine/cpufunc.h>
 
 #include <machine/l4/l4lxapi/memory.h>
 #include <machine/l4/api/api.h>
 #include <machine/l4/vcpu.h>
+#include <machine/l4/log.h>
 
 #include <l4/sys/kdebug.h>
 #include <l4/re/c/rm.h>

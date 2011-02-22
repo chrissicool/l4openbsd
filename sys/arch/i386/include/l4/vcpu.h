@@ -4,29 +4,25 @@
 /* #ifdef CONFIG_L4_VCPU */
 
 #include <machine/cpu.h>
-#include <machine/cpufunc.h>
+//#include <machine/cpufunc.h>
 #include <machine/frame.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/vcpu.h>
 #include <l4/sys/utcb.h>
+#include <l4/vcpu/vcpu.h>
 
 /* vCPU FPU state for each CPU */
 struct l4x_arch_cpu_fpu_state {
 	int enabled;
 };
+
 struct l4x_arch_cpu_fpu_state l4x_cpu_fpu_state[MAXCPUS];
 struct l4x_arch_cpu_fpu_state *l4x_fpu_get(unsigned cpu);
 void l4x_fpu_set(int on_off);
 
-static inline
-l4_vcpu_state_t *l4x_vcpu_state_u(l4_utcb_t *u)
-{
-	char *a = (char *)l4_utcb() + L4_UTCB_OFFSET;
-	return (l4_vcpu_state_t*)a;
-}
-
-extern l4_vcpu_state_t *l4x_vcpu_states[MAXCPUS];
+/* vCPU state for each CPU */
+extern l4_vcpu_state_t *l4x_vcpu_states[MAXCPUS];	/* main.c */
 
 static inline
 l4_vcpu_state_t *l4x_vcpu_state(int cpu)
@@ -42,6 +38,13 @@ void l4x_spllower(void);	/* Xspllower() for vCPU */
 void l4x_run_asts(struct trapframe *tf);
 
 void l4x_vcpu_create_user_task(struct proc *p);
+
+static inline void l4x_vcpu_init(l4_vcpu_state_t *v)
+{
+	v->state     = L4_VCPU_F_EXCEPTIONS;
+	v->entry_ip  = (l4_addr_t)&l4x_vcpu_entry;
+	v->user_task = L4_INVALID_CAP;
+}
 
 /* #else */
 #if 0

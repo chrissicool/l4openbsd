@@ -15,8 +15,10 @@
 #include <l4/sys/scheduler.h>
 #include <l4/sys/factory.h>
 #include <l4/re/env.h>
+#include <l4/re/c/rm.h>
 #include <l4/log/log.h>
 #include <l4/re/c/util/cap.h>
+#include <l4/re/c/util/kumem_alloc.h>
 #include <l4/sys/debugger.h>
 
 #include <machine/l4/l4lxapi/thread.h>
@@ -30,61 +32,96 @@
 
 #include <lib/libkern/libkern.h>
 
-/* UTCB allocator */
-enum {
-	UTCB_BITMAP_ALLOC_MWORD_SIZE = 1,
-	UTCB_BITMAP_ALLOC_BITS
-	  = UTCB_BITMAP_ALLOC_MWORD_SIZE * sizeof(unsigned long) * 8,
+struct free_list_t {
+	unsigned long *head;
+	unsigned blk_sz;
 };
-static unsigned long utcb_alloc_bitmap[UTCB_BITMAP_ALLOC_MWORD_SIZE];
 
-static inline unsigned utcb_alloc_bit(l4_addr_t utcb_addr)
+static struct free_list_t ku_free_small = {
+	.blk_sz = L4_UTCB_OFFSET,
+};
+
+static void add_to_free_list(l4_addr_t start, l4_addr_t end,
+                             unsigned sz, unsigned long **head)
 {
-	l4_addr_t a = l4_fpage_page(l4re_env()->utcb_area) << L4_PAGESHIFT;
-	return (utcb_addr - a) / L4_UTCB_OFFSET;
+	l4_addr_t n = start;
+	unsigned long **last_free = head;
+	while (n + sz <= end) {
+		unsigned long *u = (unsigned long *)n;
+		*u = 0;
+		*last_free = u;
+		last_free = (unsigned long **)u;
+		n += sz;
+	}
 }
 
 void l4lx_thread_utcb_alloc_init(void)
 {
-	unsigned next_free_bit = utcb_alloc_bit(l4re_env()->first_free_utcb);
+	l4_fpage_t utcb_area = l4re_env()->utcb_area;
+	l4_addr_t free_utcb = l4re_env()->first_free_utcb;
+	l4_addr_t end       = ((l4_addr_t)l4_fpage_page(utcb_area) << 12UL)
+	                      + (1UL << (l4_addr_t)l4_fpage_size(utcb_area));
+	add_to_free_list(free_utcb, end, L4_UTCB_OFFSET,
+	                 &ku_free_small.head);
 
-	if (next_free_bit > UTCB_BITMAP_ALLOC_BITS)
-		/* First thread alloc will fail... */
-		next_free_bit = UTCB_BITMAP_ALLOC_BITS;
-
-	bitmap_zero(utcb_alloc_bitmap, UTCB_BITMAP_ALLOC_BITS);
-	bitmap_fill(utcb_alloc_bitmap, next_free_bit);
-
-	/* Use up all slots... */
+	/* Used up all initial slots... */
 	l4re_env()->first_free_utcb = ~0UL;
 }
 
-
-static l4_addr_t l4lx_thread_utcb_alloc_alloc(unsigned order)
+static int get_more_kumem(unsigned order_pages, unsigned blk_sz,
+                          unsigned long **head)
 {
-	/* find_free_region nicely searches with our requirements, i.e.
-	 * log2size aligned */
-	int r = bitmap_find_free_region(utcb_alloc_bitmap,
-	                                UTCB_BITMAP_ALLOC_BITS, order);
-	if (r < 0)
-		return 0;
-
-	return (l4_fpage_page(l4re_env()->utcb_area) << L4_PAGESHIFT)
-	       + L4_UTCB_OFFSET * r;
+	l4_addr_t kumem;
+	if (l4re_util_kumem_alloc(&kumem, order_pages,
+	                          L4_BASE_TASK_CAP, l4re_env()->rm))
+	{
+		enter_kdebug("eins");
+		return 1;
+	}
+	LOG_printf("kumem = %lx\n", kumem);
+	add_to_free_list(kumem, kumem + (1 << order_pages) * L4_PAGESIZE,
+	                 blk_sz, head);
+	return 0;
 }
-/*
-static void l4lx_thread_utcb_alloc_free(l4_addr_t utcb_addr, int order)
-{
-	unsigned bit = utcb_alloc_bit(utcb_addr);
-	if (bit + (1 << order) > UTCB_BITMAP_ALLOC_BITS)
-		return;
-	bitmap_release_region(utcb_alloc_bitmap, bit, order);
-}
-*/
 
-static inline l4_utcb_t *next_utcb(l4_utcb_t *u)
+static void *l4lx_thread_ku_alloc_alloc(struct free_list_t *head)
 {
-	return (l4_utcb_t *)((char *)u + L4_UTCB_OFFSET);
+	unsigned long *n = head->head;
+	if (!n) {
+		if (get_more_kumem(0, head->blk_sz, &head->head))
+			return 0;
+
+		n = head->head;
+	}
+
+	head->head = (unsigned long *)(*n);
+	return (void *)n;
+}
+
+static void *l4lx_thread_ku_alloc_alloc_u(void)
+{
+	return l4lx_thread_ku_alloc_alloc(&ku_free_small);
+}
+
+static void *l4lx_thread_ku_alloc_alloc_v(void)
+{
+	return l4lx_thread_ku_alloc_alloc(&ku_free_small);
+}
+
+static void l4lx_thread_ku_alloc_free(void *k, unsigned long **head)
+{
+	*(unsigned long *)k = (unsigned long)(*head);
+	*head = (unsigned long *)k;
+}
+
+static void l4lx_thread_ku_alloc_free_u(void *k)
+{
+	return l4lx_thread_ku_alloc_free(k, &ku_free_small.head);
+}
+
+static void l4lx_thread_ku_alloc_free_v(void *k)
+{
+	return l4lx_thread_ku_alloc_free(k, &ku_free_small.head);
 }
 
 /*
@@ -95,17 +132,19 @@ asm(
 "	ldmia sp!, {r1}\n" // func
 "	ldmia sp!, {lr}\n" // ret
 "	ldmia sp!, {r0}\n" // arg1
+"	bic sp, sp, #7\n"
 "	mov pc, r1\n"
 );
 #endif
 */
 
-l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
-                                unsigned vcpu,
-                                void *stack_pointer,
-                                void *stack_data, unsigned stack_data_size,
-                                int prio,
-                                unsigned thread_control_flags, const char *name)
+l4lx_thread_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
+                                 unsigned vcpu,
+                                 void *stack_pointer,
+                                 void *stack_data, unsigned stack_data_size,
+                                 int prio,
+                                 l4_vcpu_state_t **vcpu_state,
+                                 const char *name)
 {
 	l4_cap_idx_t l4cap;
 	l4_sched_param_t schedp;
@@ -121,21 +160,17 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 
 	l4cap = l4x_cap_alloc();
 	if (l4_is_invalid_cap(l4cap))
-		return L4_INVALID_CAP;
+		return 0;
 
 	res = l4_factory_create_thread(l4re_env()->factory, l4cap);
-	if (l4_error(res)) {
-		l4x_cap_free(l4cap);
-		return L4_INVALID_CAP;
-	}
+	if (l4_error(res))
+		goto out_free_cap;
 
 	if (!stack_pointer) {
 		stack_pointer = l4lx_thread_stack_alloc(l4cap);
 		if (!stack_pointer) {
 			LOG_printf("no more stacks, bye");
-			l4re_util_cap_release(l4cap);
-			l4x_cap_free(l4cap);
-			return L4_INVALID_CAP;
+			goto out_rel_cap;
 		}
 	}
 
@@ -153,7 +188,15 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 
 	l4_debugger_set_object_name(l4cap, l4lx_name);
 
-	utcb = (l4_utcb_t *)l4lx_thread_utcb_alloc_alloc(thread_control_flags & L4_THREAD_CONTROL_VCPU_ENABLED ? 1 : 0);
+	utcb = l4lx_thread_ku_alloc_alloc_u();
+	if (!utcb)
+		goto out_rel_cap;
+
+	if (vcpu_state) {
+		*vcpu_state = (l4_vcpu_state_t *)l4lx_thread_ku_alloc_alloc_v();
+		if (!*vcpu_state)
+			goto out_free_utcb;
+	}
 
 	l4_utcb_tcr_u(utcb)->user[L4X_UTCB_TCR_ID]   = l4cap;
 	l4_utcb_tcr_u(utcb)->user[L4X_UTCB_TCR_PRIO] = prio;
@@ -162,16 +205,14 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 	l4_thread_control_pager(l4re_env()->rm);
 	l4_thread_control_exc_handler(l4re_env()->rm);
 	l4_thread_control_bind(utcb, L4_BASE_TASK_CAP);
-	if (thread_control_flags & L4_THREAD_CONTROL_VCPU_ENABLED) {
-		l4_thread_control_vcpu_enable(1);
-		// remember corresponding thread for freeing again
-		l4_utcb_tcr_u(next_utcb(utcb))->user[L4X_UTCB_TCR_ID] = l4cap;
-	}
 	res = l4_thread_control_commit(l4cap);
-	if (l4_error(res)) {
-		l4re_util_cap_release(l4cap);
-		l4x_cap_free(l4cap);
-		return L4_INVALID_CAP;
+	if (l4_error(res))
+		goto out_free_vcpu;
+
+	if (vcpu_state) {
+		res = l4_thread_vcpu_control(l4cap, (l4_addr_t)(*vcpu_state));
+		if (l4_error(res))
+			goto out_free_vcpu;
 	}
 
 	schedp = l4_sched_param(prio, 0);
@@ -181,13 +222,12 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 	if (l4_error(res)) {
 		LOG_printf("%s: Failed to set cpu%d of thread '%s': %ld.\n",
 		           __func__, vcpu, name, l4_error(res));
-		l4re_util_cap_release(l4cap);
-		l4x_cap_free(l4cap);
-		return L4_INVALID_CAP;
+		goto out_free_vcpu;
 	}
 
-	LOG_printf("%s: Created thread " PRINTF_L4TASK_FORM " (%s) (u:%08lx)\n",
-	           __func__, PRINTF_L4TASK_ARG(l4cap), name, (l4_addr_t)utcb);
+	LOG_printf("%s: Created thread " PRINTF_L4TASK_FORM " (%s) (u:%08lx, v:%08lx, sp:%08lx)\n",
+	           __func__, PRINTF_L4TASK_ARG(l4cap), name, (l4_addr_t)utcb,
+		   vcpu_state ? (l4_addr_t)(*vcpu_state) : 0, (l4_umword_t)sp);
 
 
 #ifdef ARCH_arm
@@ -197,15 +237,25 @@ l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 	res = l4_thread_ex_regs(l4cap, (l4_umword_t)thread_func,
 	                        (l4_umword_t)sp, 0);
 #endif
-	if (l4_error(res)) {
-		l4re_util_cap_release(l4cap);
-		l4x_cap_free(l4cap);
-		return L4_INVALID_CAP;
-	}
+	if (l4_error(res))
+		goto out_free_vcpu;
 
 	l4lx_thread_name_set(l4cap, name);
 
-	return l4cap;
+	return utcb;
+
+out_free_vcpu:
+	if (vcpu_state)
+		l4lx_thread_ku_alloc_free_v(*vcpu_state);
+
+out_free_utcb:
+	l4lx_thread_ku_alloc_free_u(utcb);
+out_rel_cap:
+	l4re_util_cap_release(l4cap);
+out_free_cap:
+	l4x_cap_free(l4cap);
+
+	return 0;
 }
 
 /*
@@ -230,36 +280,20 @@ void l4lx_thread_set_kernel_pager(l4_cap_idx_t thread)
 }
 
 
-static l4_utcb_t *search_thread_utcb(l4_cap_idx_t id, unsigned *order)
-{
-	l4_addr_t start = l4_fpage_page(l4re_env()->utcb_area) << L4_PAGESHIFT;
-	l4_addr_t end = start + (1UL << l4_fpage_size(l4re_env()->utcb_area));
-	l4_utcb_t *u = (l4_utcb_t *)start;
-	for (; u < (l4_utcb_t *)end; u = next_utcb(u)) {
-		l4_cap_idx_t t = l4_utcb_tcr_u(u)->user[L4X_UTCB_TCR_ID];
-		if (l4_capability_equal(t, id)) {
-			t = l4_utcb_tcr_u(next_utcb(u))->user[L4X_UTCB_TCR_ID];
-			*order = l4_capability_equal(t, id) ? 1 : 0;
-			return u;
-		}
-	}
-	return NULL;
-}
-
 *//*
  * l4lx_thread_shutdown
  *//*
-void l4lx_thread_shutdown(l4_cap_idx_t thread)
+void l4lx_thread_shutdown(l4lx_thread_t u, void *v)
 {
-	unsigned order;
-	l4_utcb_t *u = search_thread_utcb(thread, &order);
+	l4_cap_idx_t thread = l4lx_thread_get_cap(u);
 
 	*//* free "stack memory" used for data if there's some *//*
 	l4lx_thread_stack_return(thread);
 	l4lx_thread_name_delete(thread);
 
-	if (u)
-		l4lx_thread_utcb_alloc_free((l4_addr_t)u, order);
+	l4lx_thread_ku_alloc_free_u(u);
+	if (v)
+		l4lx_thread_ku_alloc_free_v((l4_utcb_t *)v);
 
 	l4re_util_cap_release(thread);
 	l4x_cap_free(thread);

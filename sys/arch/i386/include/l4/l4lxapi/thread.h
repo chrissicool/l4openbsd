@@ -7,6 +7,8 @@
 
 #include <l4/sys/types.h>
 
+#include <machine/l4/stack_id.h>
+
 /* Convenience include */
 #include <machine/l4/l4lxapi/generic/thread_gen.h>
 
@@ -65,12 +67,13 @@ void l4lx_thread_init(void);
  *                             |----------------- ESP for new thread
  * </pre>
  */
-l4_cap_idx_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
+l4lx_thread_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
                                 unsigned cpu_nr,
                                 void *stack_pointer,
                                 void *stack_data, unsigned stack_data_size,
                                 int prio,
-                                unsigned thread_control_flags, const char *name);
+                                l4_vcpu_state_t **vcpu_state,
+				const char *name);
 
 /**
  * \brief Change the pager of a (kernel) thread.

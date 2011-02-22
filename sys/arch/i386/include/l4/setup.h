@@ -45,8 +45,6 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 //void l4x_setup_threads(void);
 //void l4x_l4io_init(void);
 
-//void l4x_setup_thread_stack(void);
-
 //void l4x_prepare_irq_thread(struct thread_info *ti, unsigned _cpu);
 
 void l4x_exit_l4linux(void);

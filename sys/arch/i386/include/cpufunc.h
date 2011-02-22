@@ -47,22 +47,27 @@
 
 #ifdef L4
 
+#include <machine/l4/vcpu.h>
+
 #include <l4/sys/types.h>
 #include <l4/sys/segment.h>
-#include <l4/sys/vcpu.h>
 
-#include <machine/l4/vcpu.h>
-extern l4_vcpu_state_t *l4x_vcpu_states[MAXCPUS];	/* vcpu.h */
-
+#define  L4XV_V(n) l4vcpu_irq_state_t n
+#define  L4XV_L(n) do {	n = l4vcpu_irq_disable_save(l4x_vcpu_state(cpu_number()));\
+		      } while (0)
+#define  L4XV_U(n) do { if (n & L4VCPU_IRQ_STATE_ENABLED) 	\
+				enable_intr(); 			\
+		      } while (0)
+/*
 #define  L4XV_V(n) int n = l4x_vcpu_state(cpu_number())->state & L4_VCPU_F_IRQ
 #define  L4XV_L(n) disable_intr()
 #define  L4XV_U(n) if (n) { enable_intr(); }
-
+*/
 /* tamed.c */
-extern void l4x_global_cli(void);
-extern void l4x_global_sti(void);
+void l4x_global_cli(void);
+void l4x_global_sti(void);
 
-#endif
+#endif	/* L4 */
 
 static __inline void invlpg(u_int);
 static __inline void lidt(void *);

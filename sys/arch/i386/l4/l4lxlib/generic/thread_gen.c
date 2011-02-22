@@ -1,6 +1,11 @@
 /*
  * Stack handling. Used by all API interfaces.
  */
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/user.h>
+#include <sys/types.h>
 
 #include <lib/libkern/libkern.h>
 
