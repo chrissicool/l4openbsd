@@ -284,12 +284,14 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	utcb = l4_utcb();
 	L4XV_U(n);
 
-	if (copy_ptregs)
-		ptregs_to_vcpu(vcpu, regs);
-	else
-		vcpu->saved_state &= ~L4_VCPU_F_USER_MODE;
+	/*
+	 * The vCPU saved state area is not re-entrant safe.
+	 * Disable interrupt delivery while playing around with it.
+	 */
+	l4vcpu_irq_disable(vcpu);
 
-	if (l4x_vcpu_is_user(vcpu)) {
+	ptregs_to_vcpu(vcpu, regs);
+	if (USERMODE(regs->tf_cs, regs->tf_eflags)) {
 
 		/* Create user thread on first invocation. */
 		if (l4_is_invalid_cap(pmap->task)) {
@@ -297,10 +299,10 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 			l4x_vcpu_create_user_task(p);
 			L4XV_U(n);
 			l4x_arch_task_start_setup(p);
-			vcpu->user_task = pmap->task;
 		}
 
-//		thread_struct_to_vcpu(vcpu, p);
+		vcpu->user_task = pmap->task;
+		vcpu->entry_sp = (l4_umword_t)regs;
 		vcpu->saved_state |= L4_VCPU_F_USER_MODE;
 
 		if (l4x_msgtag_fpu(cpu_number()))
@@ -308,8 +310,7 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		else
 			vcpu->saved_state &= ~L4_VCPU_F_FPU_ENABLED;
 	} else {
-//		vcpu->saved_state |= L4_VCPU_F_IRQ;
-//		vcpu->saved_state &= ~(L4_VCPU_F_DEBUG_EXC | L4_VCPU_F_PAGE_FAULTS);
+		vcpu->saved_state &= ~L4_VCPU_F_USER_MODE;
 		vcpu->r.gs = l4x_x86_utcb_get_orig_segment();
 	}
 
@@ -378,12 +379,15 @@ l4x_vcpu_entry(void)
 	p = curproc;			/* current thread */
 	u = p->p_addr;			/* current thread's UAREA */
 
+	/*
+	 * Setup current trapframe.
+	 * => came from userland: curproc's tf
+	 * => came from kernel:   tf on stack
+	 */
 	if (l4x_vcpu_is_user(vcpu)) {
-		regsp = p->p_md.md_regs;	/* current trapframe */
+		regsp = p->p_md.md_regs;
 		l4x_vcpu_entry_user_arch();
-	}
-
-	if (!l4x_vcpu_is_user(vcpu)) {
+	} else {
 		regsp = &kernel_tf;
 	}
 
@@ -424,10 +428,6 @@ l4x_vcpu_entry(void)
 		 * that we have IRQs enabled!
 		 */
 		vcpu->state |= L4_VCPU_F_IRQ;
-
-		/* syscalls always return to userspace */
-		vcpu->saved_state |= L4_VCPU_F_USER_MODE;
-
 		syscall(regsp);
 		l4x_run_asts(regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
@@ -439,13 +439,13 @@ l4x_vcpu_entry(void)
 	regsp->tf_trapno = vcpu2trapno[regsp->tf_trapno];
 	dbg_printf("%s: Executing trap: %s (%d) [%s]\n", __func__,
 			trap_type[regsp->tf_trapno], regsp->tf_trapno,
-			l4x_vcpu_is_user(vcpu) ? "USR" : "KRN");
+			USERMODE(regsp->tf_cs, regsp->tf_eflags) ? "USR" : "KRN");
 #if NNPX > 0
 	extern int (*npxdna_func)(struct cpu_info *);	/* isa/npx.c */
 	/* Treat FPU traps special */
 	if ((regsp->tf_trapno == T_DNA) &&
 	    (npxdna_func(curcpu()) != 0)) {
-		l4x_vcpu_iret(p, u, regsp, -1, 0, l4x_vcpu_is_user(vcpu));
+		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
 		/* NOTREACHED */
 	}
 #endif
@@ -453,10 +453,10 @@ l4x_vcpu_entry(void)
 
 	/* Special page fault handling for user mode. */
 	if (l4vcpu_is_page_fault_entry(vcpu) &&
-	    l4x_vcpu_is_user(vcpu)) {
+	    USERMODE(regsp->tf_cs, regsp->tf_eflags)) {
 		l4x_handle_user_pf(vcpu, p, u, regsp);
 	}
 
-	l4x_vcpu_iret(p, u, regsp, -1, 0, l4x_vcpu_is_user(vcpu));
+	l4x_vcpu_iret(p, u, regsp, -1, 0, USERMODE(regsp->tf_cs, regsp->tf_eflags));
 	/* NOTREACHED */
 }

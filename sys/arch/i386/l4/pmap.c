@@ -1868,19 +1868,14 @@ pmap_switch(struct proc *o, struct proc *p)
 
 #ifdef L4
 	/*
-	 * Set vCPU properties for the new task.
+	 * Set vCPU properties for the new task lazy in l4x_vcpu_iret().
 	 */
-	l4_vcpu_state_t *vcpu;
-	struct trapframe *tf = p->p_md.md_regs;
 
-	vcpu = l4x_vcpu_state(cpu_number());
-	vcpu->entry_sp = (l4_umword_t)tf;
-	vcpu->user_task = pmap->task;
 
-	pdb_printf("switch: old(%d), new(%d)\n", o ? o->p_pid : 0, p->p_pid);
-	/* TODO adjust GDT. */
-//	native_load_tls(p, cpu_number());
 #ifdef MULTIPROCESSOR
+	l4_vcpu_state_t *vcpu;
+	vcpu = l4x_vcpu_state(cpu_number());
+
 	l4x_stack_struct_get(p->p_addr)->vcpu = vcpu;
 	l4x_stack_struct_get(p->p_addr)->l4utcb =
 		l4x_stack_struct_get(o->p_addr)->l4utcb;
