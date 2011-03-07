@@ -49,11 +49,14 @@ void l4x_global_sti(void)
 static void do_vcpu_irq(l4_vcpu_state_t *v)
 {
 	struct trapframe *regs;
-	struct trapframe kernel_tf;
+	struct proc *p = curproc;
+	int cs;
 
-	regs = &kernel_tf;				/* fake trapframe */
-	regs->tf_cs = GSEL(GCODE_SEL, SEL_KPL);		/* kernel mode */
+	regs = p->p_md.md_regs;			/* current trapframe */
+	cs = regs->tf_cs;
+	regs->tf_cs = GSEL(GCODE_SEL, SEL_KPL);		/* fake kernel mode */
 	l4x_vcpu_handle_irq(v, regs);
+	regs->tf_cs = cs;
 }
 
 /*
