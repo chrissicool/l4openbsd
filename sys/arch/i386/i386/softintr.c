@@ -104,7 +104,8 @@ l4x_run_netisrs(void)
 	for (i = 0; i < NETISR_MAX; i++) {
 		if ((netisr & BIT(i))) {
 			f = i386_softintr_netisrs[BIT(i)];
-			(*f)();
+			if (f)
+				(*f)();
 		}
 	}
 }
