@@ -303,14 +303,12 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 
 		vcpu->user_task = pmap->task;
 		vcpu->entry_sp = (l4_umword_t)regs;
-		vcpu->saved_state |= L4_VCPU_F_USER_MODE;
 
 		if (l4x_msgtag_fpu(cpu_number()))
 			vcpu->saved_state |= L4_VCPU_F_FPU_ENABLED;
 		else
 			vcpu->saved_state &= ~L4_VCPU_F_FPU_ENABLED;
 	} else {
-		vcpu->saved_state &= ~L4_VCPU_F_USER_MODE;
 		vcpu->r.gs = l4x_x86_utcb_get_orig_segment();
 	}
 
@@ -329,7 +327,7 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 			l4vcpu_is_irq_entry(vcpu) ? "IRQ" :
 			l4vcpu_is_page_fault_entry(vcpu) ? "PF" : "EXC");
 
-	vcpu->saved_state |= L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS | L4_VCPU_F_IRQ;
+	vcpu->saved_state |= L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS;
 
 	/*
 	 * Resume from vCPU event.
@@ -408,12 +406,22 @@ l4x_vcpu_entry(void)
 			l4vcpu_is_irq_entry(vcpu) ? "IRQ" :
 			l4vcpu_is_page_fault_entry(vcpu) ? "PF" : "EXC");
 
+	/* Special page fault handling for user mode. */
+	if ((regsp->tf_trapno == 0xe) &&
+	    USERMODE(regsp->tf_cs, regsp->tf_eflags)) {
+		l4x_handle_user_pf(vcpu, p, u, regsp);
+	}
+
 	/* handle IRQs */
 	if (l4vcpu_is_irq_entry(vcpu)) {
+		vcpu->state |= L4_VCPU_F_IRQ;
 		l4x_vcpu_handle_irq(vcpu, regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
 		/* NOTREACHED */
 	}
+
+	if (vcpu->saved_state & L4_VCPU_F_IRQ)
+		vcpu->state |= L4_VCPU_F_IRQ;
 
 	/* handle syscalls */
 	if (l4x_vcpu_is_syscall(vcpu)) {
@@ -423,11 +431,6 @@ l4x_vcpu_entry(void)
 		dbg_printf("%s: Executing syscall: %s (%d) for %d\n", __func__,
 				syscallnames[regsp->tf_eax], regsp->tf_eax,
 				curproc->p_pid);
-		/*
-		 * Since we might go to sleep (think of wait4()), make damn sure
-		 * that we have IRQs enabled!
-		 */
-		vcpu->state |= L4_VCPU_F_IRQ;
 		syscall(regsp);
 		l4x_run_asts(regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
@@ -450,12 +453,6 @@ l4x_vcpu_entry(void)
 	}
 #endif
 	trap(regsp);	/* Generic OpenBSD trap handler. */
-
-	/* Special page fault handling for user mode. */
-	if (l4vcpu_is_page_fault_entry(vcpu) &&
-	    USERMODE(regsp->tf_cs, regsp->tf_eflags)) {
-		l4x_handle_user_pf(vcpu, p, u, regsp);
-	}
 
 	l4x_vcpu_iret(p, u, regsp, -1, 0, USERMODE(regsp->tf_cs, regsp->tf_eflags));
 	/* NOTREACHED */
