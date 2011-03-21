@@ -437,6 +437,7 @@ l4x_vcpu_entry(void)
 		dbg_printf("%s: Executing syscall: %s (%d) for %d\n", __func__,
 				syscallnames[regsp->tf_eax], regsp->tf_eax,
 				curproc->p_pid);
+		regsp->tf_err = 2;	/* size of instruction for restart */
 		syscall(regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
 		/* NOTREACHED */
