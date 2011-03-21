@@ -77,11 +77,15 @@ l4x_spllower(void)
 	l4x_run_asts(tf);
 }
 
+/*
+ * Run asynchronous system traps, if necessary.
+ */
 void l4x_run_asts(struct trapframe *tf)
 {
-	if (aston(curproc)) {
-		curproc->p_md.md_astpending = 0;
+	while (curproc && curproc->p_md.md_astpending) {
+		i386_atomic_testset_i(&curproc->p_md.md_astpending, 0);
 		if(USERMODE(tf->tf_cs, tf->tf_eflags)) {
+			qemulog(0x64, 0x65, 0x71, 0, 0, 0, 0, 0);
 			tf->tf_trapno = T_ASTFLT;
 			trap(tf);
 		}
@@ -196,7 +200,6 @@ handle_irq(int irq, struct trapframe *regs)
 	splx(s);		/* run all held back IRQs */
 
 	l4x_run_softintr();	/* handle softintrs */
-	l4x_run_asts(regs);	/* run ASTs */
 
 	return result;
 }

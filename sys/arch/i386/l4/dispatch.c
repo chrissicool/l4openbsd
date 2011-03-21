@@ -284,6 +284,12 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	utcb = l4_utcb();
 	L4XV_U(n);
 
+	l4x_run_asts(regs);
+
+#ifdef DIAGNOSTIC
+	splassert(IPL_NONE);
+#endif
+
 	/*
 	 * The vCPU saved state area is not re-entrant safe.
 	 * Disable interrupt delivery while playing around with it.
@@ -432,7 +438,6 @@ l4x_vcpu_entry(void)
 				syscallnames[regsp->tf_eax], regsp->tf_eax,
 				curproc->p_pid);
 		syscall(regsp);
-		l4x_run_asts(regsp);
 		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
 		/* NOTREACHED */
 	}
