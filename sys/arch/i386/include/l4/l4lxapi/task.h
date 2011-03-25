@@ -44,7 +44,7 @@ void l4lx_task_init(void);
  *
  * \return 0 on succes, -1 if task number invalid or already free
  */
-//int l4lx_task_number_free(l4_cap_idx_t task);
+int l4lx_task_number_free(l4_cap_idx_t task);
 
 /**
  * \brief Allocate a new task number and return threadid for user task.

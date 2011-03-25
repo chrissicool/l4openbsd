@@ -1704,6 +1704,7 @@ pmap_destroy(struct pmap *pmap)
 
 	/* Get rid of L4 task. */
 	l4lx_task_delete_thread(pmap->task);
+	l4lx_task_number_free(pmap->task);
 	pmap->task = L4_INVALID_CAP;
 #endif
 	pmap->pm_pdir = NULL;

@@ -18,6 +18,7 @@
 #include <l4/sys/types.h>
 #include <l4/sys/factory.h>
 #include <l4/re/env.h>
+#include <l4/sys/kdebug.h>
 
 /*
 #include <machine/l4/l4lxapi/generic/task_gen.h>
@@ -41,7 +42,7 @@
 void l4lx_task_init(void)
 {
 }
-/*
+
 int l4lx_task_number_free(l4_cap_idx_t id)
 {
 	if (l4_is_invalid_cap(id))
@@ -49,7 +50,7 @@ int l4lx_task_number_free(l4_cap_idx_t id)
 	l4x_cap_free(id);
 	return 0;
 }
-*/
+
 int l4lx_task_get_new_task(l4_cap_idx_t parent_id,
                            l4_cap_idx_t *id)
 {
