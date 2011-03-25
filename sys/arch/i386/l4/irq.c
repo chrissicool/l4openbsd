@@ -56,14 +56,7 @@ extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
 void
 l4x_spllower(void)
 {
-	struct proc *p = curproc;
-	struct trapframe *tf;
 	int s;
-
-	/* prepare trapframe */
-	tf = p->p_md.md_regs;
-//	tf->tf_cs |= (SEL_KPL & SEL_RPL);	/* kernel */
-//	tf->tf_eflags = 0;
 
 	for (s = NIPL; s > NIPL; s--) {
 		if (MAKEIPL(s) > lapic_tpr) {
@@ -78,20 +71,22 @@ l4x_spllower(void)
 			break;
 		}
 	}
-	l4x_run_asts(tf);
 }
 
 /*
  * Run asynchronous system traps, if necessary.
+ * Needs to be called with IRQ events disabled!
  */
 void l4x_run_asts(struct trapframe *tf)
 {
 	while (curproc && curproc->p_md.md_astpending) {
 		i386_atomic_testset_i(&curproc->p_md.md_astpending, 0);
 		if(USERMODE(tf->tf_cs, tf->tf_eflags)) {
+			enable_intr();
 			qemulog(0x64, 0x65, 0x71, 0, 0, 0, 0, 0);
 			tf->tf_trapno = T_ASTFLT;
 			trap(tf);
+			disable_intr();
 		}
 	}
 }
