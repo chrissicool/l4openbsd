@@ -51,7 +51,7 @@ extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
 
 /*
  * Recurse into all pending interrupts, when lowering the SPL.
- * We do _not_ actually lower the SPL here!
+ * We do _not_ actually lower the SPL here! See _SPLX for that.
  */
 void
 l4x_spllower(void)
@@ -67,8 +67,12 @@ l4x_spllower(void)
 
 	for (s = NIPL; s > NIPL; s--) {
 		if (MAKEIPL(s) > lapic_tpr) {
+			disable_intr();
 			if (curcpu()->ci_ipending & iunmask[s]) {
+				enable_intr();
 				run_irq_handlers(s);
+			} else {
+				enable_intr();
 			}
 		} else {
 			break;
@@ -165,7 +169,7 @@ run_irq_handlers(int irq)
 	i386_atomic_dec_i(&curcpu()->ci_idepth);
 
 	/* Ack current handled IRQ. */
-	curcpu()->ci_ipending &= ~(1 << irq);	/* handled */
+	atomic_clearbits_int(&curcpu()->ci_ipending, (1 << irq));
 	l4lx_irq_dev_eoi(irq);
 
 	return result;
@@ -191,7 +195,8 @@ handle_irq(int irq, struct trapframe *regs)
 
 	/* Check current splx(9) level */
 	if (iminlevel[irq] < lapic_tpr) {
-		curcpu()->ci_ipending |= (1 << irq);
+		atomic_setbits_int(&curcpu()->ci_ipending,
+		                    curcpu()->ci_ipending | (1 << irq));
 		return 1; /* handled */
 	}
 
