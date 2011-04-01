@@ -83,7 +83,6 @@ void l4x_run_asts(struct trapframe *tf)
 		i386_atomic_testset_i(&curproc->p_md.md_astpending, 0);
 		if(USERMODE(tf->tf_cs, tf->tf_eflags)) {
 			enable_intr();
-			qemulog(0x64, 0x65, 0x71, 0, 0, 0, 0, 0);
 			tf->tf_trapno = T_ASTFLT;
 			trap(tf);
 			disable_intr();
