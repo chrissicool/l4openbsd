@@ -33,17 +33,20 @@ struct l4x_stack_struct *l4x_stack_struct_get(struct user *ti)
 
 static inline l4_utcb_t *l4x_stack_utcb_get(void)
 {
+	KASSERT(curproc != NULL);
 	return l4x_stack_struct_get(curproc->p_addr)->l4utcb;
 }
 
 static inline l4_vcpu_state_t *l4x_stack_vcpu_state_get(void)
 {
+	KASSERT(curproc != NULL);
 	return l4x_stack_struct_get(curproc->p_addr)->vcpu;
 }
 
 static inline void l4x_stack_setup(struct user *ti,
 		                   l4_utcb_t *u, unsigned cpu)
 {
+	KASSERT(ti != NULL);
 	struct l4x_stack_struct *s = l4x_stack_struct_get(ti);
 	s->l4utcb = u;
 	s->vcpu = l4x_vcpu_state(cpu);
