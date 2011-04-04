@@ -98,10 +98,12 @@ l4serintr(void *arg)
 	struct tty *tp = sc->sc_tty;
 	int c, i = 0;
 
-	if (tp == NULL || (tp->t_state & TS_ISOPEN) == 0)
+	if (tp == NULL  || !ISSET(tp->t_state, TS_ISOPEN)
+			|| ISSET(tp->t_state, TS_BUSY))
 		return 0;
 
 	/* Fetch max. 20 character at once into line. */
+	SET(tp->t_state, TS_BUSY);
 	do {
 		if ((c = l4sercngetc(NODEV)) != -1) {
 #ifdef L4SER_DDB_KEY
@@ -111,6 +113,7 @@ l4serintr(void *arg)
 			(*linesw[tp->t_line].l_rint)(c, tp);
 		}
 	} while ((c != -1) && (i++ < 20));
+	CLR(tp->t_state, TS_BUSY);
 
 	ttwakeup(tp);
 	return -1;
@@ -173,7 +176,7 @@ l4seropen(dev_t dev, int oflags, int devtype, struct proc *p)
 	tp->t_oproc = l4serstart;
 	tp->t_param = l4serparam;
 	tp->t_dev = dev;
-	if ((tp->t_state & TS_ISOPEN) == 0) {
+	if (!ISSET(tp->t_state, TS_ISOPEN)) {
 		struct termios t;
 
 		t.c_ispeed = t.c_ospeed = TTYDEF_SPEED;
@@ -267,16 +270,21 @@ l4serstart(struct tty *tp)
 	int c, s;
 
 	s = spltty();
+
+	if (ISSET(tp->t_state, TS_TTSTOP | TS_TIMEOUT | TS_BUSY ))
+		goto out;
+
+	ttwakeupwr(tp);
 	if (tp->t_outq.c_cc == 0)
 		goto out;
 
+	SET(tp->t_state, TS_BUSY);
 	do {
 		if ((c = getc(&tp->t_outq)) != -1)
 			l4sercnputc(NODEV, c);
 	} while (c != -1);
-
+	CLR(tp->t_state, TS_BUSY);
 out:
-	ttwakeupwr(tp);
 	splx(s);
 }
 
