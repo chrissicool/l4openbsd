@@ -41,7 +41,7 @@ void l4x_vcpu_create_user_task(struct proc *p);
 
 static inline void l4x_vcpu_init(l4_vcpu_state_t *v)
 {
-	v->state     = L4_VCPU_F_EXCEPTIONS;
+	v->state     = L4_VCPU_F_EXCEPTIONS | L4_VCPU_F_PAGE_FAULTS;
 	v->entry_ip  = (l4_addr_t)&l4x_vcpu_entry;
 	v->user_task = L4_INVALID_CAP;
 }
