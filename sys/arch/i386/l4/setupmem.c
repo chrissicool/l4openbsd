@@ -213,11 +213,11 @@ static void l4x_setup_memory(char **cmdl,
 //		round_page((unsigned long)_end) >> 20,
 //			KERNBASE >> 20);
 
-//	if ((l4x_mainmem_size % L4_SUPERPAGESIZE) == 0) {
-//		LOG_printf("%s: Forcing superpages for main memory\n", __func__);
-//		/* force ds-mgr to allocate superpages */
-//		dm_flags |= L4RE_MA_SUPER_PAGES;
-//	}
+	if ((l4x_mainmem_size % L4_SUPERPAGESIZE) == 0) {
+		LOG_printf("%s: Forcing superpages for main memory\n", __func__);
+		/* force ds-mgr to allocate superpages */
+		dm_flags |= L4RE_MA_SUPER_PAGES;
+	}
 
 	/* Allocate main memory */
 	if (l4_is_invalid_cap(l4x_ds_mainmem = l4re_util_cap_alloc())) {
