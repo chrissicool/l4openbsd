@@ -88,6 +88,7 @@
 #include <l4/sys/types.h>
 #include <l4/sys/task.h>
 #include <l4/sys/ipc.h>
+#include <l4/sys/debugger.h>
 
 //#define PMAP_DEBUG
 #ifdef PMAP_DEBUG
@@ -1868,20 +1869,16 @@ pmap_switch(struct proc *o, struct proc *p)
 	lldt(pcb->pcb_ldt_sel);
 
 #ifdef L4
+// #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
 	/*
-	 * Set vCPU properties for the new task lazy in l4x_vcpu_iret().
+	 * Set process's name for Fiasco's kernel debugger.
 	 */
-
-
-#ifdef MULTIPROCESSOR
-	l4_vcpu_state_t *vcpu;
-	vcpu = l4x_vcpu_state(cpu_number());
-
-	l4x_stack_struct_get(p->p_addr)->vcpu = vcpu;
-	l4x_stack_struct_get(p->p_addr)->l4utcb =
-		l4x_stack_struct_get(o->p_addr)->l4utcb;
+	char s[20];
+	snprintf(s, sizeof(s), "l4bsd.%s", p->p_comm);
+	s[sizeof(s)-1] = 0;
+	l4_debugger_set_object_name(pmap->task, s);
+// #endif /* CONFIG_L4_DEBUG_REGISTER_NAMES */
 #endif
-#endif	/* L4 */
 }
 
 void
