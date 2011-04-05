@@ -257,7 +257,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 #endif
 		config_found(self, &mba.mba_eba, mainbus_print);
 	}
-#endif
+#endif /* !L4 */
 
 	if (isa_has_been_seen == 0) {
 		mba.mba_iba.iba_busname = "isa";
