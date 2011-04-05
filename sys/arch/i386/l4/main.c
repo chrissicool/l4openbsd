@@ -180,7 +180,7 @@ void exit(int code);
 #ifdef RAMDISK_HOOKS
 
 extern u_int32_t rd_root_size;		/* from dev/rd.c */
-extern char rd_root_image[];		/* from dev/rd.c */
+extern char *rd_root_image;		/* from dev/rd.c */
 
 #define L4X_MAX_RD_PATH 200
 static char l4x_rd_path[L4X_MAX_RD_PATH];
@@ -1154,7 +1154,6 @@ static int fprov_load_initrd(const char *filename,
 	int ret;
 	l4re_ds_stats_t dsstat;
 	l4re_ds_t l4x_initrd_ds;
-	l4_cap_idx_t *dscap = &l4x_initrd_ds;
 	l4_addr_t addr;
 
 	/*
@@ -1169,15 +1168,11 @@ static int fprov_load_initrd(const char *filename,
 		return -1;
 	}
 
-	/* copy the ramdisk */
-	memcpy(rd_start, (void *)addr, dsstat.size);
-	rd_root_size = dsstat.size;
-//	LOG_printf("Data copied.\n");
+	/* Alter ramdisk hooks */
+	rd_root_image = (char *)addr;
+	rd_root_size  = dsstat.size;
 
-	/* detach ds again */
-//	l4re_rm_detach(&addr);
-	l4x_cap_free(*dscap);
-//	LOG_printf("Detached DS.\n");
+	/* Note: ds never gets detached again. */
 
 	LOG_flush();
 	return 0;

@@ -41,7 +41,6 @@ option		DDB		# in-kernel debugger
 option		DDB_STRUCT	#    can "show struct"
 option		DIAGNOSTIC	# enable extended error-checking
 option		RAMDISK_HOOKS
-option		MINIROOTSIZE=3800
 
 maxusers	4
 
