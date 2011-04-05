@@ -277,12 +277,18 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	l4_msgtag_t tag;
 	l4_utcb_t *utcb;
 	struct pmap *pmap = p->p_vmspace->vm_map.pmap;
-	l4_vcpu_state_t *vcpu = l4x_stack_vcpu_state_get();
+	l4_vcpu_state_t *vcpu = l4x_vcpu_state(cpu_number());
 	L4XV_V(n);
 
 	L4XV_L(n);
 	utcb = l4_utcb();
 	L4XV_U(n);
+
+#ifdef MULTIPROCESSOR
+	l4x_stack_struct_get(p->p_addr)->vcpu = vcpu;
+	l4x_stack_struct_get(p->p_addr)->l4utcb =
+		l4x_stack_struct_get(o->p_addr)->l4utcb;
+#endif
 
 	/*
 	 * The vCPU saved state area is not re-entrant safe.
