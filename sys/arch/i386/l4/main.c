@@ -243,7 +243,7 @@ int L4_CV l4start(int argc, char **argv)
 	LOG_printf("OpenBSD kernel command line (%d args): ", argc - 1);
 	char **iterate_argv = argv;
 	while (*iterate_argv) {
-		LOG_printf("%s ", *argv);
+		LOG_printf("%s ", *iterate_argv);
 		iterate_argv++;
 	}
 	LOG_printf("\n");
