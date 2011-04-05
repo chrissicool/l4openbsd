@@ -206,13 +206,13 @@ static void l4x_setup_memory(char **cmdl,
 	 * Pretend to have the kernel mapped in at the front, so there is no
 	 * need to waste real memory for it.
 	 */
-	memory_area_id = PA_START;
-	l4x_mainmem_size -= round_page((unsigned long)_end) - KERNBASE;
-//	LOG_printf("l4x_mainmem_size=%ldMB, end=%ldMB, KERNBASE=%ldMB\n",
-//		l4x_mainmem_size >> 20,
-//		round_page((unsigned long)_end) >> 20,
-//			KERNBASE >> 20);
 
+	memory_area_id = PA_START;
+	LOG_printf("Main memory size: %ldMB\n", l4x_mainmem_size >> 20);
+	if (l4x_mainmem_size < (4 << 20)) {
+		LOG_printf("Need at least 4MB RAM - aborting!\n");
+		l4x_exit_l4linux();
+	}
 	if ((l4x_mainmem_size % L4_SUPERPAGESIZE) == 0) {
 		LOG_printf("%s: Forcing superpages for main memory\n", __func__);
 		/* force ds-mgr to allocate superpages */
@@ -221,7 +221,7 @@ static void l4x_setup_memory(char **cmdl,
 
 	/* Allocate main memory */
 	if (l4_is_invalid_cap(l4x_ds_mainmem = l4re_util_cap_alloc())) {
-		LOG_printf("%s: Out of caps\n", __func__);
+		LOG_printf("%s: No capability for main memory left\n", __func__);
 		l4x_exit_l4linux();
 	}
 	if (l4re_ma_alloc(l4x_mainmem_size, l4x_ds_mainmem, dm_flags)) {
@@ -247,12 +247,6 @@ static void l4x_setup_memory(char **cmdl,
 		}
 	}
 #endif
-
-	LOG_printf("Effective main memory size: %ldMB\n", l4x_mainmem_size >> 20);
-	if (l4x_mainmem_size < (4 << 20)) {
-		LOG_printf("Need at least 4MB RAM - aborting!\n");
-		l4x_exit_l4linux();
-	}
 
 	memory_area_size = l4x_mainmem_size;
 
