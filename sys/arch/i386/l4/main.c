@@ -314,6 +314,10 @@ int L4_CV l4start(int argc, char **argv)
 
 	l4x_start_thread_id = l4re_env()->main_thread;
 
+// #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+	l4_debugger_set_object_name(l4x_start_thread_id, "l4bsd.main");
+// #endif /* CONFIG_L4_DEBUG_REGISTER_NAMES */
+
 	l4_thread_control_start();
 	l4_thread_control_commit(l4x_start_thread_id);
 	l4x_start_thread_pager_id
