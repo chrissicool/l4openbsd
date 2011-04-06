@@ -1038,6 +1038,7 @@ int l4x_re_resolve_name(const char *name, l4_cap_idx_t *cap)
 		return ENOENT;
 	}
 
+	L4XV_U(f);
 	return 0;
 }
 
