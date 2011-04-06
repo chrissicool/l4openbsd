@@ -192,6 +192,11 @@ static int fprov_load_initrd(const char *filename,
 int l4x_query_and_get_ds(const char *name, const char *logprefix,
 		l4_cap_idx_t *dscap, void **addr,
 		l4re_ds_stats_t *dsstat);
+int l4x_query_and_get_cow_ds(const char *name, const char *logprefix,
+                             l4_cap_idx_t *memcap,
+                             l4_cap_idx_t *dscap, void **addr,
+                             l4re_ds_stats_t *stat,
+                             int pass_through_if_rw_src_ds);
 
 #endif /* RAMDISK_HOOKS */
 
@@ -1156,14 +1161,16 @@ static int fprov_load_initrd(const char *filename,
 	l4re_ds_stats_t dsstat;
 	l4re_ds_t l4x_initrd_ds;
 	l4_addr_t addr;
+	l4_cap_idx_t memcap;
 
 	/*
 	 * Try to map the ramdisk way before KVA_START.
 	 */
 	addr = KVA_START/4;
 
-	if ((ret = l4x_query_and_get_ds(filename, "initrd", &l4x_initrd_ds,
-	                                (void **)&addr, &dsstat))) {
+	if ((ret = l4x_query_and_get_cow_ds(filename, "initrd",
+					&memcap, &l4x_initrd_ds,
+	                                (void **)&addr, &dsstat, 1))) {
 		LOG_printf("error mapping ds %d: %s. ",
 		           ret, l4sys_errtostr(ret));
 		return -1;
@@ -1210,6 +1217,82 @@ int l4x_query_and_get_ds(const char *name, const char *logprefix,
 out:
 	l4x_cap_free(*dscap);
 	L4XV_U(f);
+	return ret;
+}
+
+int l4x_query_and_get_cow_ds(const char *name, const char *logprefix,
+                             l4_cap_idx_t *memcap,
+                             l4_cap_idx_t *dscap, void **addr,
+                             l4re_ds_stats_t *stat,
+                             int pass_through_if_rw_src_ds)
+{
+	int ret;
+	L4XV_V(f);
+
+	*memcap = L4_INVALID_CAP;
+	*addr = NULL;
+
+	ret = l4x_re_resolve_name(name, dscap);
+	if (ret)
+		return ret;
+
+	L4XV_L(f);
+	if ((ret = l4re_ds_info(*dscap, stat)))
+		goto out1;
+
+	if ((stat->flags & L4RE_DS_MAP_FLAG_RW)
+	    && pass_through_if_rw_src_ds) {
+		// pass-through mode
+
+		if ((ret = l4re_rm_attach(addr, stat->size,
+		                          L4RE_RM_SEARCH_ADDR
+		                            | L4RE_RM_EAGER_MAP,
+		                          *dscap, 0, L4_PAGESHIFT)))
+			goto out1;
+
+	} else {
+		// cow
+		if (l4_is_invalid_cap(*memcap = l4x_cap_alloc()))
+			goto out1;
+
+		if ((ret = l4re_ma_alloc(stat->size, *memcap, 0)))
+			goto out2;
+
+		if ((ret = l4re_ds_copy_in(*memcap, 0, *dscap, 0, stat->size)))
+			goto out3;
+
+		if ((ret = l4re_rm_attach(addr, stat->size,
+		                          L4RE_RM_SEARCH_ADDR
+		                            | L4RE_RM_EAGER_MAP,
+		                          *memcap,
+		                          0, L4_PAGESHIFT)))
+			goto out3;
+
+		ret = -ENOMEM;
+		if (l4re_ds_info(*memcap, stat))
+			goto out4;
+	}
+
+	L4XV_U(f);
+	return 0;
+
+out4:
+	if (*addr)
+		l4re_rm_detach(*addr);
+
+out3:
+	if (l4_is_valid_cap(*memcap))
+		l4re_ma_free(*memcap);
+
+out2:
+	if (l4_is_valid_cap(*memcap)) {
+		l4re_ma_free(*memcap);
+		l4re_util_cap_release(*memcap);
+	}
+out1:
+	l4re_util_cap_release(*dscap);
+	L4XV_U(f);
+	l4x_cap_free(*dscap);
 	return ret;
 }
 
