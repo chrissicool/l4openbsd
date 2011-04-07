@@ -1143,6 +1143,7 @@ void l4x_load_initrd(char **command_line)
 		                      rd_root_size)) {
 			LOG_printf("failed\n");
 			LOG_flush();
+			l4x_exit_l4linux();
 			return;
 		}
 
