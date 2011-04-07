@@ -392,6 +392,7 @@ void	setcslimit(struct pmap *, struct trapframe *, struct pcb *, vaddr_t);
  * p m a p   L 4   s p e c i f i c   f u n c t i o n s
  */
 
+
 /*
  * Conditionally run the page fault handler on the given map,
  * if user space address uva is not already mapped. Update the protection
@@ -399,7 +400,7 @@ void	setcslimit(struct pmap *, struct trapframe *, struct pcb *, vaddr_t);
  * Return the equivalent physical RAM address.
  */
 paddr_t *
-l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
+l4x_pmap_walk_pd(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 {
 	struct pmap *pmap = map->pmap;
 	pd_entry_t *pd;
@@ -409,12 +410,13 @@ l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 	if (pmap == NULL)
 		return NULL;
 
+start_walk:
 	pd = pmap_map_pdes(pmap);			/* lock pmap */
 	ptes = (pt_entry_t *)(pd[pdei(uva)] & PG_FRAME);
 	pmap_unmap_pdes(pmap);				/* unlock pmap */
 
 	/* step 1: check the page directory entry */
-	if (!pmap_valid_entry(pmap->pm_pdir[pdei(uva)])) {
+	if (!pmap_valid_entry(pd[pdei(uva)])) {
 		pdb_printf("%s: Attempting uvm_fault(%p, %p, 0, %d)\n",
 				__func__, map, uva, access_type);
 		if (uvm_fault(map, uva, 0, access_type))
@@ -422,9 +424,7 @@ l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
 		pdb_printf("  => no page table\n");
-		pd = pmap_map_pdes(pmap);		/* lock pmap */
-		ptes = (pt_entry_t *)(pd[pdei(uva)] & PG_FRAME);
-		pmap_unmap_pdes(pmap);			/* unlock pmap */
+		goto start_walk;
 	}
 
 	pte = &ptes[ptei(uva)];
@@ -438,13 +438,13 @@ l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
 		pdb_printf("  => no page table entry\n");
-		pte = &ptes[ptei(uva)];
+		goto start_walk;
 	}
 
 	md_prot = protection_codes[access_type];
 
 	/* step 3: check permissions */
-	if ((md_prot & PG_RW) && (*pte & ~PG_RW)) {
+	if ((md_prot & PG_RW) && !(*pte & PG_RW)) {
 		pdb_printf("%s: Attempting uvm_fault((%p, %p, 0, %d)\n",
 				__func__, map, uva, access_type);
 		if (uvm_fault(map, uva, 0, access_type))
@@ -452,6 +452,7 @@ l4x_run_uvm_fault(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
 		pdb_printf("  => wrong permissions\n");
+		goto start_walk;
 	}
 
 
@@ -2638,7 +2639,7 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 #ifdef not_for_L4
 			/*
 			 * This happens on L4, if the PA changed on pmap_enter()
-			 * and running l4x_run_uvm_fault() afterwards. So this
+			 * and running l4x_pmap_walk_pd() afterwards. So this
 			 * function will be presented a valid va.
 			 */
 			printf("pmap_unwire: wiring for pmap %p va 0x%lx "

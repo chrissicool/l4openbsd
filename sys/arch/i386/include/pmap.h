@@ -432,7 +432,7 @@ kvtopte(vaddr_t kva)
 
 pd_entry_t	*pmap_map_pdes(struct pmap *);
 void		pmap_unmap_pdes(struct pmap *);
-paddr_t		*l4x_run_uvm_fault(vm_map_t, vaddr_t, vm_prot_t);
+paddr_t		*l4x_pmap_walk_pd(vm_map_t, vaddr_t, vm_prot_t);
 
 #endif /* L4 */
 

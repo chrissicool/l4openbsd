@@ -51,7 +51,7 @@ l4x_copyout(void *src, void *dst, size_t len)
 
 	/* loop for each page */
 	while (len > 0) {
-		dst_p = l4x_run_uvm_fault(map, (vaddr_t)dst,
+		dst_p = l4x_pmap_walk_pd(map, (vaddr_t)dst,
 				VM_PROT_READ|VM_PROT_WRITE);
 		if (dst_p == NULL)
 			return EFAULT;
@@ -94,7 +94,7 @@ l4x_copyin(void *src, void *dst, size_t len)
 
 	/* loop for each page */
 	while (len > 0) {
-		src_p = l4x_run_uvm_fault(map, (vaddr_t)src, VM_PROT_READ);
+		src_p = l4x_pmap_walk_pd(map, (vaddr_t)src, VM_PROT_READ);
 		if (src_p == NULL)
 			return EFAULT;
 
@@ -143,7 +143,7 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 
 	/* loop for each page */
 	while (len > 0) {
-		dst_p = (char *)l4x_run_uvm_fault(map, (vaddr_t)dst,
+		dst_p = (char *)l4x_pmap_walk_pd(map, (vaddr_t)dst,
 				VM_PROT_READ | VM_PROT_WRITE);
 		if (dst_p == NULL)
 			return EFAULT;
@@ -215,7 +215,7 @@ l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 
 	/* loop for each page */
 	while (len > 0) {
-		src_p = (char *)l4x_run_uvm_fault(map, (vaddr_t)src, VM_PROT_READ);
+		src_p = (char *)l4x_pmap_walk_pd(map, (vaddr_t)src, VM_PROT_READ);
 		if (src_p == NULL)
 			return EFAULT;
 

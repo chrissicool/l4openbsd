@@ -231,8 +231,8 @@ l4x_ret_from_fork(void)
 
 /*
  * Handle user page faults differently. We need to find out, what to map
- * into user address space first. If called after trap(struct trapframe *),
- * execution time is cheap.
+ * into user address space. If we cannot figure out the right address,
+ * trap() needs to SIGSEGV the proc.
  */
 void
 l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
@@ -253,21 +253,33 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 	 * or trap() already SIGSEGV'd curproc.
 	 */
 	prot |= l4x_vcpu_is_write_pf(vcpu) ? VM_PROT_WRITE : 0;
-	kpa = l4x_run_uvm_fault(map, uva, prot);
+	kpa = l4x_pmap_walk_pd(map, uva, prot);
 
-	if (kpa && (uva < VM_MAXUSER_ADDRESS)) {
-		upage = (upage & L4_PAGEMASK) | L4_ITEM_MAP;
-		if (l4x_vcpu_is_write_pf(vcpu))
-			kpage = l4_fpage((unsigned long)kpa, fpage_size,
-					L4_FPAGE_RW).fpage;
-		else
-			kpage = l4_fpage((unsigned long)kpa, fpage_size,
-					L4_FPAGE_RO).fpage;
+	if (!kpa || uva > VM_MAXUSER_ADDRESS)
+		return;
 
-//		printf("%s: cl: Sending %p for user %#x\n", __func__, kpa, uva);
-		l4x_vcpu_iret(p, u, regsp, upage, kpage, 1);
-		/* NOTREACHED */
+#ifdef DIAGNOSTIC
+	/*
+	 * Sanety check results. Page fault handler might have gone crazy.
+	 */
+	if (((unsigned long)kpa < PA_START) || ((unsigned long)kpa > PA_START + l4x_mainmem_size)) {
+		printf("Got invalid PA %p for VA %p (%d, %s)\n",
+				kpa, uva, p->p_pid, p->p_comm);
+		return;
 	}
+#endif
+
+	upage = (upage & L4_PAGEMASK) | L4_ITEM_MAP;
+	if (l4x_vcpu_is_write_pf(vcpu))
+		kpage = l4_fpage((unsigned long)kpa, fpage_size,
+				L4_FPAGE_RW).fpage;
+	else
+		kpage = l4_fpage((unsigned long)kpa, fpage_size,
+				L4_FPAGE_RO).fpage;
+
+//	printf("%s: cl: Sending %p for user %#x\n", __func__, kpa, uva);
+	l4x_vcpu_iret(p, u, regsp, upage, kpage, 1);
+	/* NOTREACHED */
 }
 
 static inline void
@@ -367,6 +379,9 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 void
 l4x_vcpu_entry(void)
 {
+	extern void trap(struct trapframe *frame);
+	extern void syscall(struct trapframe *);
+
 	struct proc *p;
 	struct user *u;
 	struct trapframe kernel_tf;		/* kernel mode frame */
@@ -424,7 +439,7 @@ l4x_vcpu_entry(void)
 	if (l4vcpu_is_irq_entry(vcpu)) {
 		vcpu->state |= L4_VCPU_F_IRQ;
 		l4x_vcpu_handle_irq(vcpu, regsp);
-		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+		l4x_vcpu_iret(p, u, regsp, 0, 0, 1);
 		/* NOTREACHED */
 	}
 
@@ -433,19 +448,16 @@ l4x_vcpu_entry(void)
 
 	/* handle syscalls */
 	if (l4x_vcpu_is_syscall(vcpu)) {
-		extern void syscall(struct trapframe *);
-
-		regsp->tf_eip += 2;	/* return behind "int 0x80" */
 		dbg_printf("%s: Executing syscall: %s (%d) for %d\n", __func__,
 				syscallnames[regsp->tf_eax], regsp->tf_eax,
 				curproc->p_pid);
+
+		regsp->tf_eip += 2;	/* return behind "int 0x80" */
 		regsp->tf_err = 2;	/* size of instruction for restart */
 		syscall(regsp);
-		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+		l4x_vcpu_iret(p, u, regsp, 0, 0, 1);
 		/* NOTREACHED */
 	}
-
-	extern void trap(struct trapframe *frame);
 
 	regsp->tf_trapno = vcpu2trapno[regsp->tf_trapno];
 	dbg_printf("%s: Executing trap: %s (%d) [%s]\n", __func__,
@@ -456,12 +468,12 @@ l4x_vcpu_entry(void)
 	/* Treat FPU traps special */
 	if ((regsp->tf_trapno == T_DNA) &&
 	    (npxdna_func(curcpu()) != 0)) {
-		l4x_vcpu_iret(p, u, regsp, -1, 0, 1);
+		l4x_vcpu_iret(p, u, regsp, 0, 0, 1);
 		/* NOTREACHED */
 	}
 #endif
 	trap(regsp);	/* Generic OpenBSD trap handler. */
 
-	l4x_vcpu_iret(p, u, regsp, -1, 0, USERMODE(regsp->tf_cs, regsp->tf_eflags));
+	l4x_vcpu_iret(p, u, regsp, 0, 0, USERMODE(regsp->tf_cs, regsp->tf_eflags));
 	/* NOTREACHED */
 }
