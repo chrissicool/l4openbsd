@@ -265,11 +265,11 @@ int bitmap_find_free_region(unsigned long *bitmap, int bits, int order)
  *      megabyte, or one gigabyte, respectively.
  */
 
-unsigned long long memparse(const char *ptr, char **retptr)
+unsigned long memparse(const char *ptr, char **retptr)
 {
 	char *endptr;   /* local pointer to end of parsed string */
 
-	unsigned long long ret = strtoull(ptr, &endptr, 0);
+	unsigned long ret = strtoul(ptr, &endptr, 0);
 
 	switch (*endptr) {
 		case 'G':

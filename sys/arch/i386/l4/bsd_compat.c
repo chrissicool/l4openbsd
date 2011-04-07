@@ -63,16 +63,16 @@ strstr(const char *s, const char *find)
 }
 
 /*
- * Convert a string to an unsigned long long.
+ * Convert a string to an unsigned long.
  *
  * Ignores `locale' stuff.  Assumes that the upper and lower case
  * alphabets and digits are each contiguous.
  */
-unsigned long long
-strtoull(const char *nptr, char **endptr, int base)
+unsigned long
+strtoul(const char *nptr, char **endptr, int base)
 {
 	const char *s;
-	unsigned long long acc, cutoff;
+	unsigned long acc, cutoff;
 	int c;
 	int neg, any, cutlim;
 
@@ -100,8 +100,8 @@ strtoull(const char *nptr, char **endptr, int base)
 	if (base == 0)
 		base = c == '0' ? 8 : 10;
 
-	cutoff = ULLONG_MAX / (unsigned long long)base;
-	cutlim = ULLONG_MAX % (unsigned long long)base;
+	cutoff = ULONG_MAX / (unsigned long)base;
+	cutlim = ULONG_MAX % (unsigned long)base;
 	for (acc = 0, any = 0;; c = (unsigned char) *s++) {
 		if (isdigit(c))
 			c -= '0';
@@ -115,10 +115,10 @@ strtoull(const char *nptr, char **endptr, int base)
 			continue;
 		if (acc > cutoff || (acc == cutoff && c > cutlim)) {
 			any = -1;
-			acc = ULLONG_MAX;
+			acc = ULONG_MAX;
 		} else {
 			any = 1;
-			acc *= (unsigned long long)base;
+			acc *= (unsigned long)base;
 			acc += c;
 		}
 	}

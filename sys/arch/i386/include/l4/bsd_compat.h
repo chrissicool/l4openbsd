@@ -40,7 +40,7 @@
 extern const char	*_ctype_;
 
 char *strstr(const char *s, const char *find);
-unsigned long long strtoull(const char *nptr, char **endptr, int base);
+unsigned long strtoul(const char *nptr, char **endptr, int base);
 
 #define _U      0x01
 #define _L      0x02

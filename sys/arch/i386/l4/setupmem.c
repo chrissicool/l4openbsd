@@ -179,7 +179,7 @@ static void l4x_setup_memory(char **cmdl,
                              paddr_t *isa_dma_mem_startp,
                              paddr_t *isa_dma_mem_endp)
 {
-	int res;
+	unsigned long res;
 	char *memstr, **i_cmdl;
 	unsigned long memory_area_size;
 	l4_addr_t memory_area_id;
@@ -194,8 +194,9 @@ static void l4x_setup_memory(char **cmdl,
 	i_cmdl = cmdl;
 	while(*i_cmdl) {
 		if ((memstr = strstr(*i_cmdl, "mem="))
-				&& (res = memparse(memstr + 4, &memstr)))
+				&& (res = memparse(memstr + 4, &memstr))) {
 			l4x_mainmem_size = res;
+		}
 		i_cmdl++;
 	}
 
