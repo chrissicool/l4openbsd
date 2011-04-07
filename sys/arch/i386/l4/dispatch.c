@@ -36,6 +36,7 @@
 #include <l4/sys/debugger.h>
 #include <l4/sys/thread.h>
 #include <l4/sys/ipc.h>
+#include <l4/util/util.h>
 #include <l4/re/consts.h>
 #include <l4/log/log.h>
 
@@ -66,6 +67,8 @@ static inline void l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu);
 static void l4x_arch_task_start_setup(struct proc *p);
 void l4x_ret_from_fork(void);
 void l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
+		struct trapframe *regsp);
+void l4x_handle_kernel_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 		struct trapframe *regsp);
 static inline void l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		l4_umword_t fp1, l4_umword_t fp2, int copy_ptregs);
@@ -282,6 +285,24 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 	/* NOTREACHED */
 }
 
+/*
+ * Handle pagefaults, which OpenBSD cannot handle.
+ * L4re may steal memory from us. Since we are our own pager, we need to handle
+ * that case. Touching the page is usually enough.
+ */
+void
+l4x_handle_kernel_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
+		struct trapframe *regsp)
+{
+	if (l4x_vcpu_is_write_pf(vcpu))
+		l4_touch_rw((const void *)l4x_l4pfa(vcpu), 1);
+	else
+		l4_touch_ro((const void *)l4x_l4pfa(vcpu), 1);
+
+	l4x_vcpu_iret(p, u, regsp, 0, 0, 1);
+	/* NOTREACHED */
+}
+
 static inline void
 l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		l4_umword_t fp1, l4_umword_t fp2, int copy_ptregs)
@@ -433,6 +454,14 @@ l4x_vcpu_entry(void)
 	if ((regsp->tf_trapno == 0xe) &&
 	    USERMODE(regsp->tf_cs, regsp->tf_eflags)) {
 		l4x_handle_user_pf(vcpu, p, u, regsp);
+	}
+
+	/* Special page fault handling for kernel addresses other than KVA. */
+	if ((regsp->tf_trapno == 0xe) &&
+	    KERNELMODE(regsp->tf_cs, regsp->tf_eflags) &&
+	    (l4x_l4pfa(vcpu) < KVA_START || l4x_l4pfa(vcpu) > L4LX_USER_KERN_AREA_END)) {
+		enter_kdebug("pagefault on L4re memory");
+		l4x_handle_kernel_pf(vcpu, p, u, regsp);
 	}
 
 	/* handle IRQs */
