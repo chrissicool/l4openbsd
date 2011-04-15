@@ -116,6 +116,7 @@ l4serintr(void *arg)
 	CLR(tp->t_state, TS_BUSY);
 
 	ttwakeup(tp);
+	l4serstart(tp);
 	return -1;
 }
 
