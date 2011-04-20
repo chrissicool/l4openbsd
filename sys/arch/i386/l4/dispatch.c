@@ -408,6 +408,7 @@ l4x_vcpu_entry(void)
 	struct trapframe kernel_tf;		/* kernel mode frame */
 	struct trapframe *regsp;
 	l4_vcpu_state_t *vcpu;
+	int l4x_vcpu_was_syscall = 0;
 	L4XV_V(n);
 
 	L4XV_L(n);
@@ -472,11 +473,15 @@ l4x_vcpu_entry(void)
 		/* NOTREACHED */
 	}
 
+	/* flag syscalls for later */
+	if (l4x_vcpu_is_syscall(vcpu))
+		l4x_vcpu_was_syscall = 1;
+
 	if (vcpu->saved_state & L4_VCPU_F_IRQ)
 		vcpu->state |= L4_VCPU_F_IRQ;
 
 	/* handle syscalls */
-	if (l4x_vcpu_is_syscall(vcpu)) {
+	if (l4x_vcpu_was_syscall) {
 		dbg_printf("%s: Executing syscall: %s (%d) for %d\n", __func__,
 				syscallnames[regsp->tf_eax], regsp->tf_eax,
 				curproc->p_pid);
