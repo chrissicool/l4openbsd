@@ -37,8 +37,6 @@
 #include <sys/limits.h>
 #include <lib/libkern/libkern.h>
 
-const char	*_ctype_;
-
 /*
  * This is code taken from OpenBSD libc.
  */

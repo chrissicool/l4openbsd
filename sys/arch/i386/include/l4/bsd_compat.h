@@ -37,38 +37,41 @@
 #ifndef __MACHINE_L4_BSD_COMPAT_H
 #define __MACHINE_L4_BSD_COMPAT_H
 
-extern const char	*_ctype_;
-
 char *strstr(const char *s, const char *find);
 unsigned long strtoul(const char *nptr, char **endptr, int base);
 
-#define _U      0x01
-#define _L      0x02
-#define _N      0x04
-#define _S      0x08
-#define _P      0x10
-#define _C      0x20
-#define _X      0x40
-#define _B      0x80
-
-static inline int isspace(int c)
+static inline
+int isspace(int c)
 {
-	return (c == -1 ? 0 : ((_ctype_ + 1)[(unsigned char)c] & _S));
+	unsigned char t = c;
+	return ((t == ' '));
 }
 
-static inline int isupper(int c)
+static inline
+int isupper(int c)
 {
-	return (c == -1 ? 0 : ((_ctype_ + 1)[(unsigned char)c] & _U));
+	unsigned char t = c;
+	return ((t >= 'A') && (t <= 'A'));
 }
 
-static inline int isdigit(int c)
+static inline
+int islower(int c)
 {
-	return (c == -1 ? 0 : ((_ctype_ + 1)[(unsigned char)c] & _N));
+	unsigned char t = (unsigned char)c;
+	return ((t >= 'a') && (t <= 'z'));
 }
 
-static inline int isalpha(int c)
+static inline
+int isalpha(int c)
 {
-	return (c == -1 ? 0 : ((_ctype_ + 1)[(unsigned char)c] & (_U|_L)));
+	return (isupper(c) || islower(c));
+}
+
+static inline
+int isdigit(int c)
+{
+	unsigned char t = (unsigned char)c;
+	return ((t >= '0' && t <= '9') ? 1 : 0);
 }
 
 #endif /* __MACHINE_L4_BSD_COMPAT_H */
