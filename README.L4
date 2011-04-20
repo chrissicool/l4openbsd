@@ -19,7 +19,7 @@ Build kernel:
      makeoption L4_BUILDDIR
  - build the kernel on OpenBSD
    # cd /home/l4/openbsd/
-   # mkdir obj/sys
+   # mkdir -p obj/sys
    # cd obj/sys
    # ln -s /home/l4/openbsd/src/sys/arch/i386/conf/L4 .
    # config -b . -s /home/l4/openbsd/src/sys/ L4
