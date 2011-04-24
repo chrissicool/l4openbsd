@@ -244,7 +244,6 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 	paddr_t *kpa;
 	vaddr_t  uva = (vaddr_t)trunc_page(vcpu->r.pfa);
 	vm_prot_t prot = VM_PROT_READ;
-	struct vm_map *map = &p->p_vmspace->vm_map;
 	l4_umword_t upage = 0, kpage = 0;
 	unsigned fpage_size = L4_LOG2_PAGESIZE;
 
@@ -256,7 +255,7 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 	 * or trap() already SIGSEGV'd curproc.
 	 */
 	prot |= l4x_vcpu_is_write_pf(vcpu) ? VM_PROT_WRITE : 0;
-	kpa = l4x_pmap_walk_pd(map, uva, prot);
+	kpa = l4x_pmap_walk_pd(p, uva, prot);
 
 	if (!kpa || uva > VM_MAXUSER_ADDRESS)
 		return;

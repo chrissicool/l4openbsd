@@ -36,22 +36,16 @@ int	l4x_copyinstr(char *, char *, size_t, size_t *);
 int
 l4x_copyout(void *src, void *dst, size_t len)
 {
-	struct vm_map *map;
+	struct proc *p = curproc;
 	paddr_t *dst_p, upper_bound;
 	size_t copy_len;
 	L4XV_V(n);
 
 	debug_printf("l4x_copyout(%p, %p, %d)\n", src, dst, len);
 
-	if (curproc->p_vmspace == NULL ||
-	    &curproc->p_vmspace->vm_map == NULL)
-		return EFAULT;
-
-	map = &curproc->p_vmspace->vm_map;
-
 	/* loop for each page */
 	while (len > 0) {
-		dst_p = l4x_pmap_walk_pd(map, (vaddr_t)dst,
+		dst_p = l4x_pmap_walk_pd(p, (vaddr_t)dst,
 				VM_PROT_READ|VM_PROT_WRITE);
 		if (dst_p == NULL)
 			return EFAULT;
@@ -79,22 +73,16 @@ l4x_copyout(void *src, void *dst, size_t len)
 int
 l4x_copyin(void *src, void *dst, size_t len)
 {
-	struct vm_map *map;
+	struct proc *p = curproc;
 	paddr_t *src_p, upper_bound;
 	size_t copy_len;
 	L4XV_V(n);
 
 	debug_printf("l4x_copyin(%p, %p, %d)\n", src, dst, len);
 
-	if (curproc->p_vmspace == NULL ||
-	    &curproc->p_vmspace->vm_map == NULL)
-		return EFAULT;
-
-	map = &curproc->p_vmspace->vm_map;
-
 	/* loop for each page */
 	while (len > 0) {
-		src_p = l4x_pmap_walk_pd(map, (vaddr_t)src, VM_PROT_READ);
+		src_p = l4x_pmap_walk_pd(p, (vaddr_t)src, VM_PROT_READ);
 		if (src_p == NULL)
 			return EFAULT;
 
@@ -125,7 +113,7 @@ l4x_copyin(void *src, void *dst, size_t len)
 int
 l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 {
-	struct vm_map *map;
+	struct proc *p = curproc;
 	char *dst_p;
 	paddr_t upper_bound;
 	size_t copy_len, copied;
@@ -133,17 +121,12 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 
 	debug_printf("l4x_copyoutstr(%p, %p, %d)\n", src, dst, len);
 
-	if (curproc->p_vmspace == NULL ||
-	    &curproc->p_vmspace->vm_map == NULL)
-		return EFAULT;
-
-	map = &curproc->p_vmspace->vm_map;
 	if (tocopy)
 		*tocopy = len;
 
 	/* loop for each page */
 	while (len > 0) {
-		dst_p = (char *)l4x_pmap_walk_pd(map, (vaddr_t)dst,
+		dst_p = (char *)l4x_pmap_walk_pd(p, (vaddr_t)dst,
 				VM_PROT_READ | VM_PROT_WRITE);
 		if (dst_p == NULL)
 			return EFAULT;
@@ -196,7 +179,7 @@ l4x_copyoutstr(char *src, char *dst, size_t len, size_t *tocopy)
 int
 l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 {
-	struct vm_map *map;
+	struct proc *p = curproc;
 	char *src_p;
 	paddr_t upper_bound;
 	size_t copy_len, copied;
@@ -204,18 +187,12 @@ l4x_copyinstr(char *src, char *dst, size_t len, size_t *tocopy)
 
 	debug_printf("l4x_copyinstr(%p, %p, %d)\n", src, dst, len);
 
-	if (curproc->p_vmspace == NULL ||
-	    &curproc->p_vmspace->vm_map == NULL)
-		return EFAULT;
-
-	map = &curproc->p_vmspace->vm_map;
-
 	if (tocopy)
 		*tocopy = len;
 
 	/* loop for each page */
 	while (len > 0) {
-		src_p = (char *)l4x_pmap_walk_pd(map, (vaddr_t)src, VM_PROT_READ);
+		src_p = (char *)l4x_pmap_walk_pd(p, (vaddr_t)src, VM_PROT_READ);
 		if (src_p == NULL)
 			return EFAULT;
 

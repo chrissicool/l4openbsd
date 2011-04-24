@@ -394,14 +394,15 @@ void	setcslimit(struct pmap *, struct trapframe *, struct pcb *, vaddr_t);
 
 
 /*
- * Conditionally run the page fault handler on the given map,
+ * Conditionally run the page fault handler on the given user process,
  * if user space address uva is not already mapped. Update the protection
  * bits (PG_M|PG_U), if requested.
  * Return the equivalent physical RAM address.
  */
 paddr_t *
-l4x_pmap_walk_pd(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
+l4x_pmap_walk_pd(struct proc *p, vaddr_t uva, vm_prot_t access_type)
 {
+	struct vm_map *map = &p->p_vmspace->vm_map;
 	struct pmap *pmap = map->pmap;
 	pd_entry_t *pd;
 	pt_entry_t *ptes, *pte;
@@ -410,17 +411,21 @@ l4x_pmap_walk_pd(vm_map_t map, vaddr_t uva, vm_prot_t access_type)
 	if (pmap == NULL)
 		return NULL;
 
+	KERNEL_PROC_LOCK(p);				/* lock proc */
+
 start_walk:
 	pd = pmap_map_pdes(pmap);			/* lock pmap */
 	ptes = (pt_entry_t *)(pd[pdei(uva)] & PG_FRAME);
-	pmap_unmap_pdes(pmap);				/* unlock pmap */
 
 	/* step 1: check the page directory entry */
 	if (!pmap_valid_entry(pd[pdei(uva)])) {
 		pdb_printf("%s: Attempting uvm_fault(%p, %p, 0, %d)\n",
 				__func__, map, uva, access_type);
-		if (uvm_fault(map, uva, 0, access_type))
+		if (uvm_fault(map, uva, 0, access_type)) {
+			pmap_unmap_pdes(pmap);		/* unlock pmap */
+			KERNEL_PROC_UNLOCK(p);		/* unlock proc */
 			return NULL;
+		}
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
 		pdb_printf("  => no page table\n");
@@ -433,8 +438,11 @@ start_walk:
 	if (!pmap_valid_entry(*pte)) {
 		pdb_printf("%s: Attempting uvm_fault((%p, %p, 0, %d)\n",
 				__func__, map, uva, access_type);
-		if (uvm_fault(map, uva, 0, access_type))
+		if (uvm_fault(map, uva, 0, access_type)) {
+			pmap_unmap_pdes(pmap);		/* unlock pmap */
+			KERNEL_PROC_UNLOCK(p);		/* unlock proc */
 			return NULL;
+		}
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
 		pdb_printf("  => no page table entry\n");
@@ -447,8 +455,11 @@ start_walk:
 	if ((md_prot & PG_RW) && !(*pte & PG_RW)) {
 		pdb_printf("%s: Attempting uvm_fault((%p, %p, 0, %d)\n",
 				__func__, map, uva, access_type);
-		if (uvm_fault(map, uva, 0, access_type))
+		if (uvm_fault(map, uva, 0, access_type)) {
+			pmap_unmap_pdes(pmap);		/* unlock pmap */
+			KERNEL_PROC_UNLOCK(p);		/* unlock proc */
 			return NULL;
+		}
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
 		pdb_printf("  => wrong permissions\n");
@@ -460,12 +471,12 @@ start_walk:
 	 * Update protection flags, normally set in HW from i386.
 	 * May be useless, since pmap(9)'s pmap_enter() already sets them.
 	 */
-	pd = pmap_map_pdes(pmap);			/* lock pmap */
 	if (access_type & VM_PROT_READ)
 		*pte |= PG_U;
 	if (access_type & VM_PROT_WRITE)
 		*pte |= (PG_M | PG_U);
 	pmap_unmap_pdes(pmap);				/* unlock pmap */
+	KERNEL_PROC_UNLOCK(p);				/* unlock proc */
 
 	return ((paddr_t *)((*pte & PG_FRAME) | (uva & ~PG_FRAME)));
 }
