@@ -42,7 +42,7 @@ option		DDB_STRUCT	#    can "show struct"
 option		DIAGNOSTIC	# enable extended error-checking
 option		RAMDISK_HOOKS
 
-maxusers	4
+maxusers	80
 
 option		TIMEZONE=0
 option		DST=0
