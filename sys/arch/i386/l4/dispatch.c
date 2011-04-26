@@ -255,6 +255,13 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 	 * or trap() already SIGSEGV'd curproc.
 	 */
 	prot |= l4x_vcpu_is_write_pf(vcpu) ? VM_PROT_WRITE : 0;
+
+	/*
+	 * Re-enable interrupts, since l4x_pmap_walk_pd() may sleep.
+	 * We came from userland, IRQs were always enabled there.
+	 */
+	enable_intr();
+
 	kpa = l4x_pmap_walk_pd(p, uva, prot);
 
 	if (!kpa || uva > VM_MAXUSER_ADDRESS)
@@ -476,8 +483,11 @@ l4x_vcpu_entry(void)
 	if (l4x_vcpu_is_syscall(vcpu))
 		l4x_vcpu_was_syscall = 1;
 
+	/*
+	 * BIG RED LINE: Do not touch vCPU saved state below here!
+	 */
 	if (vcpu->saved_state & L4_VCPU_F_IRQ)
-		vcpu->state |= L4_VCPU_F_IRQ;
+		enable_intr();
 
 	/* handle syscalls */
 	if (l4x_vcpu_was_syscall) {
