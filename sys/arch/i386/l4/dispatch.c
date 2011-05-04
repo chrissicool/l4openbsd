@@ -61,10 +61,10 @@ static inline l4_umword_t l4x_l4pfa(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_user(l4_vcpu_state_t *vcpu);
 static inline int l4x_vcpu_is_syscall(l4_vcpu_state_t *vcpu);
 static inline int l4x_msgtag_fpu(int cpunum);
-static void l4x_evict_mem(l4_umword_t d);
+void l4x_evict_mem(l4_umword_t d);
 static inline void l4x_vcpu_entry_user_arch(void);
 static inline void l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu);
-static void l4x_arch_task_start_setup(struct proc *p);
+void l4x_arch_task_start_setup(struct proc *p);
 void l4x_ret_from_fork(void);
 void l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 		struct trapframe *regsp);
@@ -126,7 +126,7 @@ static inline int l4x_msgtag_fpu(int cpunum)
 		?  L4_MSGTAG_TRANSFER_FPU : 0;
 }
 
-static void l4x_evict_mem(l4_umword_t d)
+void l4x_evict_mem(l4_umword_t d)
 {
 	l4_task_unmap(L4RE_THIS_TASK_CAP,
 			l4_fpage_set_rights((l4_fpage_t)d, L4_FPAGE_RWX),
@@ -190,7 +190,7 @@ l4x_vcpu_create_user_task(struct proc *p)
 */
 }
 
-static void
+void
 l4x_arch_task_start_setup(struct proc *p)
 {
 	struct trapframe *tf = p->p_md.md_regs;
