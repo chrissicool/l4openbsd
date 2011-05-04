@@ -146,13 +146,13 @@ int L4_CV l4start(int argc, char **argv);
 
 L4_CV l4_utcb_t *l4_utcb_wrap(void);
 
-static void l4x_configuration_sanity_check(void);
+void l4x_configuration_sanity_check(void);
 
-static int l4x_cpu_virt_phys_map_init(void);
-static inline void l4x_x86_utcb_save_orig_segment(void);
+int l4x_cpu_virt_phys_map_init(void);
+inline void l4x_x86_utcb_save_orig_segment(void);
 //unsigned l4x_x86_utcb_get_orig_segment(void);
 
-static void get_initial_cpu_capabilities(void);
+void get_initial_cpu_capabilities(void);
 
 void l4x_load_gdt_register(struct region_descriptor *gdt);
 void l4x_register_pointer_section(void *p_in_addr,
@@ -160,20 +160,20 @@ void l4x_register_pointer_section(void *p_in_addr,
 void l4x_register_region(const l4re_ds_t ds, void *start,
 		int allow_noncontig, const char *tag);
 
-static void l4x_setup_upage(void);
+void l4x_setup_upage(void);
 
-static L4_CV void l4x_bsd_startup(void *data);
-static void l4x_server_loop(void) __attribute__((__noreturn__));
+L4_CV void l4x_bsd_startup(void *data);
+void l4x_server_loop(void) __attribute__((__noreturn__));
 void l4x_linux_main_exit(void);
 void l4x_setup_curproc(void);
-static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag);
-static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc);
-static inline int l4x_handle_pagefault(unsigned long pfa,
+int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag);
+inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc);
+inline int l4x_handle_pagefault(unsigned long pfa,
 					unsigned long ip, int wr);
-static void l4x_setup_die_utcb(l4_exc_regs_t *exc);
-static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write);
+void l4x_setup_die_utcb(l4_exc_regs_t *exc);
+int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write);
 
-static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu);
+void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu);
 
 void exit(int code);
 
@@ -186,7 +186,7 @@ extern char *rd_root_image;		/* from dev/rd.c */
 static char l4x_rd_path[L4X_MAX_RD_PATH];
 
 void l4x_load_initrd(char **command_line);
-static int fprov_load_initrd(const char *filename,
+int fprov_load_initrd(const char *filename,
                              void  *rd_start,
                              size_t size);
 int l4x_query_and_get_ds(const char *name, const char *logprefix,
@@ -414,7 +414,7 @@ L4_CV l4_utcb_t *l4_utcb_wrap(void)
 #endif
 }
 
-static void l4x_configuration_sanity_check(void)
+void l4x_configuration_sanity_check(void)
 {
 	char *required_kernel_features[] = {
 		"io_prot", "segments",
@@ -445,7 +445,7 @@ static void l4x_configuration_sanity_check(void)
 }
 
 
-static int l4x_cpu_virt_phys_map_init(void)
+int l4x_cpu_virt_phys_map_init(void)
 {
 	l4_umword_t max_cpus;
 	l4_sched_cpu_set_t cs = l4_sched_cpu_set(0, 0, 0);
@@ -468,7 +468,7 @@ static int l4x_cpu_virt_phys_map_init(void)
 }
 
 static unsigned l4x_x86_orig_utcb_segment;
-static inline void l4x_x86_utcb_save_orig_segment(void)
+inline void l4x_x86_utcb_save_orig_segment(void)
 {
 	asm volatile ("mov %%gs, %0": "=r" (l4x_x86_orig_utcb_segment));
 }
@@ -478,7 +478,7 @@ unsigned l4x_x86_utcb_get_orig_segment(void)
 	return l4x_x86_orig_utcb_segment;
 }
 
-static void get_initial_cpu_capabilities(void)
+void get_initial_cpu_capabilities(void)
 {
 	/* XXX cl: we should set a l4util_cpu_capabilities() here */
 }
@@ -554,7 +554,7 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 	}
 }
 
-static void l4x_setup_upage(void)
+void l4x_setup_upage(void)
 {
 	l4re_ds_t ds;
 
@@ -584,7 +584,7 @@ static void l4x_setup_upage(void)
 	LOG_printf("Attached upage to 0x%08x\n", proc0paddr);
 }
 
-static L4_CV void l4x_bsd_startup(void *data)
+L4_CV void l4x_bsd_startup(void *data)
 {
 	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
 	extern int main(void *framep);		/* see: sys/kern/init_main.c */
@@ -641,7 +641,7 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4x_linux_main_exit();
 }
 
-static void l4x_server_loop(void)
+void l4x_server_loop(void)
 {
 	int do_wait = 1;
 	l4_msgtag_t tag = (l4_msgtag_t){0};
@@ -719,7 +719,7 @@ l4x_setup_curproc(void)
 /*
  * Exception scheduler
  */
-static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
+int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
 {
 	l4_exc_regs_t exc;
 	l4_umword_t pfa;
@@ -853,7 +853,7 @@ int l4x_vcpu_handle_kernel_exc(l4_vcpu_regs_t *vr)
 	return i != l4x_exception_funcs;
 }
 
-static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc)
+inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc)
 {
 	LOG_printf("Exception: "l4util_idfmt": pc = "l4_addr_fmt
 			" trapno = 0x%lx err/pfa = 0x%lx%s\n",
@@ -879,7 +879,7 @@ static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc)
 	}
 }
 
-static inline int l4x_handle_pagefault(unsigned long pfa, unsigned long ip,
+inline int l4x_handle_pagefault(unsigned long pfa, unsigned long ip,
 		int wr)
 {
 	l4_addr_t addr;
@@ -906,7 +906,7 @@ static inline int l4x_handle_pagefault(unsigned long pfa, unsigned long ip,
 	return l4x_forward_pf(pfa, ip, wr);
 }
 
-static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
+void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 {
 	struct trapframe regs;
 	unsigned long regs_addr;
@@ -944,7 +944,7 @@ static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 	outstring("\n");
 }
 
-static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
+int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
 {
 	l4_msgtag_t tag;
 	l4_umword_t err;
@@ -975,7 +975,7 @@ static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
 	return 1;
 }
 
-static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu)
+void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu)
 {
 	l4_msgtag_t r;
 	L4XV_V(flags);
@@ -1059,7 +1059,7 @@ int l4x_re_resolve_name(const char *name, l4_cap_idx_t *cap)
  * BEGIN Functions for l4x_exception_func_list[]
  */
 
-static int l4x_handle_msr(l4_exc_regs_t *exc)
+int l4x_handle_msr(l4_exc_regs_t *exc)
 {
 	void *pc = (void *)l4_utcb_exc_pc(exc);
 	unsigned long reg = exc->ecx;
@@ -1091,7 +1091,7 @@ static int l4x_handle_msr(l4_exc_regs_t *exc)
 	return 1; // not for us
 }
 
-static int l4x_handle_clisti(l4_exc_regs_t *exc)
+int l4x_handle_clisti(l4_exc_regs_t *exc)
 {
 	unsigned char opcode = *(unsigned char *)l4_utcb_exc_pc(exc);
 	extern void exit(int);
@@ -1162,7 +1162,7 @@ void l4x_load_initrd(char **command_line)
 	}
 }
 
-static int fprov_load_initrd(const char *filename,
+int fprov_load_initrd(const char *filename,
                              void *rd_start,
                              size_t size)
 {
