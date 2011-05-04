@@ -237,6 +237,8 @@ int L4_CV l4start(int argc, char **argv)
 	extern char __data_start[], _edata[];
 	extern char __bss_start[], _end[];
 
+	extern char *ssym, *esym;
+
 	/* locore.s */
 	extern int bootargc;
 	extern char **bootargv;
@@ -280,19 +282,23 @@ int L4_CV l4start(int argc, char **argv)
 			(unsigned long)&_edata - (unsigned long)&__data_start);
 	l4_touch_rw(&__bss_start,
 			(unsigned long)&_end - (unsigned long)&__bss_start);
+	l4_touch_ro(ssym, esym - ssym);
 
-	LOG_printf("Image:   Text:  %08lx - %08lx [%ldkB]\n",
+	LOG_printf("Image:   Text:  0x%08lx - 0x%08lx [%ldkB]\n",
 			(unsigned long)&__text_start, (unsigned long)&_etext,
 			((unsigned long)&_etext - (unsigned long)&__text_start) >> 10);
-	LOG_printf("       ROData:  %08lx - %08lx [%ldkB]\n",
+	LOG_printf("       ROData:  0x%08lx - 0x%08lx [%ldkB]\n",
 			(unsigned long)&__rodata_start, (unsigned long)&_erodata,
 			((unsigned long)&_erodata - (unsigned long)&__rodata_start) >> 10);
-	LOG_printf("         Data:  %08lx - %08lx [%ldkB]\n",
+	LOG_printf("         Data:  0x%08lx - 0x%08lx [%ldkB]\n",
 			(unsigned long)&__data_start, (unsigned long)&_edata,
 			((unsigned long)&_edata - (unsigned long)&__data_start) >> 10);
-	LOG_printf("          BSS:  %08lx - %08lx [%ldkB]\n",
+	LOG_printf("          BSS:  0x%08lx - 0x%08lx [%ldkB]\n",
 			(unsigned long)&__bss_start, (unsigned long)&_end,
 			((unsigned long)&_end - (unsigned long)&__bss_start) >> 10);
+	LOG_printf("      Symbols:  %08p - %08p [%ldkB]\n",
+			ssym, esym, (esym - ssym) >> 10);
+			
 
 	/* some things from head.S */
 	get_initial_cpu_capabilities();
@@ -408,7 +414,8 @@ L4_CV l4_utcb_t *l4_utcb_wrap(void)
 #endif
 }
 
-static void l4x_configuration_sanity_check(void) {
+static void l4x_configuration_sanity_check(void)
+{
 	char *required_kernel_features[] = {
 		"io_prot", "segments",
 	};
@@ -438,7 +445,8 @@ static void l4x_configuration_sanity_check(void) {
 }
 
 
-static int l4x_cpu_virt_phys_map_init(void) {
+static int l4x_cpu_virt_phys_map_init(void)
+{
 	l4_umword_t max_cpus;
 	l4_sched_cpu_set_t cs = l4_sched_cpu_set(0, 0, 0);
 	unsigned i;

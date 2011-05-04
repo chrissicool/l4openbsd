@@ -180,6 +180,9 @@ _C_LABEL(APTD):
 	.globl	_C_LABEL(cpu_cache_eax), _C_LABEL(cpu_cache_ebx)
 	.globl	_C_LABEL(cpu_cache_ecx), _C_LABEL(cpu_cache_edx)
 	.globl	_C_LABEL(cold), _C_LABEL(cnvmem), _C_LABEL(extmem)
+#ifdef L4
+	.globl	_C_LABEL(ssym)
+#endif
 	.globl	_C_LABEL(esym)
 	.globl	_C_LABEL(boothowto), _C_LABEL(bootdev), _C_LABEL(atdevbase)
 	.globl	_C_LABEL(proc0paddr), _C_LABEL(PTDpaddr), _C_LABEL(PTDsize)
@@ -223,6 +226,9 @@ _C_LABEL(cpu_cache_edx):.long	0
 _C_LABEL(cpu_vendor): .space 16	# vendor string returned by 'cpuid' instruction
 _C_LABEL(cpu_brandstr):	.space 48 # brand string returned by 'cpuid'
 _C_LABEL(cold):		.long	1	# cold till we are not
+#ifdef L4
+_C_LABEL(ssym):		.long	0	# ptr to ELF header
+#endif
 _C_LABEL(esym):		.long	0	# ptr to end of syms
 _C_LABEL(cnvmem):	.long	0	# conventional memory size
 _C_LABEL(extmem):	.long	0	# extended memory size

@@ -383,6 +383,7 @@ static void l4x_setup_memory(char **cmdl,
 	if ((unsigned long)&_end < 0x100000)
 		LOG_printf("_end == %p, unreasonable small\n", &_end);
 
+	/* XXX hshoexer: s/end/esym/? */
 	l4x_register_pointer_section((void *)((unsigned long)&_end - 1), 0, "end");
 
 	return;
