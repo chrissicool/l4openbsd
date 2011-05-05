@@ -473,8 +473,7 @@ l4x_vcpu_entry(void)
 
 	/* handle IRQs */
 	if (l4vcpu_is_irq_entry(vcpu)) {
-		vcpu->state |= L4_VCPU_F_IRQ;
-		l4x_vcpu_handle_irq(vcpu, regsp);
+		l4x_vcpu_handle_irq(vcpu, regsp);	/* enables IRQs */
 		l4x_vcpu_iret(p, u, regsp, 0, 0, 1);
 		/* NOTREACHED */
 	}

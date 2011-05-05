@@ -46,6 +46,10 @@ void l4x_global_sti(void)
 			do_vcpu_irq, l4x_srv_setup_recv_wrap);
 }
 
+/*
+ * vCPU IRQ callback routine.
+ * => Starts running with IRQs disabled.
+ */
 static void do_vcpu_irq(l4_vcpu_state_t *v)
 {
 	struct trapframe *regs;
@@ -55,7 +59,7 @@ static void do_vcpu_irq(l4_vcpu_state_t *v)
 	regs = p->p_md.md_regs;			/* current trapframe */
 	cs = regs->tf_cs;
 	regs->tf_cs = GSEL(GCODE_SEL, SEL_KPL);		/* fake kernel mode */
-	l4x_vcpu_handle_irq(v, regs);
+	l4x_vcpu_handle_irq(v, regs);			/* enables IRQs */
 	regs->tf_cs = cs;
 }
 
