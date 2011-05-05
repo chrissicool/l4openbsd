@@ -23,10 +23,10 @@
 #include <l4/sys/ipc.h>
 #include <l4/sys/utcb.h>
 
-static void do_vcpu_irq(l4_vcpu_state_t *v);
-static void l4x_srv_setup_recv_wrap(l4_utcb_t *utcb);
+void do_vcpu_irq(l4_vcpu_state_t *v);
+void l4x_srv_setup_recv_wrap(l4_utcb_t *utcb);
 
-static void
+void
 l4x_srv_setup_recv_wrap(l4_utcb_t *utcb)
 {
 	/*
@@ -46,7 +46,7 @@ void l4x_global_sti(void)
 			do_vcpu_irq, l4x_srv_setup_recv_wrap);
 }
 
-static void do_vcpu_irq(l4_vcpu_state_t *v)
+void do_vcpu_irq(l4_vcpu_state_t *v)
 {
 	struct trapframe *regs;
 	struct proc *p = curproc;
