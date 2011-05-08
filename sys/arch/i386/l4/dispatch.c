@@ -355,6 +355,8 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 			vcpu->saved_state |= L4_VCPU_F_FPU_ENABLED;
 		else
 			vcpu->saved_state &= ~L4_VCPU_F_FPU_ENABLED;
+
+		splassert(IPL_NONE);
 	} else {
 		vcpu->r.gs = l4x_x86_utcb_get_orig_segment();
 	}
