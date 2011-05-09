@@ -274,7 +274,8 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 #endif
 
 	upage = (upage & L4_PAGEMASK) | L4_ITEM_MAP;
-	if (l4x_vcpu_is_write_pf(vcpu))
+
+	if (prot & VM_PROT_WRITE)
 		kpage = l4_fpage((unsigned long)kpa, fpage_size,
 				L4_FPAGE_RW).fpage;
 	else
