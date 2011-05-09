@@ -2901,6 +2901,7 @@ init386(paddr_t first_avail)
 	bios_memmap_t *im;
 
 #ifdef L4
+	/* XXX hshoexer */
 	bootapiver = BOOTARG_APIVER;
 	boothowto = 0;
 
@@ -2933,6 +2934,7 @@ init386(paddr_t first_avail)
 	    EX_NOCOALESCE|EX_NOWAIT);
 
 	/* make bootstrap gdt gates and memory segments */
+	/* XXX hshoexer: needed at all? */
 	setsegment(&gdt[GCODE_SEL].sd, 0, 0xfffff, SDT_MEMERA, SEL_KPL, 1, 1);
 	setsegment(&gdt[GICODE_SEL].sd, 0, 0xfffff, SDT_MEMERA, SEL_KPL, 1, 1);
 	setsegment(&gdt[GDATA_SEL].sd, 0, 0xfffff, SDT_MEMRWA, SEL_KPL, 1, 1);
@@ -2946,6 +2948,7 @@ init386(paddr_t first_avail)
 	    sizeof(struct cpu_info)-1, SDT_MEMRWA, SEL_KPL, 0, 0);
 
 	/* exceptions */
+	/* XXX hshoexer: needed at all? */
 	setgate(&idt[  0], &IDTVEC(div),     0, SDT_SYS386TGT, SEL_KPL, GCODE_SEL);
 	setgate(&idt[  1], &IDTVEC(dbg),     0, SDT_SYS386TGT, SEL_KPL, GCODE_SEL);
 	setgate(&idt[  2], &IDTVEC(nmi),     0, SDT_SYS386TGT, SEL_KPL, GCODE_SEL);
@@ -2973,9 +2976,9 @@ init386(paddr_t first_avail)
 	setgate(&idt[128], &IDTVEC(syscall), 0, SDT_SYS386TGT, SEL_UPL, GCODE_SEL);
 
 	setregion(&region, gdt, NGDT * sizeof(union descriptor) - 1);
-	lgdt(&region);
+	lgdt(&region);	/* XXX hshoexer: NOP */
 	setregion(&region, idt, sizeof(idt_region) - 1);
-	lidt(&region);
+	lidt(&region);	/* XXX hshoexer: NOP */
 
 #if NISA > 0
 	isa_defaultirq();

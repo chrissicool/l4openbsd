@@ -220,7 +220,7 @@ clockintr(void *arg)
 {
 #ifdef L4
 	/* This is the clock interrupt routine for the first CPU. */
-	struct clockframe *frame = curproc->p_md.md_regs;
+	struct clockframe *frame = curproc->p_md.md_regs; /* XX hshoexer */
 #else
 	struct clockframe *frame = arg;		/* not strictly necessary */
 #endif
