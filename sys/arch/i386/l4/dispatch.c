@@ -249,11 +249,6 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 
 	upage = l4x_l4pfa(vcpu);
 
-	/*
-	 * The handler should not run, since trap() already
-	 * handled the fault. Either we get a valid paddr_t
-	 * or trap() already SIGSEGV'd curproc.
-	 */
 	prot |= l4x_vcpu_is_write_pf(vcpu) ? VM_PROT_WRITE : 0;
 
 	/*
