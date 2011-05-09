@@ -345,28 +345,10 @@ void
 Debugger(void)
 {
 #ifdef L4
-	struct proc *p = curproc;
-	struct trapframe *frame = p->p_md.md_regs;
+	/* Fake int3 trap. */
+	extern void l4_fake_int3(void);
 
-	/*
-	 * If somebody in the kernel calls this function,
-	 * we consider it a breakpoint.
-	 */
-
-#ifdef KGDB
-	if (kgdb_trap(T_BPTFLT, frame))
-		return;
-	else
-		printf("Ignored request to enter KGDB debugger.\n");
-#endif
-
-#ifdef DDB
-	if (kdb_trap(T_BPTFLT, 0, frame))
-		return;
-	else
-		printf("Ignored request to enter DDB debugger.\n");
-#endif
-
+	l4_fake_int3();
 #else	/* !L4 */
 	__asm__("int $3");
 #endif	/* !L4 */
