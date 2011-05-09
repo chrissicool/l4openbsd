@@ -35,18 +35,21 @@ l4x_srv_setup_recv_wrap(l4_utcb_t *utcb)
 	 */
 }
 
-void l4x_global_cli(void)
+void
+l4x_global_cli(void)
 {
 	l4vcpu_irq_disable(l4x_stack_vcpu_state_get());
 }
 
-void l4x_global_sti(void)
+void
+l4x_global_sti(void)
 {
 	l4vcpu_irq_enable(l4x_stack_vcpu_state_get(), l4x_stack_utcb_get(),
 			do_vcpu_irq, l4x_srv_setup_recv_wrap);
 }
 
-void do_vcpu_irq(l4_vcpu_state_t *v)
+void
+do_vcpu_irq(l4_vcpu_state_t *v)
 {
 	struct trapframe *regs;
 	struct proc *p = curproc;
