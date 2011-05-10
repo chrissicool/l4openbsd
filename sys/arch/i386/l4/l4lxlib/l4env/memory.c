@@ -107,10 +107,13 @@ int l4lx_memory_page_mapped(vaddr_t address)
 	unsigned long size = 1, off;
 	int ret;
 	L4XV_V(f);
+
 	L4XV_L(f);
-
-	ret = !l4re_rm_find(&addr, &size, &off, &flags, &ds);
-
+	ret = l4re_rm_find(&addr, &size, &off, &flags, &ds);
 	L4XV_U(f);
-	return ret;
+
+	if ((addr == address) && (ret == 0))
+		return 1;
+
+	return 0;
 }
