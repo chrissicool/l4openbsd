@@ -2644,18 +2644,11 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 		}
 #ifdef DIAGNOSTIC
 		else {
-#ifdef not_for_L4
-			/*
-			 * This happens on L4, if the PA changed on pmap_enter()
-			 * and running l4x_pmap_walk_pd() afterwards. So this
-			 * function will be presented a valid va.
-			 */
 			printf("pmap_unwire: wiring for pmap %p va 0x%lx "
 			       "didn't change!\n", pmap, va);
-#endif
 		}
 #endif
-		pmap_unmap_pdes(pmap);			/* unlocks map */
+		pmap_unmap_pdes(pmap);			/* unlocks pmap */
 	}
 #ifdef DIAGNOSTIC
 	else {
