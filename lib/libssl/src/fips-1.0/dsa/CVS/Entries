@@ -1,7 +1,0 @@
-/Makefile/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
-/fips_dsa_gen.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
-/fips_dsa_ossl.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
-/fips_dsa_selftest.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
-/fips_dsatest.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
-/fips_dssvs.c/1.1.1.1/Tue Jun 27 05:05:38 2006//TOPENBSD_4_8_BASE
-D

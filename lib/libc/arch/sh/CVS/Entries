@@ -1,8 +1,0 @@
-/Makefile.inc/1.4/Fri Mar  2 06:11:54 2007//TOPENBSD_4_8_BASE
-/SYS.h/1.1.1.1/Tue Oct 10 22:07:10 2006//TOPENBSD_4_8_BASE
-D/gdtoa////
-D/gen////
-D/net////
-D/softfloat////
-D/string////
-D/sys////

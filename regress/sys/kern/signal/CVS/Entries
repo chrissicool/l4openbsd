@@ -1,6 +1,0 @@
-/Makefile/1.4/Tue Jun 10 18:04:31 2008//TOPENBSD_4_8_BASE
-D/cansig////
-D/earlysig////
-D/fpsig////
-D/sigfpe////
-D/siginfo_addr////

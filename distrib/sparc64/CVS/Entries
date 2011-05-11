@@ -1,9 +1,0 @@
-/Makefile/1.9/Thu Oct 18 18:16:20 2007//TOPENBSD_4_8_BASE
-/Makefile.inc/1.2/Wed Oct 10 04:21:02 2001//TOPENBSD_4_8_BASE
-D/bsd.rd////
-D/cdfs////
-D/common////
-D/iso////
-D/miniroot////
-D/ramdisk////
-D/ramdiskB////

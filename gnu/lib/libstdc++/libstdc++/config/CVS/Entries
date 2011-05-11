@@ -1,7 +1,0 @@
-/linker-map.dummy/1.1.1.1/Mon Jan  5 15:43:07 2004//TOPENBSD_4_8_BASE
-/linker-map.gnu/1.1.1.2/Fri Dec 24 22:41:24 2004//TOPENBSD_4_8_BASE
-D/abi////
-D/cpu////
-D/io////
-D/locale////
-D/os////

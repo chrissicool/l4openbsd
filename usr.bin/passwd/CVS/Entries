@@ -1,9 +1,0 @@
-/Makefile/1.31/Fri Jul  4 12:50:23 2008//TOPENBSD_4_8_BASE
-/krb5_passwd.c/1.10/Thu Nov  6 05:35:56 2008//TOPENBSD_4_8_BASE
-/local_passwd.c/1.40/Tue Oct 27 23:59:41 2009//TOPENBSD_4_8_BASE
-/passwd.1/1.33/Thu May 31 19:20:14 2007//TOPENBSD_4_8_BASE
-/passwd.c/1.25/Tue Oct 27 23:59:41 2009//TOPENBSD_4_8_BASE
-/pwd_check.c/1.12/Thu Nov  6 05:35:56 2008//TOPENBSD_4_8_BASE
-/pwd_gensalt.c/1.27/Sun Jul 11 15:53:12 2010//TOPENBSD_4_8_BASE
-/yp_passwd.c/1.32/Tue Oct 27 23:59:41 2009//TOPENBSD_4_8_BASE
-D

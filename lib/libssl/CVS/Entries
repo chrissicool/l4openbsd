@@ -1,9 +1,0 @@
-/Makefile/1.14/Fri Apr  1 05:31:40 2005//TOPENBSD_4_8_BASE
-/cert.pem/1.13/Thu Dec 31 07:13:15 2009//TOPENBSD_4_8_BASE
-/openssl.cnf/1.1/Wed Sep 29 05:55:59 1999//TOPENBSD_4_8_BASE
-/ssleay.cnf/1.1/Tue Mar 16 07:25:13 1999//TOPENBSD_4_8_BASE
-/x509v3.cnf/1.4/Sat Jun 26 18:42:02 2010//TOPENBSD_4_8_BASE
-D/crypto////
-D/man////
-D/src////
-D/ssl////

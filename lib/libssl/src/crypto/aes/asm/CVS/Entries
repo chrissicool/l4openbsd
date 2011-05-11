@@ -1,9 +1,0 @@
-/aes-586.pl/1.4/Fri Jan  9 12:15:25 2009//TOPENBSD_4_8_BASE
-/aes-armv4.pl/1.1.1.1/Mon Apr  6 06:30:01 2009//TOPENBSD_4_8_BASE
-/aes-ia64.S/1.1.1.1/Sat Sep  6 12:15:39 2008//TOPENBSD_4_8_BASE
-/aes-ppc.pl/1.1.1.1/Mon Apr  6 06:30:01 2009//TOPENBSD_4_8_BASE
-/aes-s390x.pl/1.1.1.1/Mon Apr  6 06:30:01 2009//TOPENBSD_4_8_BASE
-/aes-sparcv9.pl/1.1.1.1/Mon Apr  6 06:30:01 2009//TOPENBSD_4_8_BASE
-/aes-x86_64.pl/1.1.1.2/Fri Jan  9 12:13:51 2009//TOPENBSD_4_8_BASE
-/aesni-x86_64.pl/1.1/Thu Jul  1 17:44:20 2010//TOPENBSD_4_8_BASE
-D

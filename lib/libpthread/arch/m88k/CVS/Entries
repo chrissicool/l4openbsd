@@ -1,5 +1,0 @@
-/_atomic_lock.c/1.4/Fri Feb 27 22:19:46 2004//TOPENBSD_4_8_BASE
-/uthread_machdep.c/1.2/Tue Mar  2 23:41:29 2004//TOPENBSD_4_8_BASE
-/uthread_machdep.h/1.5/Fri Feb 27 22:19:46 2004//TOPENBSD_4_8_BASE
-/uthread_machdep_asm.S/1.2/Tue Mar  2 23:41:29 2004//TOPENBSD_4_8_BASE
-D

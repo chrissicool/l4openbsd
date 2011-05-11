@@ -1,9 +1,0 @@
-/01_about_verbose.t/1.1.1.1/Mon Aug  9 17:47:10 2004//TOPENBSD_4_8_BASE
-/05_main.t/1.1.1.1/Mon Aug  9 17:47:10 2004//TOPENBSD_4_8_BASE
-/07_listy.t/1.1.1.1/Mon Aug  9 17:47:10 2004//TOPENBSD_4_8_BASE
-/10_http.t/1.1.1.1/Mon Aug  9 17:47:10 2004//TOPENBSD_4_8_BASE
-/20_locales.t/1.1.1.1/Sat Jan 15 21:17:21 2005//TOPENBSD_4_8_BASE
-/50_super.t/1.1.1.1/Mon Aug  9 17:47:10 2004//TOPENBSD_4_8_BASE
-/55_supers_strict.t/1.1.1.1/Mon Aug  9 17:47:10 2004//TOPENBSD_4_8_BASE
-/80_all_env.t/1.1.1.1/Mon Aug  9 17:47:10 2004//TOPENBSD_4_8_BASE
-D

@@ -1,8 +1,0 @@
-/Makefile/1.7/Wed Nov 10 22:07:45 2004//TOPENBSD_4_8_BASE
-/cmds.c/1.21/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
-/cmdtab.c/1.5/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
-/timedc-extern.h/1.7/Sun Oct 12 23:44:13 2003//TOPENBSD_4_8_BASE
-/timedc.8/1.14/Thu May 31 19:20:30 2007//TOPENBSD_4_8_BASE
-/timedc.c/1.14/Tue Oct 27 23:59:57 2009//TOPENBSD_4_8_BASE
-/timedc.h/1.6/Mon May 31 10:38:20 2004//TOPENBSD_4_8_BASE
-D

@@ -1,9 +1,0 @@
-/allocators.cc/1.1.1.1/Mon Jan  5 15:46:51 2004//TOPENBSD_4_8_BASE
-/concept_checks.cc/1.1.1.1/Mon Jan  5 15:46:51 2004//TOPENBSD_4_8_BASE
-/hash_map.cc/1.1.1.1/Mon Jan  5 15:46:51 2004//TOPENBSD_4_8_BASE
-/hash_set.cc/1.1.1.1/Mon Jan  5 15:46:51 2004//TOPENBSD_4_8_BASE
-/headers.cc/1.1.1.1/Mon Jan  5 15:46:51 2004//TOPENBSD_4_8_BASE
-/rope.cc/1.1.1.1/Mon Jan  5 15:46:51 2004//TOPENBSD_4_8_BASE
-/stdio_filebuf.cc/1.1.1.1/Mon Jan  5 15:46:51 2004//TOPENBSD_4_8_BASE
-/stdio_filebuf_2.cc/1.1.1.1/Mon Jan  5 15:46:51 2004//TOPENBSD_4_8_BASE
-D
