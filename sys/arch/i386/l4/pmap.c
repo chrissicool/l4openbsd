@@ -503,8 +503,7 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 			 * will work on the address space before. We resolve this
 			 * at pagefault time. So, no error messages here.
 			 */
-			//l4x_printf("Unmap non-existant task page @%p.\n",
-			//		va);
+			pdb_printf("Unmap non-existant task page @%p.\n", va);
 			return;
 		}
 		pdb_printf("  %s: Removing %s%s%s bit(s) from %p (PTD: %p)\n",
@@ -2124,8 +2123,10 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 	 * to keep track of the number of real PTEs in the PTP).
 	 */
 
-	pdb_printf("%s: Removing %#x -- %#x (PTD: %p, PTP %p)\n",
-			__func__, startva, endva, pmap->pm_pdir, ptp);
+	pdb_printf("%s: Removing %s %#x -- %#x (PTD: %p, PTP %p, PTE %p(%s, %p))\n",
+			__func__, pmap == pmap_kernel() ? "KRN" : "USR",
+			startva, endva, pmap->pm_pdir, ptp, pte,
+			(pte && pmap_valid_entry(*pte)) ? "v" : "i", pte ? *pte : NULL);
 
 	for (/*null*/; startva < endva && (ptp == NULL || ptp->wire_count > 1)
 			     ; startva += NBPG) {
@@ -2539,8 +2540,11 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 //	if ((eva - sva > 32 * PAGE_SIZE) && pmap != pmap_kernel())
 //		shootall = 1;
 
-	pdb_printf("%s: PTD=%p, sva=%p, eva=%p, prot=%x\n", __func__,
-			pmap->pm_pdir, sva, eva, prot);
+	pdb_printf("%s: PTD=%p, sva=%p, eva=%p, prot=%s%s%s\n", __func__,
+			pmap->pm_pdir, sva, eva,
+			(prot & VM_PROT_READ) ? "R" : "",
+			(prot & VM_PROT_WRITE) ? "W" : "",
+			(prot & VM_PROT_EXECUTE) ? "X" : "");
 
 	for (va = sva; va < eva; va = blockend) {
 		blockend = (va & PD_MASK) + NBPD;
