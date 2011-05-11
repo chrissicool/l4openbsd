@@ -235,7 +235,7 @@ l4x_ret_from_fork(void)
 /*
  * Handle user page faults differently. We need to find out, what to map
  * into user address space. If we cannot figure out the right address,
- * trap() needs to SIGSEGV the proc.
+ * we return and trap() needs to SIGSEGV the proc.
  */
 void
 l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
