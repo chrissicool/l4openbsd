@@ -218,12 +218,7 @@ rtcdrain(void *v)
 int
 clockintr(void *arg)
 {
-#ifdef L4
-	/* This is the clock interrupt routine for the first CPU. */
-	struct clockframe *frame = curproc->p_md.md_regs; /* XX hshoexer */
-#else
 	struct clockframe *frame = arg;		/* not strictly necessary */
-#endif
 
 	if (timecounter->tc_get_timecount == i8254_get_timecount) {
 		if (i8254_ticked) {

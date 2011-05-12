@@ -33,7 +33,7 @@
 extern void trap(struct trapframe *frame);
 
 static int handle_irq(int irq, struct trapframe *regs);
-static inline int run_irq_handlers(int irq);
+static inline int run_irq_handlers(int irq, struct trapframe *regs);
 static void init_array(void);
 
 static struct trapframe *irq_regs;
@@ -54,7 +54,7 @@ extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
  * We do _not_ actually lower the SPL here! See _SPLX for that.
  */
 void
-l4x_spllower(void)
+l4x_spllower(struct trapframe *regs)
 {
 	int s;
 
@@ -63,7 +63,7 @@ l4x_spllower(void)
 			disable_intr();
 			if (curcpu()->ci_ipending & iunmask[s]) {
 				enable_intr();
-				run_irq_handlers(s);
+				run_irq_handlers(s, regs);
 			} else {
 				enable_intr();
 			}
@@ -144,7 +144,7 @@ unsigned int do_IRQ(int irq, struct trapframe *regs)
 }
 
 static inline int
-run_irq_handlers(int irq)
+run_irq_handlers(int irq, struct trapframe *regs)
 {
 	extern void isa_strayintr(int irq);
 	struct intrhand **p, *q;
@@ -153,7 +153,11 @@ run_irq_handlers(int irq)
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
 	for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
-		r = (*q->ih_fun)(q->ih_arg);
+		/* NULL means framepointer */
+		if (q->ih_arg == NULL)
+			r = (*q->ih_fun)(regs);
+		else
+			r = (*q->ih_fun)(q->ih_arg);
 		if (r != 0)
 			q->ih_count.ec_count++;
 		result |= r;
@@ -196,7 +200,7 @@ handle_irq(int irq, struct trapframe *regs)
 	}
 
 	s = splraise(imaxlevel[irq]);
-	result = run_irq_handlers(irq);
+	result = run_irq_handlers(irq, regs);
 	splx(s);		/* run all held back IRQs */
 
 	l4x_run_softintr();	/* handle softintrs */

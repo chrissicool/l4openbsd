@@ -1954,7 +1954,7 @@ ENTRY(do_vcpu_irq)
 	pushl	%ebp
 	movl	%esp,%ebp
 #endif
-	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1, $0)
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1, $T_ASTFLT)
 	pushl	%esp
 	movl	72+FPADD(%esp),%esi
 	pushl	%esi

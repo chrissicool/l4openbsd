@@ -50,7 +50,9 @@ _C_LABEL(netisr):
  */
 IDTVEC(spllower)
 #ifdef L4
+	pushl	%esp
 	call	_C_LABEL(l4x_spllower)
+	addl	$4,%esp
 #else
 	pushl	%ebx
 	pushl	%esi
