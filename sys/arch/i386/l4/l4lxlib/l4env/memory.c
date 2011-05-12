@@ -22,8 +22,8 @@
  */
 #define IS_ALIGNED(addr)	(addr & 0xfffffffcUL)
 
-int l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page,
-                                 int map_rw)
+int
+l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page, int map_rw)
 {
 	l4re_ds_t ds;
 	l4_addr_t offset;
@@ -46,7 +46,7 @@ int l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page,
 	offset += page - addr;
 	addr    = address;
 #ifdef DIAGNOSTIC
-	/* Sanety checks */
+	/* Sanity checks */
 	if(!IS_ALIGNED(addr))
 		printf("WARNING: Trying to map unaligned virtual page!\n");
 	if(!IS_ALIGNED(page))
