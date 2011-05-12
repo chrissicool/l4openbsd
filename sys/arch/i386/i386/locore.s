@@ -1967,5 +1967,22 @@ ENTRY(do_vcpu_irq)
 #endif
 	ret
 
+ENTRY(recurse_irq_handlers)
+#ifdef DDB
+	pushl	%ebp
+	movl	%esp,%ebp
+#endif
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1, $T_ASTFLT)
+	pushl	%esp
+	movl	72+FPADD(%esp),%esi
+	pushl	%esi
+	call	_C_LABEL(l4x_run_irq_handlers)
+	addl	$8,%esp
+	L4_INTREXIT
+#ifdef DDB
+	leave
+#endif
+	ret
+
 
 #endif	/* L4 */

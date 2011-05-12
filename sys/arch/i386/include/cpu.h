@@ -57,6 +57,7 @@
  * clockframe; for now, use generic intrframe.
  *
  * XXX intrframe has a lot of gunk we don't need.
+ * XXX hshoexer
  */
 #ifdef L4
 #define clockframe trapframe

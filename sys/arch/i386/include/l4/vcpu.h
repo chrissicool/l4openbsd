@@ -32,9 +32,10 @@ l4_vcpu_state_t *l4x_vcpu_state(int cpu)
 
 void l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs);
 //void l4x_vcpu_handle_ipi(struct pt_regs *regs);
+int l4x_run_irq_handlers(int irq, struct trapframe *regs);
 
 void l4x_vcpu_entry(void);	/* vCPU entry point for interrupts */
-void l4x_spllower(struct trapframe *tf);	/* Xspllower() for vCPU */
+void l4x_spllower(void);	/* Xspllower() for vCPU */
 void l4x_run_asts(struct trapframe *tf);
 
 void l4x_vcpu_create_user_task(struct proc *p);
