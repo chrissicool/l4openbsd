@@ -50,7 +50,7 @@ _C_LABEL(netisr):
  */
 IDTVEC(spllower)
 #ifdef L4
-	pushl	%esp
+	pushl	%esp		/* XXX hshoexer: quick bogus hack! */
 	call	_C_LABEL(l4x_spllower)
 	addl	$4,%esp
 #else
