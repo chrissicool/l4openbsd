@@ -672,7 +672,7 @@ NENTRY(proc_trampoline)
 	call	*%esi
 	addl	$4,%esp
 #ifdef L4
-	call	l4x_ret_from_fork
+	call	_C_LABEL(l4x_ret_from_fork)
 	/* NOTREACHED */
 #else
 	INTRFASTEXIT
@@ -936,7 +936,7 @@ ENTRY(copyout)
 	pushl	%eax
 	pushl	%edi
 	pushl	%esi
-	call	l4x_copyout
+	call	_C_LABEL(l4x_copyout)
 	addl	$12, %esp
 	cmpl	$0, %eax
 	jne	copy_fault
@@ -999,7 +999,7 @@ ENTRY(copyin)
 	pushl	%eax
 	pushl	%edi
 	pushl	%esi
-	call	l4x_copyin
+	call	_C_LABEL(l4x_copyin)
 	addl	$12, %esp
 	cmpl	$0, %eax
 	jne	copy_fault
@@ -1075,7 +1075,7 @@ ENTRY(copyoutstr)
 	pushl	%edx
 	pushl	%edi
 	pushl	%esi
-	call	l4x_copyoutstr
+	call	_C_LABEL(l4x_copyoutstr)
 	addl	$16, %esp
 	movl	24+FPADD(%esp),%ecx		# %ecx = *lencopied
 	testl	%ecx, %ecx
@@ -1146,7 +1146,7 @@ ENTRY(copyinstr)
 	pushl	%edx
 	pushl	%edi
 	pushl	%esi
-	call	l4x_copyinstr
+	call	_C_LABEL(l4x_copyinstr)
 	addl	$16, %esp
 	movl	24+FPADD(%esp),%ecx		# %ecx = *lencopied
 	testl	%ecx, %ecx
@@ -1366,7 +1366,7 @@ switch_exited:
 
 	/* No interrupts while loading new state. */
 #ifdef L4
-	call	l4x_global_cli
+	call	_C_LABEL(l4x_global_cli)
 #else
 	cli
 #endif
@@ -1422,7 +1422,7 @@ switch_exited:
 
 	/* Interrupts are okay again. */
 #ifdef L4
-	call	l4x_global_sti
+	call	_C_LABEL(l4x_global_sti)
 #else
 	sti
 #endif
@@ -1887,48 +1887,84 @@ ENTRY(acpi_release_global_lock)
 
 #ifdef L4
 	/*
-	 * On L4 we can not use int3 to trap into the ddb, thus fake a
-	 * stackframe as if an int3 has happened.
+	 * Build trap frame (without ring transition)
 	 *
 	 * XXX hshoexer: We can not use INTRENTRY as it resets segments
 	 * which is not needed on L4.  Moreover, we have to fake a
 	 * kernel CS.  We an not use INTRFASTEXIT as it uses sti.
-	 * For now, write out the entry/exit sequences instead.
+	 */
+#define L4_INTRENTRY(s,r,t)	\
+	pushfl						; \
+	pushl	s	/* segment */			; \
+	pushl	r	/* fake return address */	; \
+	pushl	$0	/* error code */		; \
+	pushl	t	/* trapno */			; \
+	pushl	%eax					; \
+	pushl	%ecx					; \
+	pushl	%edx					; \
+	pushl	%ebx					; \
+	pushl	%ebp					; \
+	pushl	%esi					; \
+	pushl	%edi					; \
+	pushl	%ds					; \
+	pushl	%es					; \
+	pushl	%gs					; \
+	pushl	%fs
+#define L4_INTREXIT		\
+	popl	%fs					; \
+	popl	%gs					; \
+	popl	%es					; \
+	popl	%ds					; \
+	popl	%edi					; \
+	popl	%esi					; \
+	popl	%ebp					; \
+	popl	%ebx					; \
+	popl	%edx					; \
+	popl	%ecx					; \
+	popl	%eax					; \
+	addl	$16,%esp	/* error code, trapno, eip, cs */ ; \
+	popfl
+
+	/*
+	 * On L4 we can not use int3 to trap into the ddb, thus fake a
+	 * stackframe as if an int3 had happened.
 	 */
 ENTRY(l4_fake_int3)
-	pushfl
-	pushl	$GSEL(GCODE_SEL, SEL_KPL)	/* fake kernel mode */
-	pushl	$1f		/* fake return address */
-	pushl	$0		/* error code */
-	pushl	$T_BPTFLT	/* trapno */
-	pushl	%eax
-	pushl	%ecx
-	pushl	%edx
-	pushl	%ebx
+#ifdef DDB
 	pushl	%ebp
-	pushl	%esi
-	pushl	%edi
-	pushl	%ds
-	pushl	%es
-	pushl	%gs
-	pushl	%fs
+	movl	%esp,%ebp
+#endif
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1f, $T_BPTFLT)
 #ifdef DIAGNOSTIC
 	movl	CPL,%ebx
 #endif
 	pushl	%esp
 	call	_C_LABEL(trap)
 	addl	$4,%esp
-	popl	%fs
-	popl	%gs
-	popl	%es
-	popl	%ds
-	popl	%edi
-	popl	%esi
-	popl	%ebp
-	popl	%ebx
-	popl	%edx
-	popl	%ecx
-	popl	%eax
-	addl	$20,%esp	/* error code, trapno, eip, cs, eflags */
-1:	ret
+	L4_INTREXIT
+1:
+#ifdef DDB
+	leave
 #endif
+	ret
+
+ENTRY(do_vcpu_irq)
+#ifdef DDB
+	pushl	%ebp
+	movl	%esp,%ebp
+#endif
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1, $0)
+	pushl	%esp
+	movl	72+FPADD(%esp),%esi
+	pushl	%esi
+	call	_C_LABEL(l4x_vcpu_handle_irq)
+	addl	$8,%esp
+	L4_INTREXIT
+1:
+#ifdef DDB
+	leave
+#endif
+	ret
+
+
+#endif	/* L4 */
