@@ -129,7 +129,7 @@ cpu_fork(struct proc *p1, struct proc *p2, void *stack, size_t stacksize,
 	 */
 	p2->p_md.md_regs = tf = (struct trapframe *)pcb->pcb_tss.tss_esp0 - 1;
 
-#ifdef L4
+#ifdef L4	/* XXX hshoexer: needed? */
 	/* copy tf from old to new proc */
 	l4x_copy_regs(p1, p2);
 #endif

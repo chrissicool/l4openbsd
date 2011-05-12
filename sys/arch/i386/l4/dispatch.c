@@ -64,8 +64,8 @@ static inline int l4x_msgtag_fpu(int cpunum);
 void l4x_evict_mem(l4_umword_t d);
 static inline void l4x_vcpu_entry_user_arch(void);
 static inline void l4x_vcpu_entry_sanity(l4_vcpu_state_t *vcpu);
-void l4x_arch_task_start_setup(struct proc *p);
-void l4x_ret_from_fork(void);
+void l4x_arch_task_start_setup(struct proc *p, struct trapframe *);
+void l4x_ret_from_fork(struct trapframe *);
 void l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 		struct trapframe *regsp);
 void l4x_handle_kernel_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
@@ -191,9 +191,8 @@ l4x_vcpu_create_user_task(struct proc *p)
 }
 
 void
-l4x_arch_task_start_setup(struct proc *p)
+l4x_arch_task_start_setup(struct proc *p, struct trapframe *tf)
 {
-	struct trapframe *tf = p->p_md.md_regs;
 	unsigned int gs = l4x_vcpu_state(cpu_number())->r.gs;
 	unsigned int v = (gs & 0xffff) >> 3;
 
@@ -219,11 +218,10 @@ l4x_arch_task_start_setup(struct proc *p)
  * After fork, we only reach here after the scheduler has chosen us.
  */
 void
-l4x_ret_from_fork(void)
+l4x_ret_from_fork(struct trapframe *tf)
 {
 	struct proc *p = curproc;
 	struct user *u = p->p_addr;
-	struct trapframe *tf = p->p_md.md_regs;
 	l4_vcpu_state_t *vcpu = l4x_stack_vcpu_state_get();
 
 	tf->tf_cs = GSEL(GUCODE_SEL, SEL_UPL);		/* set USERMODE */
@@ -345,7 +343,7 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 			L4XV_L(n);
 			l4x_vcpu_create_user_task(p);
 			L4XV_U(n);
-			l4x_arch_task_start_setup(p);
+			l4x_arch_task_start_setup(p, regs);
 		}
 
 		vcpu->user_task = pmap->task;
@@ -411,6 +409,7 @@ l4x_vcpu_entry(void)
 
 	struct proc *p;
 	struct user *u;
+	struct pcb *pcb;
 	struct trapframe kernel_tf;		/* kernel mode frame */
 	struct trapframe *regsp;
 	l4_vcpu_state_t *vcpu;
@@ -427,14 +426,15 @@ l4x_vcpu_entry(void)
 
 	p = curproc;			/* current thread */
 	u = p->p_addr;			/* current thread's UAREA */
+	pcb = (struct pcb *)&u->u_pcb;	/* current pcb with TSS */
 
 	/*
 	 * Setup current trapframe.
-	 * => came from userland: curproc's tf
+	 * => came from userland: use esp0 from TSS
 	 * => came from kernel:   tf on stack
 	 */
 	if (l4x_vcpu_is_user(vcpu)) {
-		regsp = p->p_md.md_regs;
+		regsp = (struct trapframe *)pcb->pcb_tss.tss_esp0 - 1;
 		l4x_vcpu_entry_user_arch();
 	} else {
 		regsp = &kernel_tf;
@@ -467,8 +467,13 @@ l4x_vcpu_entry(void)
 	if ((regsp->tf_trapno == 0xe) &&
 	    KERNELMODE(regsp->tf_cs, regsp->tf_eflags) &&
 	    (l4x_l4pfa(vcpu) < KVA_START || l4x_l4pfa(vcpu) > L4LX_USER_KERN_AREA_END)) {
+#if 0
 		enter_kdebug("pagefault on L4re memory");
 		l4x_handle_kernel_pf(vcpu, p, u, regsp);
+#else
+		panic("pagefault on L4re memory 0x%08lx regsp %p",
+		    vcpu->r.pfa, regsp);
+#endif
 	}
 
 	/* handle IRQs */

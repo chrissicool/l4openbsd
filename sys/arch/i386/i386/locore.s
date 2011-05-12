@@ -672,6 +672,7 @@ NENTRY(proc_trampoline)
 	call	*%esi
 	addl	$4,%esp
 #ifdef L4
+	pushl	%esp
 	call	_C_LABEL(l4x_ret_from_fork)
 	/* NOTREACHED */
 #else
