@@ -3012,6 +3012,10 @@ pmap_growkernel(vaddr_t maxkvaddr)
 	if (needed_kpde <= nkpde)
 		goto out;		/* we are OK */
 
+	pdb_printf("%s: maxkvaddr=%p, pdei(maxkvaddr)=%d, needed=%d, nkpde=%d,"
+			"ind=%d\n", __func__, maxkvaddr, pdei(maxkvaddr), needed_kpde,
+			nkpde, (pdei(maxkvaddr) - nkpde + needed_kpde));
+
 	/*
 	 * whoops!   we need to add kernel PTPs
 	 */
@@ -3022,7 +3026,7 @@ pmap_growkernel(vaddr_t maxkvaddr)
 	pd = kpm->pm_pdir;
 	for (/*null*/ ; nkpde < needed_kpde ; nkpde++) {
 
-		ind = pdei(maxkvaddr) - needed_kpde + nkpde;
+		ind = pdei(maxkvaddr) - nkpde + needed_kpde;
 		if (uvm.page_init_done == FALSE) {
 
 			/*
@@ -3055,23 +3059,21 @@ pmap_growkernel(vaddr_t maxkvaddr)
 			uvm_wait("pmap_growkernel");
 
 		/* distribute new kernel PTP to all active pmaps */
-//		simple_lock(&pmaps_lock);
-//		LIST_FOREACH(pm, &pmaps, pm_list) {
-//			pm->pm_pdir[PDSLOT_KERN + nkpde] =
-//				kpm->pm_pdir[PDSLOT_KERN + nkpde];
-//		}
-//		simple_unlock(&pmaps_lock);
+#if 0
+		simple_lock(&pmaps_lock);
+		LIST_FOREACH(pm, &pmaps, pm_list) {
+			pm->pm_pdir[PDSLOT_KERN + nkpde] =
+				kpm->pm_pdir[PDSLOT_KERN + nkpde];
+		}
+		simple_unlock(&pmaps_lock);
+#endif
 	}
 
 	simple_unlock(&kpm->pm_obj.vmobjlock);
 	splx(s);
 
 out:
-#if 0
 	return (VM_MIN_KERNEL_ADDRESS + (nkpde * NBPD));
-#endif
-	/* In fact, we did not allocate any kernel virtual addresses. */
-	return (maxkvaddr);
 }
 
 #ifdef DEBUG
