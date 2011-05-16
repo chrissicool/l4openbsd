@@ -242,20 +242,14 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 		struct trapframe *regsp)
 {
 	paddr_t *kpa;
-	vaddr_t  uva = (vaddr_t)trunc_page(vcpu->r.pfa);
+	vaddr_t  uva = (vaddr_t)trunc_page(rcr2());
 	vm_prot_t prot = VM_PROT_READ;
 	l4_umword_t upage = 0, kpage = 0;
 	unsigned fpage_size = L4_LOG2_PAGESIZE;
 
-	upage = l4x_l4pfa(vcpu);
+	upage = rcr2();
 
-	prot |= l4x_vcpu_is_write_pf(vcpu) ? VM_PROT_WRITE : 0;
-
-	/*
-	 * Re-enable interrupts, since l4x_pmap_walk_pd() may sleep.
-	 * We came from userland, IRQs were always enabled there.
-	 */
-	enable_intr();
+	prot |= (regsp->tf_err & 2) ? VM_PROT_WRITE : 0;
 
 	kpa = l4x_pmap_walk_pd(p, uva, prot);
 
@@ -282,7 +276,6 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 		kpage = l4_fpage((unsigned long)kpa, fpage_size,
 				L4_FPAGE_RO).fpage;
 
-//	printf("%s: cl: Sending %p for user %#x\n", __func__, kpa, uva);
 	l4x_vcpu_iret(p, u, regsp, upage, kpage, 1);
 	/* NOTREACHED */
 }
@@ -438,8 +431,10 @@ l4x_vcpu_entry(void)
 		regsp = &kernel_tf;
 	}
 
-	/* save registers */
+	/* save registers and pagefault address */
 	vcpu_to_ptregs(vcpu, regsp);
+	if (l4vcpu_is_page_fault_entry(vcpu))
+		p->p_md.md_pfa = l4x_l4pfa(vcpu);	/* read with rcr2() */
 
 	dbg_printf("vCPU entry: trapno=%d, err=%d, pfa=%08lx, "
 			"ax=%08lx, bx=%08lx, cx=%08lx, dx=%08lx, "
@@ -454,20 +449,6 @@ l4x_vcpu_entry(void)
 			vcpu->saved_state & L4_VCPU_F_USER_MODE ? "USR" : "KRN",
 			l4vcpu_is_irq_entry(vcpu) ? "IRQ" :
 			l4vcpu_is_page_fault_entry(vcpu) ? "PF" : "EXC");
-
-	/* Special page fault handling for user mode. */
-	if ((regsp->tf_trapno == 0xe) &&
-	    USERMODE(regsp->tf_cs, regsp->tf_eflags)) {
-		l4x_handle_user_pf(vcpu, p, u, regsp);
-	}
-
-	/* Special page fault handling for kernel addresses other than KVA. */
-	if ((regsp->tf_trapno == 0xe) &&
-	    KERNELMODE(regsp->tf_cs, regsp->tf_eflags) &&
-	    (l4x_l4pfa(vcpu) < KVA_START || l4x_l4pfa(vcpu) > L4LX_USER_KERN_AREA_END)) {
-		enter_kdebug("pagefault on L4re memory");
-		l4x_handle_kernel_pf(vcpu, p, u, regsp);
-	}
 
 	/* handle IRQs */
 	if (l4vcpu_is_irq_entry(vcpu)) {
@@ -485,6 +466,20 @@ l4x_vcpu_entry(void)
 	 */
 	if (vcpu->saved_state & L4_VCPU_F_IRQ)
 		enable_intr();
+
+	/* Special page fault handling for kernel addresses other than KVA. */
+	if ((regsp->tf_trapno == 0xe) &&
+	    KERNELMODE(regsp->tf_cs, regsp->tf_eflags) &&
+	    ((rcr2() < KVA_START) || (rcr2() > L4LX_USER_KERN_AREA_END))) {
+		l4x_handle_kernel_pf(vcpu, p, u, regsp);
+		/* NOTREACHED */
+	}
+
+	/* Special page fault handling for user mode. */
+	if ((regsp->tf_trapno == 0xe) &&
+	    USERMODE(regsp->tf_cs, regsp->tf_eflags)) {
+		l4x_handle_user_pf(vcpu, p, u, regsp);
+	}
 
 	/* handle syscalls */
 	if (l4x_vcpu_was_syscall) {
