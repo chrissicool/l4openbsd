@@ -71,6 +71,8 @@ l4x_spllower(void)
 			break;
 		}
 	}
+
+	l4x_run_softintr();	/* handle softintrs */
 }
 
 /*
