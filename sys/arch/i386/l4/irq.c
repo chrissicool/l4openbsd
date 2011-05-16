@@ -101,10 +101,17 @@ set_irq_regs(struct trapframe *new_regs)
 	return old_regs;
 }
 
+/*
+ * Handle a pending IRQ event.
+ * => Needs to be called with IRQ events disabled on t.
+ * => Enables IRQ event delivery on t. This is recursive.
+*/
 void
 l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 {
 	int irq = t->i.label >> 2;
+
+	enable_intr();
 
 #ifdef MULTIPROCESSOR	/* unported */
 	if (irq & L4X_VCPU_IRQ_IPI)
