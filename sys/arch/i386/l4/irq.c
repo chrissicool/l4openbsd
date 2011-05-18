@@ -71,6 +71,12 @@ l4x_spllower(void)
 					if (irq < ICU_LEN)
 						l4x_recurse_irq_handlers(irq);
 					else
+						/*
+						 * XXX hshoexer: runs _all_
+						 * pending softints, not only
+						 * irq.
+						 * will be fixed.
+						 */
 						l4x_run_softintr();
 				}
 			} else {
