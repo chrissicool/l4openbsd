@@ -2845,6 +2845,11 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 		else if (!wired && (opte & PG_W) != 0)
 			wired_count--;
 
+#ifdef L4
+		/* No matter if this was the same page, permissions may change. */
+		l4x_remove_pte(pmap, va, L4_FPAGE_RWX);
+#endif
+
 		/*
 		 * is the currently mapped PA the same as the one we
 		 * want to map?
@@ -2870,7 +2875,6 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 		/*
 		 * changing PAs: we must remove the old one first
 		 */
-		l4x_remove_pte(pmap, va, L4_FPAGE_RWX);
 
 		/*
 		 * if current mapping is on a pvlist,
