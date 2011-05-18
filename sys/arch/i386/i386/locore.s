@@ -1667,7 +1667,11 @@ calltrap:
 	call	_C_LABEL(printf)
 	addl	$4,%esp
 #if defined(DDB) && 0
+#ifdef L4
+	call	_C_LABEL(l4x_fake_int3)
+#else
 	int	$3
+#endif /* L4 */
 #endif /* DDB */
 	movl	%ebx,CPL
 	jmp	2b
@@ -1892,7 +1896,7 @@ ENTRY(acpi_release_global_lock)
 	 *
 	 * XXX hshoexer: We can not use INTRENTRY as it resets segments
 	 * which is not needed on L4.  Moreover, we have to fake a
-	 * kernel CS.  We an not use INTRFASTEXIT as it uses sti.
+	 * kernel CS.  We can not use INTRFASTEXIT as it uses sti.
 	 */
 #define L4_INTRENTRY(s,r,t)	\
 	pushfl						; \
@@ -1930,15 +1934,12 @@ ENTRY(acpi_release_global_lock)
 	 * On L4 we can not use int3 to trap into the ddb, thus fake a
 	 * stackframe as if an int3 had happened.
 	 */
-ENTRY(l4_fake_int3)
+ENTRY(l4x_fake_int3)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp
 #endif
 	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1f, $T_BPTFLT)
-#ifdef DIAGNOSTIC
-	movl	CPL,%ebx
-#endif
 	pushl	%esp
 	call	_C_LABEL(trap)
 	addl	$4,%esp
@@ -1949,12 +1950,17 @@ ENTRY(l4_fake_int3)
 #endif
 	ret
 
+	/*
+	 * Setup trap frame for in-kernel interrupts.
+	 * XXX hshoexer: Should be interrupt frame, but we're not
+	 * there yet
+	 */
 ENTRY(do_vcpu_irq)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp
 #endif
-	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1, $T_ASTFLT)
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1f, $T_ASTFLT)
 	pushl	%esp	/* trape frame */
 	movl	72+FPADD(%esp),%esi
 	pushl	%esi	/* pointer to vcpu state */
@@ -1967,22 +1973,27 @@ ENTRY(do_vcpu_irq)
 #endif
 	ret
 
+	/*
+	 * Setup trap frame for recursing interrupts after spllower().
+	 * XXX hshoexer: Should be interrupt frame, but we're not
+	 * there yet
+	 */
 ENTRY(recurse_irq_handlers)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp
 #endif
-	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1, $T_ASTFLT)
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1f, $T_ASTFLT)
 	pushl	%esp	/* trape frame */
 	movl	72+FPADD(%esp),%esi
 	pushl	%esi	/* interrupt number */
 	call	_C_LABEL(l4x_run_irq_handlers)
 	addl	$8,%esp
 	L4_INTREXIT
+1:
 #ifdef DDB
 	leave
 #endif
 	ret
-
 
 #endif	/* L4 */
