@@ -2399,6 +2399,9 @@ pmap_page_remove(struct vm_page *pg)
 #endif
 
 		opte = i386_atomic_testset_ul(&ptes[ptei(pve->pv_va)], 0);
+#ifdef L4
+		l4x_remove_pte(pve->pv_pmap, pve->pv_va, L4_FPAGE_RWX);
+#endif
 
 		if (opte & PG_W)
 			pve->pv_pmap->pm_stats.wired_count--;
