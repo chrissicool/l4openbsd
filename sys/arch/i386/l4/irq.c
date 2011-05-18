@@ -172,7 +172,7 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 
 	/*
 	 * Handle only hardware IRQs routed throug PIC.
-	 * XXX hshoexer:  With APIC we have more vector numbers then
+	 * XXX hshoexer:  With APIC we have more vector numbers than
 	 * ICU_LEN.
 	 */
 	if (irq >= ICU_LEN)
@@ -215,7 +215,7 @@ handle_irq(int irq, struct trapframe *regs)
 
 	/*
 	 * Handle only hardware IRQs routed throug PIC.
-	 * XXX hshoexer:  With APIC we have more vector numbers then
+	 * XXX hshoexer:  With APIC we have more vector numbers than
 	 * ICU_LEN.
 	 */
 	if (irq >= ICU_LEN)
@@ -225,7 +225,7 @@ handle_irq(int irq, struct trapframe *regs)
 	uvmexp.intrs++;
 
 	/* Check current splx(9) level */
-	if (iminlevel[irq] < lapic_tpr) {
+	if (iminlevel[irq] <= lapic_tpr) {
 		atomic_setbits_int(&curcpu()->ci_ipending,
 		                    curcpu()->ci_ipending | (1 << irq));
 		return 1; /* handled */
