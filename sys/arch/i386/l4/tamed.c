@@ -23,7 +23,7 @@
 #include <l4/sys/ipc.h>
 #include <l4/sys/utcb.h>
 
-extern void do_vcpu_irq(l4_vcpu_state_t *v);
+extern void l4x_do_vcpu_irq(l4_vcpu_state_t *v);
 void l4x_srv_setup_recv_wrap(l4_utcb_t *utcb);
 
 void
@@ -45,7 +45,7 @@ void
 l4x_global_sti(void)
 {
 	l4vcpu_irq_enable(l4x_stack_vcpu_state_get(), l4x_stack_utcb_get(),
-			do_vcpu_irq, l4x_srv_setup_recv_wrap);
+			l4x_do_vcpu_irq, l4x_srv_setup_recv_wrap);
 }
 
 /*
@@ -55,5 +55,5 @@ void
 l4x_global_halt(void)
 {
 	l4vcpu_halt(l4x_stack_vcpu_state_get(), l4x_stack_utcb_get(),
-			do_vcpu_irq, l4x_srv_setup_recv_wrap);
+			l4x_do_vcpu_irq, l4x_srv_setup_recv_wrap);
 }

@@ -1955,7 +1955,7 @@ ENTRY(l4x_fake_int3)
 	 * XXX hshoexer: Should be interrupt frame, but we're not
 	 * there yet
 	 */
-ENTRY(do_vcpu_irq)
+ENTRY(l4x_do_vcpu_irq)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp
@@ -1978,7 +1978,7 @@ ENTRY(do_vcpu_irq)
 	 * XXX hshoexer: Should be interrupt frame, but we're not
 	 * there yet
 	 */
-ENTRY(recurse_irq_handlers)
+ENTRY(l4x_recurse_irq_handlers)
 #ifdef DDB
 	pushl	%ebp
 	movl	%esp,%ebp

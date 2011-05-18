@@ -49,21 +49,30 @@ extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
 #endif
 
 /*
- * Recurse into all pending interrupts, when lowering the SPL.
+ * Recurse into all interrupts pending on the new lower IPL.
  * We do _not_ actually lower the SPL here! See _SPLX for that.
  */
 void
 l4x_spllower(void)
 {
-	extern void recurse_irq_handlers(int);
-	int s;
+	extern void l4x_recurse_irq_handlers(int);
+	int s, irq, pending;
 
 	for (s = NIPL; s > NIPL; s--) {
 		if (MAKEIPL(s) > lapic_tpr) {
 			disable_intr();
 			if (curcpu()->ci_ipending & iunmask[s]) {
 				enable_intr();
-				recurse_irq_handlers(s);
+				pending = curcpu()->ci_ipending & iunmask[s];
+				while (pending) {
+					irq = ffs(pending) - 1;
+					pending &= ~(1 << irq);
+
+					if (irq < ICU_LEN)
+						l4x_recurse_irq_handlers(irq);
+					else
+						l4x_run_softintr();
+				}
 			} else {
 				enable_intr();
 			}
@@ -71,8 +80,6 @@ l4x_spllower(void)
 			break;
 		}
 	}
-
-	l4x_run_softintr();	/* handle softintrs */
 }
 
 /*
@@ -135,7 +142,8 @@ l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
  * SMP cross-CPU interrupts have their own specific
  * handlers).
  */
-unsigned int do_IRQ(int irq, struct trapframe *regs)
+unsigned int
+do_IRQ(int irq, struct trapframe *regs)
 {
 	struct trapframe *old_regs = set_irq_regs(regs);
 
@@ -160,6 +168,14 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 	struct intrhand **p, *q;
 	int r, result = 0;
 
+	/*
+	 * Handle only hardware IRQs routed throug PIC.
+	 * XXX hshoexer:  With APIC we have more vector numbers then
+	 * ICU_LEN.
+	 */
+	if (irq >= ICU_LEN)
+		return result;
+
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
 	for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
@@ -178,12 +194,12 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 	i386_atomic_dec_i(&curcpu()->ci_idepth);
 
 	/* Ack current handled IRQ. */
+	/* XXX hshoexer */
 	atomic_clearbits_int(&curcpu()->ci_ipending, (1 << irq));
 	l4lx_irq_dev_eoi(irq);
 
 	return result;
 }
-
 
 /*
  * Note, we only run hardware IRQs here.
@@ -195,8 +211,12 @@ handle_irq(int irq, struct trapframe *regs)
 {
 	int s, result = 0;
 
-	/* handle only hardware IRQs */
-	if (irq > ICU_LEN)
+	/*
+	 * Handle only hardware IRQs routed throug PIC.
+	 * XXX hshoexer:  With APIC we have more vector numbers then
+	 * ICU_LEN.
+	 */
+	if (irq >= ICU_LEN)
 		return 0;
 
 	/* Count number of interrupts. */
@@ -211,6 +231,7 @@ handle_irq(int irq, struct trapframe *regs)
 
 	s = splraise(imaxlevel[irq]);
 	result = l4x_run_irq_handlers(irq, regs);
+	/* XXX hshoexer */
 	splx(s);		/* run all held back IRQs */
 
 	l4x_run_softintr();	/* handle softintrs */
