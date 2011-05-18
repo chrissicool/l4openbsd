@@ -62,8 +62,8 @@ l4x_spllower(void)
 		if (MAKEIPL(s) > lapic_tpr) {
 			disable_intr();
 			if (curcpu()->ci_ipending & iunmask[s]) {
-				enable_intr();
 				pending = curcpu()->ci_ipending & iunmask[s];
+				enable_intr();
 				while (pending) {
 					irq = ffs(pending) - 1;
 					pending &= ~(1 << irq);
