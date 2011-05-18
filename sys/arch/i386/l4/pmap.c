@@ -541,7 +541,8 @@ l4x_remove_ptes(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flush_rights)
 
 #ifdef DIAGNOSTIC
 	if (pmap == pmap_kernel()) {
-		enter_kdebug("remove kernel ptes");
+		printf("Removing kernel ptes for 0x%08lx - %08lx\n", sva, eva);
+		Debugger();
 		return;
 	}
 #endif
