@@ -58,34 +58,30 @@ l4x_spllower(void)
 	extern void l4x_recurse_irq_handlers(int);
 	int s, irq, pending;
 
-	for (s = NIPL; s > NIPL; s--) {
-		if (MAKEIPL(s) > lapic_tpr) {
-			disable_intr();
-			if (curcpu()->ci_ipending & iunmask[s]) {
-				pending = curcpu()->ci_ipending & iunmask[s];
-				enable_intr();
-				while (pending) {
-					irq = ffs(pending) - 1;
-					pending &= ~(1 << irq);
+	disable_intr();
+	for (s = NIPL; s > (IPL(lapic_tpr) - 0x20); s--) {
+		if (curcpu()->ci_ipending & iunmask[s]) {
+			pending = curcpu()->ci_ipending & iunmask[s];
+			enable_intr();
+			while (pending) {
+				irq = ffs(pending) - 1;
+				pending &= ~(1 << irq);
 
-					if (irq < ICU_LEN)
-						l4x_recurse_irq_handlers(irq);
-					else
-						/*
-						 * XXX hshoexer: runs _all_
-						 * pending softints, not only
-						 * irq.
-						 * will be fixed.
-						 */
-						l4x_run_softintr();
-				}
-			} else {
-				enable_intr();
+				if (irq < ICU_LEN)
+					l4x_recurse_irq_handlers(irq);
+				else
+					/*
+					 * XXX hshoexer: runs _all_
+					 * pending softints, not only
+					 * irq.
+					 * will be fixed.
+					 */
+					l4x_run_softintr();
 			}
-		} else {
-			break;
+			disable_intr();
 		}
 	}
+	enable_intr();
 }
 
 /*
