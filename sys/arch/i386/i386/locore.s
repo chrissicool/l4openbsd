@@ -1878,3 +1878,52 @@ ENTRY(acpi_release_global_lock)
 #endif
 
 #include <i386/i386/mutex.S>
+
+#ifdef L4
+/*
+ * On L4 we can not use int3 to trap into the ddb, thus fake a stackframe
+ * as if an int3 has happened. This emulates IDTVEC(bpt) and traps as T_BPTFLT.
+ *
+ * XXX hshoexer: INTRENTRY and INTRFASTEXIT play with ring0 elements, which
+ * are not needed on L4. For now, write out the entry/exit sequences instead.
+ */
+/* void l4x_fake_int3(void) */
+ENTRY(l4x_fake_int3)
+	pushfl
+	pushl   $GSEL(GCODE_SEL, SEL_KPL)	/* fake kernel mode */
+	pushl   $1f				/* fake return address */
+	pushl   $0				/* error code */
+	pushl   $T_BPTFLT			/* trapno */
+	/* INTRENTRY */
+	pushl   %eax
+	pushl   %ecx
+	pushl   %edx
+	pushl   %ebx
+	pushl   %ebp
+	pushl   %esi
+	pushl   %edi
+	pushl   %ds
+	pushl   %es
+	pushl   %gs
+	pushl   %fs
+
+	pushl   %esp
+	call    _C_LABEL(trap)
+	addl    $4,%esp
+
+	/* INTRFASTEXIT */
+	popl    %fs
+	popl    %gs
+	popl    %es
+	popl    %ds
+	popl    %edi
+	popl    %esi
+	popl    %ebp
+	popl    %ebx
+	popl    %edx
+	popl    %ecx
+	popl    %eax
+
+	addl    $20,%esp        /* error code, trapno, eip, cs, eflags */
+1:	ret
+#endif
