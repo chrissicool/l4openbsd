@@ -121,7 +121,8 @@ l4x_exec_softintr(int ipl)
 	int which;
 
 	spl = CPL;
-	CPL = which;
+	/* XXX hshoexer */
+	CPL = ipl;
 
 	switch (ipl) {
 	case IPL_SOFTCLOCK:
@@ -158,6 +159,7 @@ l4x_exec_softintr(int ipl)
 	i386_softintunlock();
 #endif
 
+	/* XXX hshoexer */
 	CPL = spl;
 }
 
