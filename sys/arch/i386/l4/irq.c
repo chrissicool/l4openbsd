@@ -57,6 +57,9 @@ l4x_spllower(void)
 {
 	int irq, pending;
 
+	/*
+	 * XXX hshoexer:  Proof-of-concept, still needs rewrite.
+	 */
 retry:
 	disable_intr();
 	if ((pending = curcpu()->ci_ipending & IUNMASK(lapic_tpr)) != 0) {
@@ -250,6 +253,7 @@ handle_irq(int irq, struct trapframe *regs)
 
 	l4x_run_softintr();	/* handle softintrs */
 #else
+	/* XXX hshoexer: enough for doreti? */
 	splx(s);
 #endif
 
