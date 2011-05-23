@@ -345,11 +345,10 @@ void
 Debugger(void)
 {
 #ifdef L4
-	/* Fake int3 trap. */
 	extern void l4x_fake_int3(void);
 
 	l4x_fake_int3();
-#else	/* !L4 */
+#else
 	__asm__("int $3");
 #endif	/* !L4 */
 }

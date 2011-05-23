@@ -1,9 +1,0 @@
-/Makefile/1.51/Thu Mar 18 12:27:13 2010//TOPENBSD_4_8_BASE
-/disklabel.5/1.19/Thu May 31 19:19:43 2007//TOPENBSD_4_8_BASE
-/disklabel.8/1.93/Wed Apr 28 17:26:46 2010//TOPENBSD_4_8_BASE
-/disklabel.c/1.170/Sun Aug  8 05:24:46 2010//TOPENBSD_4_8_BASE
-/dkcksum.c/1.8/Tue Oct 27 23:59:32 2009//TOPENBSD_4_8_BASE
-/editor.c/1.242/Mon Aug  9 17:31:45 2010//TOPENBSD_4_8_BASE
-/extern.h/1.18/Fri Aug  7 00:26:34 2009//TOPENBSD_4_8_BASE
-/pathnames.h/1.7/Mon Jun  2 20:06:14 2003//TOPENBSD_4_8_BASE
-D

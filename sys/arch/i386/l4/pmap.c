@@ -267,6 +267,9 @@ int pmap_pg_g = 0;
  */
 int pmap_pg_wc = PG_UCMINUS;
 
+#undef i386_round_pdr
+#define	i386_round_pdr(x)	((((unsigned)(x)) + ~PD_MASK) & PD_MASK)
+
 /*
  * i386 physical memory comes in a big contig chunk with a small
  * hole toward the front of it...  the following 4 paddr_t's
@@ -349,6 +352,7 @@ caddr_t vmmap; /* XXX: used by mem.c... it should really uvm_map_reserve it */
  */
 
 void		 l4x_remove_pte(struct pmap *, vaddr_t, int);
+void		 l4x_remove_ptes(struct pmap *, vaddr_t, vaddr_t, int);
 struct pv_entry	*pmap_add_pvpage(struct pv_page *, boolean_t);
 struct vm_page	*pmap_alloc_ptp(struct pmap *, int, boolean_t, pt_entry_t);
 struct pv_entry	*pmap_alloc_pv(struct pmap *, int); /* see codes below */
@@ -475,6 +479,7 @@ start_walk:
 		*pte |= PG_U;
 	if (access_type & VM_PROT_WRITE)
 		*pte |= (PG_M | PG_U);
+
 	pmap_unmap_pdes(pmap);				/* unlock pmap */
 	KERNEL_PROC_UNLOCK(p);				/* unlock proc */
 
@@ -482,8 +487,9 @@ start_walk:
 }
 
 /*
- * When removing a pte, we need to remove the flex-page from the
- * L4 task. We accomplish this by trying to free the va on pmap->task.
+ * When removing permission bits from a pte, we need to modify/remove the
+ * flex-page from the L4 task. We accomplish this by calling unmap on the
+ * va of pmap->task.
  */
 void
 l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
@@ -503,8 +509,7 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 			 * will work on the address space before. We resolve this
 			 * at pagefault time. So, no error messages here.
 			 */
-			//l4x_printf("Unmap non-existant task page @%p.\n",
-			//		va);
+			pdb_printf("Unmap non-existant task page @%p.\n", va);
 			return;
 		}
 		pdb_printf("  %s: Removing %s%s%s bit(s) from %p (PTD: %p)\n",
@@ -515,13 +520,51 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 				va, pmap->pm_pdir);
 		L4XV_L(n);
 		tag = l4_task_unmap(pmap->task,
-				l4_fpage(va & PAGE_MASK, NBPG, flush_rights),
+				l4_fpage(va, NBPG, flush_rights),
 				L4_FP_ALL_SPACES);
 		L4XV_U(n);
 		if (l4_error(tag))
 			l4x_printf("Unmap error %ld\n",	l4_error(tag));
 	}
 }
+
+/*
+ * Remove permission bits from all specified pages, starting from sva to eva.
+ * VAs have to be aligned.
+ * Note that eva points to the first page not to drop anymore.
+ */
+void
+l4x_remove_ptes(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flush_rights)
+{
+	l4_msgtag_t tag;
+	L4XV_V(n);
+
+#ifdef DIAGNOSTIC
+	if (pmap == pmap_kernel()) {
+		printf("Removing kernel ptes for 0x%08lx - %08lx\n", sva, eva);
+		Debugger();
+		return;
+	}
+#endif
+
+	if (l4_is_invalid_cap(pmap->task))
+		return;
+
+	pdb_printf("  %s: Removing %s%s%s bit(s) from (%#x--%#x) (PTD: %p)\n",
+			__func__,
+			(flush_rights & L4_FPAGE_RO) ? "R" : "",
+			(flush_rights & L4_FPAGE_W)  ? "W" : "",
+			(flush_rights & L4_FPAGE_X)  ? "X" : "",
+			sva, eva, pmap->pm_pdir);
+	L4XV_L(n);
+	tag = l4_task_unmap(pmap->task,
+			l4_fpage(sva, eva - sva, flush_rights),
+			L4_FP_ALL_SPACES);
+	L4XV_U(n);
+	if (l4_error(tag))
+		l4x_printf("Unmap error %ld\n",	l4_error(tag));
+}
+
 
 /*
  * p m a p   i n l i n e   h e l p e r   f u n c t i o n s
@@ -2112,9 +2155,6 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 	struct vm_page *pg;
 	pt_entry_t opte;
 
-	pt_entry_t *ptes;
-	pd_entry_t *pd = pmap->pm_pdir;
-
 	/*
 	 * note that ptpva points to the PTE that maps startva.   this may
 	 * or may not be the first PTE in the PTP.
@@ -2124,20 +2164,20 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 	 * to keep track of the number of real PTEs in the PTP).
 	 */
 
-	pdb_printf("%s: Removing %#x -- %#x (PTD: %p, PTP %p)\n",
-			__func__, startva, endva, pmap->pm_pdir, ptp);
+	pdb_printf("%s: Removing %s %#x -- %#x (PTD: %p, PTP %p, PTE %p(%s, %p))\n",
+			__func__, pmap == pmap_kernel() ? "KRN" : "USR",
+			startva, endva, pmap->pm_pdir, ptp, pte,
+			(pte && pmap_valid_entry(*pte)) ? "v" : "i", pte ? *pte : NULL);
+
+#ifdef L4
+	/* speed hack: we are instructed to remove the whole range. */
+	if ((flags == PMAP_REMOVE_ALL) && (pmap != pmap_kernel()))
+		l4x_remove_ptes(pmap, startva, endva, L4_FPAGE_RWX);
+#endif
+
 
 	for (/*null*/; startva < endva && (ptp == NULL || ptp->wire_count > 1)
-			     ; startva += NBPG) {
-		if (!pmap_valid_entry(pd[pdei(startva)]))
-			continue;			/* no page directory entry */
-
-		/* get valid pte */
-		ptes = (pt_entry_t *)(pd[pdei(startva)] & PG_FRAME);
-		pte = (pt_entry_t *)&ptes[ptei(startva)];
-		if (pte == NULL)
-			continue;			/* no page table entry */
-
+			     ; pte++, startva += NBPG) {
 		if (!pmap_valid_entry(*pte))
 			continue;			/* VA not mapped */
 
@@ -2147,7 +2187,8 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 		/* atomically save the old PTE and zero it */
 		opte = i386_atomic_testset_ul(pte, 0);
 #ifdef L4
-		l4x_remove_pte(pmap, startva, L4_FPAGE_RWX);
+		if ((pmap == pmap_kernel()) || !(flags == PMAP_REMOVE_ALL))
+			l4x_remove_pte(pmap, startva, L4_FPAGE_RWX);
 #endif
 
 		if (opte & PG_W)
@@ -2239,8 +2280,8 @@ pmap_do_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flags)
 	pdb_printf("%s: Removing range %#x -- %#x (PTD: %#x, flags: %lu)\n",
 			__func__, sva, eva, pmap->pm_pdir, flags);
 
-	for (va = sva ; va < eva ; va += NBPG) {
-		/* determine range of block */
+	for (va = sva ; va < eva ; va = blkendva) {
+		/* determine range of block (end of page table page) */
 		blkendva = i386_round_pdr(va + 1);
 		if (blkendva > eva)
 			blkendva = eva;
@@ -2359,6 +2400,9 @@ pmap_page_remove(struct vm_page *pg)
 #endif
 
 		opte = i386_atomic_testset_ul(&ptes[ptei(pve->pv_va)], 0);
+#ifdef L4
+		l4x_remove_pte(pve->pv_pmap, pve->pv_va, L4_FPAGE_RWX);
+#endif
 
 		if (opte & PG_W)
 			pve->pv_pmap->pm_stats.wired_count--;
@@ -2447,6 +2491,9 @@ pmap_clear_attrs(struct vm_page *pg, int clearbits)
 	pt_entry_t *ptes, opte;
 	u_long clearflags;
 	int result;
+#ifdef L4
+	int type = 0;
+#endif
 
 	clearflags = pmap_pte2flags(clearbits);	
 
@@ -2476,9 +2523,11 @@ pmap_clear_attrs(struct vm_page *pg, int clearbits)
 #ifdef L4
 			/* We only need to care about R/W -> R/O mappings. */
 			if (pmap_valid_entry(opte))
-				if ((opte & PG_RW) && ((opte & clearbits) & ~PG_RW) &&
-				    (opte & PG_RO) && ((opte & clearbits) & PG_RO))
-					l4x_remove_pte(pve->pv_pmap, pve->pv_va, L4_FPAGE_W);
+				if ((opte & PG_RW) && ((opte & clearbits) & ~PG_RW))
+					type |= L4_FPAGE_W;
+				if ((opte & PG_RO) && ((opte & clearbits) & PG_RO))
+					type |= L4_FPAGE_RO;
+				l4x_remove_pte(pve->pv_pmap, pve->pv_va, type);
 #endif
 			pmap_tlb_shootpage(pve->pv_pmap, pve->pv_va);
 		}
@@ -2521,13 +2570,13 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
     vm_prot_t prot)
 {
 	pd_entry_t *pd;
-	pt_entry_t *ptes, *spte, /* *epte, */ npte, opte;
+	pt_entry_t *ptes, *spte, *epte, npte, opte;
 	vaddr_t blockend;
 	u_int32_t md_prot;
-	vaddr_t va, curva;
+	vaddr_t va;
 //	int shootall = 0;
 #ifdef L4
-	int type;
+	int type = 0;
 #endif
 
 	pd = pmap_map_pdes(pmap);		/* locks pmap */
@@ -2539,11 +2588,27 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 //	if ((eva - sva > 32 * PAGE_SIZE) && pmap != pmap_kernel())
 //		shootall = 1;
 
-	pdb_printf("%s: PTD=%p, sva=%p, eva=%p, prot=%x\n", __func__,
-			pmap->pm_pdir, sva, eva, prot);
+	pdb_printf("%s: PTD=%p, sva=%p, eva=%p, prot=%s%s%s\n", __func__,
+			pmap->pm_pdir, sva, eva,
+			(prot & VM_PROT_READ) ? "R" : "",
+			(prot & VM_PROT_WRITE) ? "W" : "",
+			(prot & VM_PROT_EXECUTE) ? "X" : "");
+
+#ifdef L4
+	if ((prot & VM_PROT_WRITE) == 0)
+		type |= L4_FPAGE_W;
+	if ((prot & VM_PROT_READ) == 0)
+		type |= L4_FPAGE_RO;
+	if ((prot & VM_PROT_EXECUTE) == 0)
+		type |= L4_FPAGE_X;
+
+	if (pmap != pmap_kernel())
+		l4x_remove_ptes(pmap, sva, eva, type);
+#endif
+
 
 	for (va = sva; va < eva; va = blockend) {
-		blockend = (va & PD_MASK) + NBPD;
+		blockend = i386_round_pdr(va + 1);
 		if (blockend > eva)
 			blockend = eva;
 
@@ -2574,13 +2639,12 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 
 //		spte = &ptes[atop(va)];
 //		epte = &ptes[atop(blockend)];
+		ptes = (pt_entry_t *)(pd[pdei(va)] & PG_FRAME);
+		spte = (pt_entry_t *)&ptes[ptei(va)];
+		epte = (pt_entry_t *)&ptes[ptei(blockend - 1)];
 
-//		for (/*null */; spte < epte ; spte++, va += PAGE_SIZE) {
-		for (curva = va; curva < blockend; curva += PAGE_SIZE) {
 
-			ptes = (pt_entry_t *)(pd[pdei(curva)] & PG_FRAME);
-			spte = (pt_entry_t *)&ptes[ptei(curva)];
-
+		for (/*null */; spte <= epte ; spte++, va += PAGE_SIZE) {
 			if (!pmap_valid_entry(*spte))	/* no mapping? */
 				continue;
 
@@ -2588,17 +2652,13 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 			npte = (opte & ~PG_PROT) | md_prot;
 
 			if (npte != opte) {
-				pmap_exec_account(pmap, curva, *spte, npte);
+				pmap_exec_account(pmap, va, *spte, npte);
 				i386_atomic_clearbits_l(spte,
 				    (~md_prot & opte) & PG_PROT);
 				i386_atomic_setbits_l(spte, md_prot);
 #ifdef L4
-				if ((opte & PG_RW) && (npte & ~PG_RW))
-					type = L4_FPAGE_W;
-				if ((opte & PG_RO) && (npte & ~PG_RO))
-					type |= L4_FPAGE_RO;
-
-				l4x_remove_pte(pmap, curva, type);
+				if (pmap == pmap_kernel())
+					l4x_remove_pte(pmap, va, type);
 #endif
 			}
 		}
@@ -2644,18 +2704,11 @@ pmap_unwire(struct pmap *pmap, vaddr_t va)
 		}
 #ifdef DIAGNOSTIC
 		else {
-#ifdef not_for_L4
-			/*
-			 * This happens on L4, if the PA changed on pmap_enter()
-			 * and running l4x_pmap_walk_pd() afterwards. So this
-			 * function will be presented a valid va.
-			 */
 			printf("pmap_unwire: wiring for pmap %p va 0x%lx "
 			       "didn't change!\n", pmap, va);
-#endif
 		}
 #endif
-		pmap_unmap_pdes(pmap);			/* unlocks map */
+		pmap_unmap_pdes(pmap);			/* unlocks pmap */
 	}
 #ifdef DIAGNOSTIC
 	else {
@@ -2793,6 +2846,11 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 		else if (!wired && (opte & PG_W) != 0)
 			wired_count--;
 
+#ifdef L4
+		/* No matter if this was the same page, permissions may change. */
+		l4x_remove_pte(pmap, va, L4_FPAGE_RWX);
+#endif
+
 		/*
 		 * is the currently mapped PA the same as the one we
 		 * want to map?
@@ -2818,7 +2876,6 @@ pmap_enter(struct pmap *pmap, vaddr_t va, paddr_t pa,
 		/*
 		 * changing PAs: we must remove the old one first
 		 */
-		l4x_remove_pte(pmap, va, L4_FPAGE_RWX);
 
 		/*
 		 * if current mapping is on a pvlist,
@@ -2963,6 +3020,10 @@ pmap_growkernel(vaddr_t maxkvaddr)
 	if (needed_kpde <= nkpde)
 		goto out;		/* we are OK */
 
+	pdb_printf("%s: maxkvaddr=%p, pdei(maxkvaddr)=%d, needed=%d, nkpde=%d,"
+			"ind=%d\n", __func__, maxkvaddr, pdei(maxkvaddr), needed_kpde,
+			nkpde, (pdei(maxkvaddr) - nkpde + needed_kpde));
+
 	/*
 	 * whoops!   we need to add kernel PTPs
 	 */
@@ -2973,7 +3034,7 @@ pmap_growkernel(vaddr_t maxkvaddr)
 	pd = kpm->pm_pdir;
 	for (/*null*/ ; nkpde < needed_kpde ; nkpde++) {
 
-		ind = pdei(maxkvaddr) - needed_kpde + nkpde;
+		ind = pdei(maxkvaddr) - nkpde + needed_kpde;
 		if (uvm.page_init_done == FALSE) {
 
 			/*
@@ -3006,23 +3067,21 @@ pmap_growkernel(vaddr_t maxkvaddr)
 			uvm_wait("pmap_growkernel");
 
 		/* distribute new kernel PTP to all active pmaps */
-//		simple_lock(&pmaps_lock);
-//		LIST_FOREACH(pm, &pmaps, pm_list) {
-//			pm->pm_pdir[PDSLOT_KERN + nkpde] =
-//				kpm->pm_pdir[PDSLOT_KERN + nkpde];
-//		}
-//		simple_unlock(&pmaps_lock);
+#if 0
+		simple_lock(&pmaps_lock);
+		LIST_FOREACH(pm, &pmaps, pm_list) {
+			pm->pm_pdir[PDSLOT_KERN + nkpde] =
+				kpm->pm_pdir[PDSLOT_KERN + nkpde];
+		}
+		simple_unlock(&pmaps_lock);
+#endif
 	}
 
 	simple_unlock(&kpm->pm_obj.vmobjlock);
 	splx(s);
 
 out:
-#if 0
 	return (VM_MIN_KERNEL_ADDRESS + (nkpde * NBPD));
-#endif
-	/* In fact, we did not allocate any kernel virtual addresses. */
-	return (maxkvaddr);
 }
 
 #ifdef DEBUG

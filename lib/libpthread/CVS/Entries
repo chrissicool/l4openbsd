@@ -1,8 +1,0 @@
-/Makefile/1.23/Thu Nov 24 20:49:20 2005//TOPENBSD_4_8_BASE
-/shlib_version/1.28/Mon Apr 12 01:54:23 2010//TOPENBSD_4_8_BASE
-D/arch////
-D/include////
-D/man////
-D/sys////
-D/thread////
-D/uthread////

@@ -1,8 +1,0 @@
-/armv7_a4x_io.S/1.1/Fri May  8 02:57:32 2009//TOPENBSD_4_8_BASE
-/armv7_a4x_space.c/1.1/Fri May  8 02:57:32 2009//TOPENBSD_4_8_BASE
-/armv7_mutex.c/1.1/Fri May  8 02:57:32 2009//TOPENBSD_4_8_BASE
-/armv7_space.c/1.1/Fri May  8 02:57:32 2009//TOPENBSD_4_8_BASE
-/armv7reg.h/1.1/Fri May  8 02:57:32 2009//TOPENBSD_4_8_BASE
-/armv7var.h/1.1/Fri May  8 02:57:32 2009//TOPENBSD_4_8_BASE
-/avic_intr.h/1.2/Sat Aug 22 02:54:50 2009//TOPENBSD_4_8_BASE
-D

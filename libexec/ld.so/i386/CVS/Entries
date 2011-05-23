@@ -1,6 +1,0 @@
-/Makefile.inc/1.1/Fri Aug 23 23:02:48 2002//TOPENBSD_4_8_BASE
-/archdep.h/1.11/Sat Jan  2 12:16:35 2010//TOPENBSD_4_8_BASE
-/ldasm.S/1.11/Mon Feb 16 14:17:51 2009//TOPENBSD_4_8_BASE
-/rtld_machine.c/1.24/Sun May  2 04:57:01 2010//TOPENBSD_4_8_BASE
-/syscall.h/1.8/Thu Oct  2 20:12:08 2008//TOPENBSD_4_8_BASE
-D

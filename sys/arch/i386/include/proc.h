@@ -40,6 +40,9 @@ struct mdproc {
 	int	md_flags;		/* machine-dependent flags */
 	int	md_tss_sel;		/* TSS selector */
 	int	md_astpending;
+#ifdef L4
+	int	md_pfa;			/* last page fault address */
+#endif
 };
 
 /* md_flags */

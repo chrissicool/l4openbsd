@@ -47,6 +47,8 @@
 
 #ifdef L4
 
+#include <sys/systm.h>
+#include <sys/proc.h>
 #include <machine/l4/vcpu.h>
 
 #include <l4/sys/types.h>
@@ -58,11 +60,6 @@
 #define  L4XV_U(n) do { if (n & L4VCPU_IRQ_STATE_ENABLED) 	\
 				enable_intr(); 			\
 		      } while (0)
-/*
-#define  L4XV_V(n) int n = l4x_vcpu_state(cpu_number())->state & L4_VCPU_F_IRQ
-#define  L4XV_L(n) disable_intr()
-#define  L4XV_U(n) if (n) { enable_intr(); }
-*/
 /* tamed.c */
 void l4x_global_cli(void);
 void l4x_global_sti(void);
@@ -157,9 +154,8 @@ rcr2(void)
 {
 	u_int val;
 #ifdef L4
-	/* We cannot use l4x_vcpu_state() here, since it is inline, too. */
-	l4_vcpu_state_t *vcpu = l4x_vcpu_states[cpu_number()];
-	val = vcpu->r.pfa;
+	struct proc *p = curproc;
+	val = p->p_md.md_pfa;
 #else
 	__asm __volatile("movl %%cr2,%0" : "=r" (val));
 #endif
