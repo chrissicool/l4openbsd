@@ -29,6 +29,8 @@ Build kernel:
 
  - copy final "bsd" to l4loader directory on Linux machine
  - in l4loader directory on the Linux host:
+ - edit Makefile and set L4_BUILDDIR as for the OpenBSD kernel configuration
+   above
    # make
    [ less output => generates: l4bsd ]
 
