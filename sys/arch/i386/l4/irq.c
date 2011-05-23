@@ -59,7 +59,7 @@ l4x_spllower(void)
 	int s, irq, pending;
 
 	disable_intr();
-	for (s = NIPL; s > (IPL(lapic_tpr) - 0x20); s--) {
+	for (s = NIPL - 1; s > (IPL(lapic_tpr)); s--) {
 		if (curcpu()->ci_ipending & iunmask[s]) {
 			pending = curcpu()->ci_ipending & iunmask[s];
 			enable_intr();
