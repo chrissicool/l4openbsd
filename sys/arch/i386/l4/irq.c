@@ -244,9 +244,14 @@ handle_irq(int irq, struct trapframe *regs)
 
 	s = splraise(imaxlevel[irq]);
 	result = l4x_run_irq_handlers(irq, regs);
+
+#if 0	/* XXX hshoexer */
 	lapic_tpr = s;
 
 	l4x_run_softintr();	/* handle softintrs */
+#else
+	splx(s);
+#endif
 
 	return result;
 }
