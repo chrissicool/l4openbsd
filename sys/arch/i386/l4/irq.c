@@ -55,34 +55,44 @@ extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
 void
 l4x_spllower(void)
 {
-#if 0	/* XXX hshoexer */
-	int s, irq, pending;
+	int irq, pending;
 
+retry:
 	disable_intr();
-	for (s = NIPL - 1; s > (IPL(lapic_tpr)); s--) {
-		if (curcpu()->ci_ipending & iunmask[s]) {
-			pending = curcpu()->ci_ipending & iunmask[s];
-			enable_intr();
-			while (pending) {
-				irq = ffs(pending) - 1;
-				pending &= ~(1 << irq);
+	if ((pending = curcpu()->ci_ipending & IUNMASK(lapic_tpr)) != 0) {
+		enable_intr();
 
-				if (irq < ICU_LEN)
-					l4x_recurse_irq_handlers(irq);
-				else
-					/*
-					 * XXX hshoexer: runs _all_
-					 * pending softints, not only
-					 * irq.
-					 * will be fixed.
-					 */
-					l4x_run_softintr();
+		irq = ffs(pending) - 1;
+
+		if (!(curcpu()->ci_ipending & (1 << irq)))
+			goto retry;
+
+		disable_intr();
+		i386_atomic_clearbits_l(&curcpu()->ci_ipending, (1 << irq));
+		enable_intr();
+
+		if (irq < ICU_LEN)
+			l4x_recurse_irq_handlers(irq);
+		else {
+			/* XXX hshoexer */
+			switch (irq) {
+			case SIR_TTY:
+				l4x_exec_softintr(IPL_SOFTTTY);
+				break;
+			case SIR_NET:
+				l4x_exec_softintr(IPL_SOFTNET);
+				break;
+			case SIR_CLOCK:
+				l4x_exec_softintr(IPL_SOFTCLOCK);
+				break;
+			default:
+				panic("l4x_spllower: unknown softint %d", irq);
 			}
-			disable_intr();
 		}
+
+		goto retry;
 	}
 	enable_intr();
-#endif
 }
 
 /*
@@ -122,6 +132,9 @@ void
 l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 {
 	int irq = t->i.label >> 2;
+
+	regs->tf_err = 0;
+	regs->tf_trapno = T_ASTFLT;
 
 	enable_intr();
 
@@ -197,8 +210,6 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 	i386_atomic_dec_i(&curcpu()->ci_idepth);
 
 	/* Ack current handled IRQ. */
-	/* XXX hshoexer */
-	atomic_clearbits_int(&curcpu()->ci_ipending, (1 << irq));
 	l4lx_irq_dev_eoi(irq);
 
 	return result;
@@ -227,15 +238,13 @@ handle_irq(int irq, struct trapframe *regs)
 
 	/* Check current splx(9) level */
 	if (iminlevel[irq] <= lapic_tpr) {
-		atomic_setbits_int(&curcpu()->ci_ipending,
-		                    curcpu()->ci_ipending | (1 << irq));
+		atomic_setbits_int(&curcpu()->ci_ipending, (1 << irq));
 		return 1; /* handled */
 	}
 
 	s = splraise(imaxlevel[irq]);
 	result = l4x_run_irq_handlers(irq, regs);
-	/* XXX hshoexer */
-	splx(s);		/* run all held back IRQs */
+	lapic_tpr = s;
 
 	l4x_run_softintr();	/* handle softintrs */
 
