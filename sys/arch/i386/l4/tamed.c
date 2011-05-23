@@ -23,7 +23,6 @@
 #include <l4/sys/ipc.h>
 #include <l4/sys/utcb.h>
 
-extern void l4x_do_vcpu_irq(l4_vcpu_state_t *v);
 void l4x_srv_setup_recv_wrap(l4_utcb_t *utcb);
 
 void
