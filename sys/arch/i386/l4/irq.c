@@ -55,7 +55,7 @@ extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
 void
 l4x_spllower(void)
 {
-	extern void l4x_recurse_irq_handlers(int);
+#if 0	/* XXX hshoexer */
 	int s, irq, pending;
 
 	disable_intr();
@@ -82,6 +82,7 @@ l4x_spllower(void)
 		}
 	}
 	enable_intr();
+#endif
 }
 
 /*
