@@ -164,14 +164,11 @@ void L4_CV timer_irq_thread(void *data)
 
 static unsigned int l4lx_irq_dev_startup_timer(void)
 {
-	char name[15];
 	int cpu = cpu_number();
 	l4_msgtag_t res;
 	l4lx_thread_t timer_thread;
 	l4_cap_idx_t irq_cap;
 	L4XV_V(timer_f);
-
-	snprintf(name, 15, "l4bsd.timer.%d", 0);
 
 	L4XV_L(timer_f);
 	irq_cap = l4x_cap_alloc();
@@ -193,11 +190,14 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	}
 	L4XV_U(timer_f);
 
-//#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+	char name[15];
+	snprintf(name, 15, "l4bsd.timer.%d", 0);
+
 	L4XV_L(timer_f);
 	l4_debugger_set_object_name(irq_cap, name);
 	L4XV_U(timer_f);
-//#endif
+#endif
 
 	l4x_register_irq(irq_cap);
 
