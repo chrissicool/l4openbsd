@@ -177,14 +177,14 @@ l4x_vcpu_create_user_task(struct proc *p)
 		printf("%s: Failed to create user task\n", __func__);
 		return;
 	}
-// #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef L4_DEBUG_REGISTER_NAMES
 	{
 		char s[20];
 		snprintf(s, sizeof(s), "l4bsd.%s", p->p_comm);
 		s[sizeof(s)-1] = 0;
 		l4_debugger_set_object_name(pmap->task, s);
 	}
-// #endif
+#endif
 /*
 	l4x_arch_task_setup(&p->p_addr);
 */

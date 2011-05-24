@@ -28,6 +28,8 @@ option		L4_EXTERNAL_RTC	# use L4re's RTC server
 option		L4_TIMECOUNTER	# emulate timer device
 option		L4_SERIAL_CONS	# enable serial console
 
+option		L4_DEBUG_REGISTER_NAMES	# set L4 debug names for tasks
+
 ##
 # reconfigure some default options
 rmoption	APERTURE	# in-kernel aperture driver for XFree86

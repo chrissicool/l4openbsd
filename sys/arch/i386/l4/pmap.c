@@ -1920,8 +1920,7 @@ pmap_switch(struct proc *o, struct proc *p)
 
 	lldt(pcb->pcb_ldt_sel);
 
-#ifdef L4
-// #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef L4_DEBUG_REGISTER_NAMES
 	/*
 	 * Set process's name for Fiasco's kernel debugger.
 	 */
@@ -1929,8 +1928,7 @@ pmap_switch(struct proc *o, struct proc *p)
 	snprintf(s, sizeof(s), "l4bsd.%s", p->p_comm);
 	s[sizeof(s)-1] = 0;
 	l4_debugger_set_object_name(pmap->task, s);
-// #endif /* CONFIG_L4_DEBUG_REGISTER_NAMES */
-#endif
+#endif /* L4_DEBUG_REGISTER_NAMES */
 }
 
 void
