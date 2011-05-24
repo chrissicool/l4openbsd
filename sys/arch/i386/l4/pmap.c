@@ -910,7 +910,8 @@ pmap_kremove(vaddr_t sva, vsize_t len)
 			panic("pmap_kremove: PG_PVLIST mapping for 0x%lx", va);
 #endif
 		pdb_printf("%s: Unmapping KVA=0x%08lx\n", __func__, va);
-		l4lx_memory_unmap_virtual_page(va);
+		if (pmap_valid_entry(opte))
+			l4lx_memory_unmap_virtual_page(va);
 	}
 	pmap_tlb_shootrange(pmap_kernel(), sva, eva);
 	pmap_tlb_shootwait();
