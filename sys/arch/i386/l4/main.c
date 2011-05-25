@@ -58,7 +58,7 @@
 #include <l4/io/io.h>
 
 /*
- * sanety check
+ * sanity check
  */
 #ifdef MULTIPROCESSOR
 #error We are not ready for option MULTIPROCESSOR yet!
