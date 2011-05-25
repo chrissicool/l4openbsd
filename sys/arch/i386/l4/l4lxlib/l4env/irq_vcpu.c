@@ -185,7 +185,7 @@ static unsigned int l4lx_irq_dev_startup_timer(int freq, int irq,
 	l4_cap_idx_t irq_cap;
 	L4XV_V(timer_f);
 
-	snprintf(name, 15, "l4bsd.timer.%d", irq);
+	snprintf(name, 15, "%dhz.timer.%d", freq, irq);
 
 	L4XV_L(timer_f);
 	irq_cap = l4x_cap_alloc();
