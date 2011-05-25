@@ -40,7 +40,7 @@ void L4_CV timer_irq_thread(void *data);
 /*
  * Return the priority of an interrupt thread.
  */
-/*
+#ifdef notyet
 int l4lx_irq_prio_get(unsigned int irq)
 {
 	if (irq == 0)
@@ -51,9 +51,9 @@ int l4lx_irq_prio_get(unsigned int irq)
 	enter_kdebug("l4lx_irq_prio_get: wrong IRQ!");
 	return -1;
 }
-*/
+#endif
 
-/*
+#ifdef notyet
 int l4lx_irq_set_type(unsigned int irq, unsigned int type)
 {
 #ifdef ARCH_x86
@@ -101,7 +101,7 @@ int l4lx_irq_set_type(unsigned int irq, unsigned int type)
 
 	return 0;
 }
-*/
+#endif	/* notyet */
 
 static inline void attach_to_irq(int irq)
 {
@@ -117,7 +117,7 @@ static inline void attach_to_irq(int irq)
 	L4XV_U(flags);
 }
 
-/*
+#ifdef notyet
 static void detach_from_interrupt(struct irq_desc *desc)
 {
 	struct l4x_irq_desc_private *p = desc->chip_data;
@@ -127,15 +127,15 @@ static void detach_from_interrupt(struct irq_desc *desc)
 		dd_printf("%02d: Unable to detach from IRQ\n", desc->irq);
 	local_irq_restore(flags);
 }
-*/
+#endif
 
-/*
+#ifdef notyet
 void l4lx_irq_init(void)
 {
 	l4lx_irq_max = NR_IRQS;
 	printf("%s: l4lx_irq_max = %d\n", __func__, l4lx_irq_max);
 }
-*/
+#endif
 
 void L4_CV timer_irq_thread(void *data)
 {
@@ -207,9 +207,10 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	                 cpu,                         /* cpu */
 			 NULL,			      /* stack */
 			 &irq_cap, sizeof(irq_cap),   /* data */
+			 /* XXX hshoexer */
 			 -1,                          /* prio */
 			 0,                           /* vcpup */
-			 "timer.0");		      /* name */
+			 name);			      /* name */
 
 	if (!l4lx_thread_is_valid(timer_thread)) {
 		printf("Error creating timer thread!");
@@ -223,12 +224,12 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	return 1;
 }
 
-/*
+#ifdef notyet
 static void l4lx_irq_dev_shutdown_timer(unsigned int irq)
 {
 	// No one is calling this, right? Why?
 }
-*/
+#endif
 
 unsigned int l4lx_irq_dev_startup(int irq)
 {
@@ -261,7 +262,7 @@ unsigned int l4lx_irq_dev_startup(int irq)
 	return 1;
 }
 
-/*
+#ifdef notyet
 void l4lx_irq_dev_shutdown(unsigned int irq)
 {
 	struct l4x_irq_desc_private *p = get_irq_chip_data(irq);
@@ -277,7 +278,7 @@ void l4lx_irq_dev_shutdown(unsigned int irq)
 	if (l4_is_invalid_cap(l4x_have_irqcap(irq)))
 		l4io_release_irq(irq, p->irq_cap);
 }
-*/
+#endif
 
 void l4lx_irq_dev_enable(int irq)
 {
@@ -288,7 +289,7 @@ void l4lx_irq_dev_enable(int irq)
 	l4lx_irq_dev_eoi(irq);
 }
 
-/*
+#ifdef notyet
 void l4lx_irq_dev_disable(unsigned int irq)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
@@ -299,14 +300,14 @@ void l4lx_irq_dev_disable(unsigned int irq)
 	p->enabled = 0;
 	detach_from_interrupt(desc);
 }
-*/
+#endif
 
-/*
+#ifdef notyet
 void l4lx_irq_dev_ack(unsigned int irq)
 {
 	dd_printf("%s: %u\n", __func__, irq);
 }
-*/
+#endif
 
 void l4lx_irq_dev_mask(unsigned int irq)
 {
@@ -318,12 +319,12 @@ void l4lx_irq_dev_unmask(unsigned int irq)
 	dd_printf("%s: %u\n", __func__, irq);
 }
 
-/*
+#ifdef notyet
 void l4lx_irq_dev_end(unsigned int irq)
 {
 	dd_printf("%s: %u\n", __func__, irq);
 }
-*/
+#endif
 
 void l4lx_irq_dev_eoi(int irq)
 {
@@ -337,7 +338,7 @@ void l4lx_irq_dev_eoi(int irq)
 	L4XV_U(flags);
 }
 #ifdef MULTIPROCESSOR
-/*
+#ifdef notyet
 static spinlock_t migrate_lock;
 
 int l4lx_irq_dev_set_affinity(unsigned int irq, const struct cpumask *dest)
@@ -370,6 +371,6 @@ int l4lx_irq_dev_set_affinity(unsigned int irq, const struct cpumask *dest)
 
 	return 0;
 }
-*/
+#endif	/* notyet */
 #endif
 
