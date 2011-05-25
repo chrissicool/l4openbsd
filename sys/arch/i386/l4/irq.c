@@ -303,7 +303,7 @@ l4x_register_irq_fixed(int irq, l4_cap_idx_t irqcap)
 int
 l4x_register_irq(l4_cap_idx_t irqcap)
 {
-	int i, ret = -1;
+	int i, irq = -1;
 	int s;
 
 	if (!init_done)
@@ -315,6 +315,7 @@ l4x_register_irq(l4_cap_idx_t irqcap)
 	for (i = 0; i < NR_REQUESTABLE; ++i) {
 		if (l4_is_invalid_cap(caps[i])) {
 			caps[i] = irqcap;
+			irq = i;
 			break;
 		}
 	}
@@ -322,7 +323,7 @@ l4x_register_irq(l4_cap_idx_t irqcap)
 	splx(s);
 	rw_exit_write(&irq_lock);
 
-	return ret;	/* XXX hshoexer: always returns -1 */
+	return irq;
 }
 
 l4_cap_idx_t

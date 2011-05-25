@@ -30,6 +30,8 @@
 #include <l4/sys/types.h>
 #include <l4/sys/utcb.h>
 
+#define TIMER_IRQ	0
+
 #define d_printf(format, args...)  printf(format , ## args)
 //#define dd_printf(format, args...) do { printf(format , ## args); } while (0)
 #define dd_printf(format, args...) do { } while (0)
@@ -171,7 +173,7 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	l4_cap_idx_t irq_cap;
 	L4XV_V(timer_f);
 
-	snprintf(name, 15, "l4bsd.timer.%d", 0);
+	snprintf(name, 15, "l4bsd.timer.%d", TIMER_IRQ);
 
 	L4XV_L(timer_f);
 	irq_cap = l4x_cap_alloc();
@@ -199,7 +201,12 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	L4XV_U(timer_f);
 //#endif
 
-	l4x_register_irq(irq_cap);
+	if (l4x_register_irq_fixed(TIMER_IRQ, irq_cap) == -1) {
+		printf("Error registering timer irq %d!", TIMER_IRQ);
+		l4x_exit_l4linux();
+		/* NOTREACHED */
+		return 0;
+	}
 
 	L4XV_L(timer_f);
 	timer_thread = l4lx_thread_create
@@ -220,7 +227,7 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	}
 	L4XV_U(timer_f);
 
-	l4lx_irq_dev_enable(0);
+	l4lx_irq_dev_enable(TIMER_IRQ);
 	return 1;
 }
 
@@ -234,7 +241,7 @@ static void l4lx_irq_dev_shutdown_timer(unsigned int irq)
 unsigned int l4lx_irq_dev_startup(int irq)
 {
 	l4_cap_idx_t irq_cap;
-	if (irq == 0)	/* The Timer interrupt. */
+	if (irq == TIMER_IRQ)	/* The Timer interrupt. */
 		return l4lx_irq_dev_startup_timer();
 
 	/* First test whether a capability has been registered with
