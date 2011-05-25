@@ -291,7 +291,7 @@ l4x_register_irq_fixed(int irq, l4_cap_idx_t irqcap)
 		caps[irq] = irqcap;
 	} else {
 		/* IRQ already registered. */
-		return -1;
+		irq = -1;
 	}
 
 	splx(s);
@@ -322,7 +322,7 @@ l4x_register_irq(l4_cap_idx_t irqcap)
 	splx(s);
 	rw_exit_write(&irq_lock);
 
-	return ret;
+	return ret;	/* XXX hshoexer: always returns -1 */
 }
 
 l4_cap_idx_t
