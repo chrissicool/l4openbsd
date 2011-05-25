@@ -247,6 +247,10 @@ rtcintr(void *arg)
 		psratio = profhz / stathz;
 	}
 
+#ifdef L4
+	statclock(frame);
+	stat = 1;
+#else
 	/* 
 	 * If rtcintr is 'late', next intr may happen immediately. 
 	 * Get them all. (Also, see comment in cpu_initclocks().)
@@ -255,6 +259,7 @@ rtcintr(void *arg)
 		statclock(frame);
 		stat = 1;
 	}
+#endif
 	return (stat);
 }
 
@@ -457,16 +462,11 @@ l4x_inittimecounter(void)
 void
 l4x_initclocks(void)
 {
-	/*
-	 * XXX
-	 * Since we do not have any other timesource, we reset stathz
-	 * to make hardclock(9) call statclock(9), too.
-	 */
-	stathz = 0;
-
 	/* Initialize callback to run hardclock(9) on every interrupt. */
 	(void)isa_intr_establish(NULL, 0, IST_EDGE, IPL_CLOCK,
 			clockintr, 0, "clock");
+	(void)isa_intr_establish(NULL, 8, IST_EDGE, IPL_CLOCK,
+			rtcintr, 0, "clock");
 
 	/* Initialize timecounter. */
 #ifdef L4_TIMECOUNTER

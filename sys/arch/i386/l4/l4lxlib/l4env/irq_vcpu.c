@@ -31,12 +31,23 @@
 #include <l4/sys/utcb.h>
 
 #define TIMER_IRQ	0
+#define STAT_IRQ	8
+
+#define STAT_HZ		128
+
+struct tirq_arg {
+	int		hz;
+	l4_cap_idx_t	irq_cap;	
+};
+
+static struct tirq_arg timer_arg; 
+static struct tirq_arg stat_arg; 
 
 #define d_printf(format, args...)  printf(format , ## args)
 //#define dd_printf(format, args...) do { printf(format , ## args); } while (0)
 #define dd_printf(format, args...) do { } while (0)
 
-static unsigned int l4lx_irq_dev_startup_timer(void);
+static unsigned int l4lx_irq_dev_startup_timer(int, int, struct tirq_arg *);
 void L4_CV timer_irq_thread(void *data);
 
 /*
@@ -144,13 +155,13 @@ void L4_CV timer_irq_thread(void *data)
 	l4_timeout_t to;
 	l4_kernel_clock_t pint;
 	l4_utcb_t *u = l4_utcb();
-	l4_cap_idx_t irq_cap = *(l4_cap_idx_t *)data;
+	struct tirq_arg *arg = (struct tirq_arg *)data;
 
-	LOG_printf("%s: Starting timer IRQ thread.\n", __func__);
+	LOG_printf("%s: Starting %d Hz timer IRQ thread.\n", __func__, arg->hz);
 
 	pint = l4lx_kinfo->clock;
 	for (;;) {
-		pint += 1000000 / hz;
+		pint += 1000000 / arg->hz;
 
 		if (pint > l4lx_kinfo->clock) {
 			l4_rcv_timeout(l4_timeout_abs_u(pint, 1, u), &to);
@@ -159,12 +170,13 @@ void L4_CV timer_irq_thread(void *data)
 			//printf("I'm too slow (%lld vs. %lld [%lld])!\n", l4lx_kinfo->clock, pint, l4lx_kinfo->clock - pint);
 		}
 
-		if (l4_error(l4_irq_trigger(irq_cap)) != -1)
+		if (l4_error(l4_irq_trigger(arg->irq_cap)) != -1)
 			LOG_printf("IRQ timer trigger failed\n");
 	}
 } /* timer_irq_thread */
 
-static unsigned int l4lx_irq_dev_startup_timer(void)
+static unsigned int l4lx_irq_dev_startup_timer(int freq, int irq,
+    struct tirq_arg *arg)
 {
 	char name[15];
 	int cpu = cpu_number();
@@ -173,7 +185,7 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	l4_cap_idx_t irq_cap;
 	L4XV_V(timer_f);
 
-	snprintf(name, 15, "l4bsd.timer.%d", TIMER_IRQ);
+	snprintf(name, 15, "l4bsd.timer.%d", irq);
 
 	L4XV_L(timer_f);
 	irq_cap = l4x_cap_alloc();
@@ -201,19 +213,22 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	L4XV_U(timer_f);
 //#endif
 
-	if (l4x_register_irq_fixed(TIMER_IRQ, irq_cap) == -1) {
-		printf("Error registering timer irq %d!", TIMER_IRQ);
+	if (l4x_register_irq_fixed(irq, irq_cap) == -1) {
+		printf("Error registering timer irq %d!", irq);
 		l4x_exit_l4linux();
 		/* NOTREACHED */
 		return 0;
 	}
+
+	arg->hz = freq;
+	arg->irq_cap = irq_cap;
 
 	L4XV_L(timer_f);
 	timer_thread = l4lx_thread_create
 			(timer_irq_thread,	      /* thread function */
 	                 cpu,                         /* cpu */
 			 NULL,			      /* stack */
-			 &irq_cap, sizeof(irq_cap),   /* data */
+			 arg, sizeof(*arg),           /* data */
 			 /* XXX hshoexer */
 			 -1,                          /* prio */
 			 0,                           /* vcpup */
@@ -227,7 +242,7 @@ static unsigned int l4lx_irq_dev_startup_timer(void)
 	}
 	L4XV_U(timer_f);
 
-	l4lx_irq_dev_enable(TIMER_IRQ);
+	l4lx_irq_dev_enable(irq);
 	return 1;
 }
 
@@ -242,7 +257,9 @@ unsigned int l4lx_irq_dev_startup(int irq)
 {
 	l4_cap_idx_t irq_cap;
 	if (irq == TIMER_IRQ)	/* The Timer interrupt. */
-		return l4lx_irq_dev_startup_timer();
+		return l4lx_irq_dev_startup_timer(hz, TIMER_IRQ, &timer_arg);
+	if (irq == STAT_IRQ)
+		return l4lx_irq_dev_startup_timer(STAT_HZ, STAT_IRQ, &stat_arg);
 
 	/* First test whether a capability has been registered with
 	 * this IRQ number */
