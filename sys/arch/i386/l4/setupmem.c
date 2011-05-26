@@ -380,11 +380,10 @@ static void l4x_setup_memory(char **cmdl,
 #endif
 
 	// that happened with some version of ld...
-	if ((unsigned long)&_end < 0x100000)
-		LOG_printf("_end == %p, unreasonable small\n", &_end);
+	if ((unsigned long)esym < 0x100000)
+		LOG_printf("esym == %p, unreasonable small\n", esym);
 
-	/* XXX hshoexer: s/end/esym/? */
-	l4x_register_pointer_section((void *)((unsigned long)&_end - 1), 0, "end");
+	l4x_register_pointer_section((void *)((unsigned long)&esym - 1), 0, "esym");
 
 	return;
 }
