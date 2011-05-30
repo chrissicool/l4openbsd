@@ -2172,13 +2172,6 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 			startva, endva, pmap->pm_pdir, ptp, pte,
 			(pte && pmap_valid_entry(*pte)) ? "v" : "i", pte ? *pte : NULL);
 
-#ifdef L4
-	/* speed hack: we are instructed to remove the whole range. */
-	if ((flags == PMAP_REMOVE_ALL) && (pmap != pmap_kernel()))
-		l4x_remove_ptes(pmap, startva, endva, L4_FPAGE_RWX);
-#endif
-
-
 	for (/*null*/; startva < endva && (ptp == NULL || ptp->wire_count > 1)
 			     ; pte++, startva += NBPG) {
 		if (!pmap_valid_entry(*pte))
@@ -2269,6 +2262,13 @@ pmap_do_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flags)
  	PMAP_MAP_TO_HEAD_LOCK();
 	pd = pmap_map_pdes(pmap);	/* locks pmap */
 
+
+#ifdef L4
+	/* speed hack: we are instructed to remove the whole range. */
+	if ((pmap != pmap_kernel()) && (flags == PMAP_REMOVE_ALL)) {
+		l4x_remove_ptes(pmap, sva, eva, L4_FPAGE_RWX);
+	}
+#endif
 
 	/*
 	 * Decide if we want to shoot the whole tlb or just the range.
