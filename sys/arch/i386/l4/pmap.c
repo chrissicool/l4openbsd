@@ -503,6 +503,9 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 			l4x_printf("Unmap non-existant kernel page %p.\n", va);
 		}
 	} else {
+		if (!pmap->l4propagation)
+			return;
+
 		if (l4_is_invalid_cap(pmap->task)) {
 			/*
 			 * This happens, if we lazy allocate the L4 task. pmap(9)
@@ -547,7 +550,7 @@ l4x_remove_ptes(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flush_rights)
 	}
 #endif
 
-	if (l4_is_invalid_cap(pmap->task))
+	if (!pmap->l4propagation || l4_is_invalid_cap(pmap->task))
 		return;
 
 	pdb_printf("  %s: Removing %s%s%s bit(s) from (%#x--%#x) (PTD: %p)\n",
@@ -1705,6 +1708,7 @@ pmap_pinit(struct pmap *pmap)
 
 #ifdef L4
 	pmap->task = L4_INVALID_CAP;
+	pmap->l4propagation = 1;
 #endif
 
 	/*

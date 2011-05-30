@@ -303,6 +303,7 @@ struct pmap {
 	int pm_ldt_sel;			/* LDT selector */
 #ifdef L4
 	l4_cap_idx_t task;		/* L4 task capability */
+	int l4propagation;		/* L4 propagation of mapping updates */
 #endif
 };
 
