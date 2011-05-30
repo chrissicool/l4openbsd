@@ -1934,11 +1934,19 @@ pmap_switch(struct proc *o, struct proc *p)
 	s[sizeof(s)-1] = 0;
 	l4_debugger_set_object_name(pmap->task, s);
 #endif /* L4_DEBUG_REGISTER_NAMES */
+	TBUF_LOG3("pmap switch", o ? o->p_pid : 0, p->p_pid, 0);
 }
 
 void
 pmap_deactivate(struct proc *p)
 {
+#ifdef L4
+	struct pmap *pmap = p->p_vmspace->vm_map.pmap;
+
+	pmap_map_pdes(pmap);		/* locks pmap */
+	pmap->l4propagation = 0;
+	pmap_unmap_pdes(pmap);		/* unlocks pmap */
+#endif
 }
 
 /*
