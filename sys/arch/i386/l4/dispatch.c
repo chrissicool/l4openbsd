@@ -324,10 +324,8 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	 */
 	l4vcpu_irq_disable(vcpu);
 
-	l4x_run_asts(regs);
-
-	ptregs_to_vcpu(vcpu, regs);
 	if (USERMODE(regs->tf_cs, regs->tf_eflags)) {
+		l4x_run_asts(regs);
 
 		/* Create user thread on first invocation. */
 		if (l4_is_invalid_cap(pmap->task)) {
@@ -349,6 +347,7 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	} else {
 		vcpu->r.gs = l4x_x86_utcb_get_orig_segment();
 	}
+	ptregs_to_vcpu(vcpu, regs);
 
 
 	dbg_printf("vCPU exit: trapno=%d, err=%d, pfa=%08lx, "
