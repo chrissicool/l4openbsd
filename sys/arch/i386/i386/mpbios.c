@@ -297,6 +297,11 @@ mpbios_probe(struct device *self)
 
 	struct		mp_map t;
 
+#ifdef L4
+	/* XXX hshoexer */
+	return (0);
+#endif
+
 #if NAPM > 0 && NACPI > 0
 	/*
 	 * If we have acpi but chose to use apm, then we really should
