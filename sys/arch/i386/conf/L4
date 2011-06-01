@@ -11,9 +11,9 @@
 
 ##
 # based on the default OpenBSD kernel configuration
-#include		"arch/i386/conf/GENERIC"
+include		"arch/i386/conf/GENERIC.L4"
 
-machine		i386
+#machine		i386
 
 ##
 # L4 build instructions:
@@ -35,42 +35,45 @@ rmoption	BOOT_CONFIG	# support for boot -c
 
 ##
 # provide minimal default config based on RAMDISK
-option		SMALL_KERNEL
+#option		SMALL_KERNEL
 makeoptions	DEBUG="-g"	# enable verbose debugging output
-option		DDB		# in-kernel debugger
+#option		DDB		# in-kernel debugger
 option		DDB_STRUCT	#    can "show struct"
-option		DIAGNOSTIC	# enable extended error-checking
+#option		DIAGNOSTIC	# enable extended error-checking
 option		RAMDISK_HOOKS
 
-maxusers	80
+#maxusers	80
 
 option		TIMEZONE=0
 option		DST=0
 
-option		INET
+#option		INET
 
-option		FFS
-option		FFS2
-option		PROCFS		# /proc
+#option		FFS
+#option		FFS2
+#option		PROCFS		# /proc
 
-option		CRYPTO
+#option		CRYPTO
 
 config		bsd	root on rd0a swap on rd0b #and wd0b and sd0b
 
-mainbus0 at root
+#mainbus0 at root
 
-cpu0		at mainbus?
-bios0		at mainbus0
-isa0		at mainbus0
-npx0		at isa? port 0xf0 irq 13	# math coprocessor
-l4ser0		at isa0 port 0x3f8 irq 0	# L4 serial port driver
+#cpu0		at mainbus?
+#bios0		at mainbus0
+#isa0		at mainbus0
+#npx0		at isa? port 0xf0 irq 13	# math coprocessor
+
+l4bus0		at mainbus0
+l4vpci0		at l4bus0			# L4 virtual PCI bus
+l4ser0		at l4bus0			# L4 serial port driver
 option		L4SER_DDB_KEY="17"		# ASCII code for DDB
 						# DO NOT USE IN PRODUCTION!
 
-pseudo-device	loop	1			# network loop device
-pseudo-device	pty	16			# initial number of pseudo-terminals
-pseudo-device	bio	1			# ioctl multiplexing device
+#pseudo-device	loop	1			# network loop device
+#pseudo-device	pty	16			# initial number of pseudo-terminals
+#pseudo-device	bio	1			# ioctl multiplexing device
 
 pseudo-device	rd	1			# ramdisk
-pseudo-device	wsmux	2			# mouse/kbd mutliplexer
-pseudo-device	crypto	1			# crypto device
+#pseudo-device	wsmux	2			# mouse/kbd mutliplexer
+#pseudo-device	crypto	1			# crypto device
