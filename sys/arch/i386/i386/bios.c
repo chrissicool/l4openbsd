@@ -456,7 +456,8 @@ biosattach(struct device *parent, struct device *self, void *aux)
 
 			va += len - 512;
 		}
-	}
+	} else
+		str = NULL;
 
 	if (str)
 		printf("\n");
