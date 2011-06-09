@@ -57,10 +57,6 @@ static int nvram_initialized;
 void
 nvramattach(int num)
 {
-#ifdef L4
-	/* XXX hshoexer */
-	return;
-#endif
 	if (num > 1)
 		return;
 

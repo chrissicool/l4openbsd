@@ -73,10 +73,6 @@ pctrrd(struct pctrst *st)
 void
 pctrattach(int num)
 {
-#ifdef L4
-	/* XXX hshoexer */
-	return;
-#endif
 
 	if (num > 1)
 		return;
