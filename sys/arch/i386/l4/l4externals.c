@@ -7,6 +7,8 @@
 
 #include <machine/l4/l4lib.h>
 
+#include "pci.h"
+
 /*
  * Define all externally used L4re library functions.
  * They will be declared as weak symbols in the final image.
