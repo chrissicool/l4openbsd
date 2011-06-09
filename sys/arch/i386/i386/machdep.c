@@ -2905,6 +2905,7 @@ init386(paddr_t first_avail)
 	bootapiver = BOOTARG_APIVER;
 	boothowto = 0;
 
+	/* XXX hshoexer */
 	kb = (int) im;		/* keep gcc -Wall -Werror happy */
 
 	/* set the idle function */
@@ -3195,6 +3196,7 @@ init386(paddr_t first_avail)
 
 #endif /* !L4 */
 
+#ifndef L4
 #if defined(MULTIPROCESSOR) || \
     (NACPI > 0 && !defined(SMALL_KERNEL))
 	/* install the lowmem ptp after boot args for 1:1 mappings */
@@ -3212,6 +3214,7 @@ init386(paddr_t first_avail)
 	    (paddr_t)ACPI_TRAMPOLINE,           /* physical */
 	    VM_PROT_ALL);                       /* protection */
 #endif
+#endif	/* !L4 */
 
 	tlbflush();
 #if 0
