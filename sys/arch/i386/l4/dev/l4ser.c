@@ -33,7 +33,8 @@
 #include <sys/types.h>
 #include <sys/errno.h>
 
-#include <dev/isa/isavar.h>
+#include <dev/isa/isavar.h>		/* XXX hshoexer */
+#include <i386/l4/dev/l4busvar.h>
 
 #include <machine/atomic.h>
 #include <machine/cpufunc.h>
@@ -128,11 +129,11 @@ int
 l4ser_match(struct device *parent, void *match, void *aux)
 {
 /*	struct cfdata *cf = match;		*/
-	struct isa_attach_args *iaa = aux;
+	struct l4bus_attach_arg *lba = aux;
 
 	/* Sanety check, IRQ needs to be the same as clock. */
-	if (iaa->ia_irq != 0) {
-		printf("ERROR: l4ser configured irq %d != 0.\n", iaa->ia_irq);
+	if (lba->irq != 0) {
+		printf("ERROR: l4ser configured irq %d != 0.\n", lba->irq);
 		return 0;
 	}
 
@@ -147,15 +148,16 @@ void
 l4ser_attach(struct device *parent, struct device *self, void *aux)
 {
 	struct l4ser_softc *sc = (void *)self;
-	struct isa_attach_args *iaa = aux;
+	struct l4bus_attach_arg *lba = aux;
 
 	printf("\n");
 
 	/*
 	 * We share the IRQ with the clock, so we can fetch keys on every tick.
+	 * XXX hshoexer
 	 */
-	isa_intr_establish(iaa->ia_ic, iaa->ia_irq, IST_EDGE, IPL_TTY,
-			l4serintr, sc, sc->sc_dev.dv_xname);
+	isa_intr_establish(0, lba->irq, IST_EDGE, IPL_TTY, l4serintr, sc,
+	    sc->sc_dev.dv_xname);
 }
 
 int

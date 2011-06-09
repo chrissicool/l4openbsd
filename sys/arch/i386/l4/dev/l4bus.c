@@ -37,10 +37,6 @@ struct cfdriver l4bus_cd = {
         NULL, "l4bus", DV_DULL
 };
 
-struct l4bus_attach_arg {
-	char *lba_busname;
-};
-
 int
 l4bus_probe(void)
 {
@@ -64,7 +60,10 @@ l4bus_attach(struct device *parent, struct device *self, void *aux)
 {
 	struct l4bus_attach_arg attach_arg;
 
+	printf("\n");
+
         /* l4ser */
 	attach_arg.lba_busname = "l4ser";
+	attach_arg.irq = 0;
 	config_found(self, &attach_arg, NULL);
 }

@@ -14,4 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+struct l4bus_attach_arg {
+	char	*lba_busname;
+	int	 irq;
+};
+
 int l4bus_probe(void);

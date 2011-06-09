@@ -39,6 +39,12 @@ L4_EXTERNAL_FUNC(l4re_ds_copy_in);
 L4_EXTERNAL_FUNC(l4re_ma_free_srv);
 #endif
 
+#if NPCI > 0
+L4_EXTERNAL_FUNC(l4vbus_pci_cfg_read);
+L4_EXTERNAL_FUNC(l4vbus_pci_cfg_write);
+L4_EXTERNAL_FUNC(l4vbus_get_device_by_hid);
+#endif
+
 L4_EXTERNAL_FUNC(l4re_debug_obj_debug);
 L4_EXTERNAL_FUNC(l4re_ds_size);
 L4_EXTERNAL_FUNC(l4re_ds_phys);

@@ -78,7 +78,7 @@ isa0	at ichpcib?
 isa0	at piixpcib?
 isa0	at gscpcib?
 isa0	at glxpcib?
-eisa0	at mainbus0
+#eisa0	at mainbus0
 pci*	at mainbus0
 
 pchb*	at pci?			# PCI-Host bridges
@@ -183,21 +183,21 @@ wbng*	at iic?				# Winbond W83793G
 
 # ISA PCMCIA controllers
 #option PCMCIAVERBOSE
-pcic0	at isa? port 0x3e0 iomem 0xd0000 iosiz 0x10000
-pcic1	at isa? port 0x3e2 iomem 0xe0000 iosiz 0x4000
-pcic2	at isa? port 0x3e4 iomem 0xe0000 iosiz 0x4000
-tcic0	at isa? disable port 0x240 iomem 0xd0000 iosiz 0x10000
+#pcic0	at isa? port 0x3e0 iomem 0xd0000 iosiz 0x10000
+#pcic1	at isa? port 0x3e2 iomem 0xe0000 iosiz 0x4000
+#pcic2	at isa? port 0x3e4 iomem 0xe0000 iosiz 0x4000
+#tcic0	at isa? disable port 0x240 iomem 0xd0000 iosiz 0x10000
 
 # ISA Plug-and-Play PCMCIA controllers
 #option DEBUG_ISAPNP
-pcic*	at isapnp?
+#pcic*	at isapnp?
 
 # PCI PCMCIA controllers
 pcic*	at pci?
 
 # PCMCIA bus support
 pcmcia*	at pcic?
-pcmcia* at tcic?
+#pcmcia* at tcic?
 
 # CardBus bus support
 cardbus*	at cardslot?
@@ -330,8 +330,8 @@ btsco*	at bthub?		# Bluetooth audio support
 audio*	at btsco?
 
 npx0	at isa? port 0xf0 irq 13	# math coprocessor
-isadma0	at isa?
-isapnp0	at isa?
+#isadma0	at isa?
+#isapnp0	at isa?
 
 option	WSDISPLAY_COMPAT_USL		# VT handling
 option	WSDISPLAY_COMPAT_RAWKBD		# provide raw scancodes; needed for X11
@@ -342,12 +342,12 @@ pckbc0		at isa? flags 0x00	# PC keyboard controller
 pckbd*		at pckbc?	# PC keyboard
 pms*		at pckbc?	# PS/2 mouse for wsmouse
 pmsi*		at pckbc?	# PS/2 "Intelli"mouse for wsmouse
-vga0		at isa?
+#vga0		at isa?
 option		X86EMU		# to POST video cards
 vga*		at pci?
-pcdisplay0	at isa?		# CGA, MDA, EGA, HGA
+#pcdisplay0	at isa?		# CGA, MDA, EGA, HGA
 wsdisplay*	at vga?
-wsdisplay*	at pcdisplay?
+#wsdisplay*	at pcdisplay?
 wskbd*		at pckbd? mux 1
 wsmouse*	at pms? mux 0
 wsmouse*	at pmsi? mux 0
@@ -391,14 +391,14 @@ drm*		at radeondrm?
 
 pcppi0		at isa?
 
-com0	at isa? port 0x3f8 irq 4	# standard PC serial ports
-com1	at isa? port 0x2f8 irq 3
-com2	at isa? port 0x3e8 irq 5
+#com0	at isa? port 0x3f8 irq 4	# standard PC serial ports
+#com1	at isa? port 0x2f8 irq 3
+#com2	at isa? port 0x3e8 irq 5
 #com3	at isa? port 0x2e8 irq 9	# (conflicts with some video cards)
 #com4	at isa? port 0x220 irq 4	# Fujitsu Stylistic Touchscreen 
-ast0	at isa? port 0x1a0 irq 5	# AST 4-port serial card
+#ast0	at isa? port 0x1a0 irq 5	# AST 4-port serial card
 #ast1	at isa? port 0x2a0 irq 6	# 2nd AST 4-port serial card
-com*	at ast?
+#com*	at ast?
 #boca0	at isa? port 0x100 irq 5	# BOCA 8-port serial cards
 #com*	at boca?
 #addcom0	at isa? port 0x108 irq 5	# Addonics FlexPort
@@ -408,44 +408,44 @@ com*	at ast?
 #hsq0	at isa? port 0x140 irq 10	# Hostess 4-port serial card
 #com*	at hsq?
 com*	at pcmcia?			# PCMCIA modems/serial ports
-com*	at isapnp?
+#com*	at isapnp?
 com*	at puc?
 com*	at cardbus?
 
 # option for using CD1400 handshaking for incoming data
 # requires a special cable that exchanges the RTS and DTR lines
 # options CY_HW_RTS
-cy0	at isa? iomem 0xd4000 irq 12	# ISA cyclom serial card
+#cy0	at isa? iomem 0xd4000 irq 12	# ISA cyclom serial card
 cy*	at pci?				# PCI cyclom serial card
 #cz*	at pci?				# Cyclades-Z multi-port serial boards
 
-lpt0	at isa? port 0x378 irq 7	# standard PC parallel ports
-lpt1	at isa? port 0x278
-lpt2	at isa? port 0x3bc
+#lpt0	at isa? port 0x378 irq 7	# standard PC parallel ports
+#lpt1	at isa? port 0x278
+#lpt2	at isa? port 0x3bc
 lpt*	at puc?
 
-lms0	at isa? port 0x23c irq 5	# Logitech bus mouse
-lms1	at isa? port 0x238 irq 5
-mms0	at isa? port 0x23c irq 5	# Microsoft InPort mouse
-mms1	at isa? port 0x238 irq 5
+#lms0	at isa? port 0x23c irq 5	# Logitech bus mouse
+#lms1	at isa? port 0x238 irq 5
+#mms0	at isa? port 0x23c irq 5	# Microsoft InPort mouse
+#mms1	at isa? port 0x238 irq 5
 
-wsmouse*	at lms? mux 0
-wsmouse*	at mms? mux 0
+#wsmouse*	at lms? mux 0
+#wsmouse*	at mms? mux 0
 
-bha0	at isa? port 0x330		# BusLogic [57]4X SCSI controllers
-bha1	at isa? disable port 0x334	# BusLogic [57]4X SCSI controllers
-bha2	at isa? disable
+#bha0	at isa? port 0x330		# BusLogic [57]4X SCSI controllers
+#bha1	at isa? disable port 0x334	# BusLogic [57]4X SCSI controllers
+#bha2	at isa? disable
 bha*	at pci?
 #bha*	at eisa?		# XXX eisa still runs in isa-compat
 scsibus* at bha?
-aha0	at isa? port 0x330	# Adaptec 154[02] SCSI controllers
-aha1	at isa? port 0x334	# Adaptec 154[02] SCSI controllers
-aha*	at isapnp?
-scsibus* at aha?
-ahb*	at eisa?		# Adaptec 174[024] SCSI controllers
-scsibus* at ahb?
+#aha0	at isa? port 0x330	# Adaptec 154[02] SCSI controllers
+#aha1	at isa? port 0x334	# Adaptec 154[02] SCSI controllers
+#aha*	at isapnp?
+#scsibus* at aha?
+#ahb*	at eisa?		# Adaptec 174[024] SCSI controllers
+#scsibus* at ahb?
 #ahc0	at isa?			# Adaptec 284x SCSI controllers
-ahc*	at eisa?		# Adaptec 274x, aic7770 SCSI controllers
+#ahc*	at eisa?		# Adaptec 274x, aic7770 SCSI controllers
 ahc*	at pci?			# Adaptec 2940/3940/78?? SCSI controllers
 scsibus* at ahc?
 jmb*	at pci?			# JMicron JMB36x controllers
@@ -475,7 +475,7 @@ scsibus* at ami?
 mfi*	at pci?			# LSI MegaRAID SAS controllers
 scsibus* at mfi?
 cac*	at pci?			# Compaq Smart ARRAY [234]* RAID controllers
-cac*	at eisa?
+#cac*	at eisa?
 scsibus* at cac?
 ciss*	at pci?			# Compaq Smart ARRAY [56]* RAID controllers
 scsibus* at ciss?
@@ -487,9 +487,9 @@ isp*	at pci?			# Qlogic ISP [12]0x0 SCSI/FibreChannel
 scsibus* at isp?
 #qli*	at pci?			# Qlogic 4010 & 4022 iSCSI
 #scsibus* at qli?
-aic0	at isa? port 0x340 irq 11 # Adaptec 152[02] SCSI controllers
+#aic0	at isa? port 0x340 irq 11 # Adaptec 152[02] SCSI controllers
 aic*	at pcmcia?		# PCMCIA based aic SCSI controllers
-aic*	at isapnp?		# isapnp configured aic SCSI controllers
+#aic*	at isapnp?		# isapnp configured aic SCSI controllers
 scsibus* at aic?
 #esp*	at pcmcia?		# PCMCIA based NCR 53C9X SCSI
 #scsibus* at esp?
@@ -501,17 +501,17 @@ adw*	at pci?			# AdvanSys ULTRA WIDE SCSI
 scsibus* at adw?
 pcscp*	at pci?			# AMD 53c974 PCscsi-PCI SCSI
 scsibus* at pcscp?
-sea0	at isa? disable iomem 0xc8000 irq 5 # Seagate ST0[12] SCSI controllers
-scsibus* at sea?
+#sea0	at isa? disable iomem 0xc8000 irq 5 # Seagate ST0[12] SCSI controllers
+#scsibus* at sea?
 trm*	at pci?			# Tekram DC-3x5U SCSI Controllers
 scsibus* at trm?
-uha0	at isa? port 0x330	# UltraStor [13]4f SCSI controllers
-uha1	at isa? disable port 0x334 # UltraStor [13]4f SCSI controllers
-uha*	at eisa?		# UltraStor 24f SCSI controllers
-scsibus* at uha?
-wds0	at isa? disable port 0x350 irq 15 drq 6	# WD7000 and TMC-7000 controllers
+#uha0	at isa? port 0x330	# UltraStor [13]4f SCSI controllers
+#uha1	at isa? disable port 0x334 # UltraStor [13]4f SCSI controllers
+#uha*	at eisa?		# UltraStor 24f SCSI controllers
+#scsibus* at uha?
+#wds0	at isa? disable port 0x350 irq 15 drq 6	# WD7000 and TMC-7000 controllers
 #wds1	at isa? port 0x358 irq 11 drq 5
-scsibus* at wds?
+#scsibus* at wds?
 
 sd*	at scsibus?		# SCSI disk drives
 st*	at scsibus?		# SCSI tape drives
@@ -521,61 +521,61 @@ safte*	at scsibus?		# SCSI accessed fault-tolerant enclosures
 ses*	at scsibus?		# SCSI enclosure services
 uk*	at scsibus?		# unknown SCSI
 
-fdc0	at isa? port 0x3f0 irq 6 drq 2	# standard PC floppy controllers
+#fdc0	at isa? port 0x3f0 irq 6 drq 2	# standard PC floppy controllers
 #fdc1	at isa? port 0x370
-fd*	at fdc? flags 0x00
+#fd*	at fdc? flags 0x00
 
 #mcd0	at isa? port 0x300 irq 10	# Mitsumi CD-ROM drives
 
 # IDE controllers
-pciide* at pci? flags 0x0000
+#pciide* at pci? flags 0x0000
 
-wdc0	at isa? port 0x1f0 irq 14 flags 0x00
-wdc1	at isa? port 0x170 irq 15 flags 0x00
-wdc*	at pcmcia?
-wdc*	at isapnp?
+#wdc0	at isa? port 0x1f0 irq 14 flags 0x00
+#wdc1	at isa? port 0x170 irq 15 flags 0x00
+#wdc*	at pcmcia?
+#wdc*	at isapnp?
 
 # IDE hard drives
-wd*	at wdc? flags 0x0000
-wd*	at pciide? flags 0x0000
+#wd*	at wdc? flags 0x0000
+#wd*	at pciide? flags 0x0000
 
 # ATAPI<->SCSI
-atapiscsi* at wdc?
-atapiscsi* at pciide?
+#atapiscsi* at wdc?
+#atapiscsi* at pciide?
 scsibus* at atapiscsi?
 
 # Networking devices
-we0	at isa? port 0x280 iomem 0xd0000 irq 9	# WD/SMC 80x3 ethernet
-we1	at isa? port 0x300 iomem 0xcc000 irq 10	#
+#we0	at isa? port 0x280 iomem 0xd0000 irq 9	# WD/SMC 80x3 ethernet
+#we1	at isa? port 0x300 iomem 0xcc000 irq 10	#
 #we2	at isa? port 0x280 iomem 0xd0000 irq 3	# WD/SMC 80x3 ethernet
-we*	at isapnp?
-ec0	at isa? port 0x250 iomem 0xd8000 irq 9	# 3C503 ethernet
-ne0	at isa? port 0x240 irq 9		# NE[12]000 ethernet
-ne1	at isa? port 0x300 irq 10		# NE[12]000 ethernet
-ne2	at isa? port 0x280 irq 9		# NE[12]000 ethernet
-ne*	at isapnp?				# NE[12]000 PnP ethernet
-eg0	at isa? disable port 0x310 irq 5	# 3C505/Etherlink+ ethernet
-el0	at isa? disable port 0x300 irq 9	# 3C501 ethernet
-ep0	at isa?					# 3C509 ethernet
-ep*	at isapnp?				# 3C509 PnP ethernet
-ep*	at isa?					# 3C509 ethernet
-ef*	at isapnp?				# 3C515 PnP ethernet
-ie0	at isa? port 0x360 iomem 0xd0000 irq 7	# StarLAN and 3C507
+#we*	at isapnp?
+#ec0	at isa? port 0x250 iomem 0xd8000 irq 9	# 3C503 ethernet
+#ne0	at isa? port 0x240 irq 9		# NE[12]000 ethernet
+#ne1	at isa? port 0x300 irq 10		# NE[12]000 ethernet
+#ne2	at isa? port 0x280 irq 9		# NE[12]000 ethernet
+#ne*	at isapnp?				# NE[12]000 PnP ethernet
+#eg0	at isa? disable port 0x310 irq 5	# 3C505/Etherlink+ ethernet
+#el0	at isa? disable port 0x300 irq 9	# 3C501 ethernet
+#ep0	at isa?					# 3C509 ethernet
+#ep*	at isapnp?				# 3C509 PnP ethernet
+#ep*	at isa?					# 3C509 ethernet
+#ef*	at isapnp?				# 3C515 PnP ethernet
+#ie0	at isa? port 0x360 iomem 0xd0000 irq 7	# StarLAN and 3C507
 #ie1	at isa? port 0x300 irq 10		# EtherExpress
-lc0	at isa? port 0x200			# DEC EtherWorks
-lc1	at isa? port 0x280			# DEC EtherWorks
-le0	at isa? port 0x360 irq 15 drq 6		# IsoLan, NE2100, and DEPCA
-ex0	at isa? port 0x320 irq 5		# Intel EtherExpress PRO/10
-sm0	at isa? port 0x300 irq 10		# SMC 91cxx-based ethernet
+#lc0	at isa? port 0x200			# DEC EtherWorks
+#lc1	at isa? port 0x280			# DEC EtherWorks
+#le0	at isa? port 0x360 irq 15 drq 6		# IsoLan, NE2100, and DEPCA
+#ex0	at isa? port 0x320 irq 5		# Intel EtherExpress PRO/10
+#sm0	at isa? port 0x300 irq 10		# SMC 91cxx-based ethernet
 #tr0	at isa? port 0xa20 iomem 0xd8000	# IBM TROPIC based Token-Ring
 #tr1	at isa? port 0xa24 iomem 0xd0000	# IBM TROPIC based Token-Ring
 #tr*	at isa?				# 3COM TROPIC based Token-Ring
-ep0	at eisa?
-ep*	at eisa?			# 3C579 ethernet
-fea*	at eisa?			# DEC DEFEA FDDI
+#ep0	at eisa?
+#ep*	at eisa?			# 3C579 ethernet
+#fea*	at eisa?			# DEC DEFEA FDDI
 lmc*	at pci?				# Lan Media Corp SSI/T3/HSSI
 san*	at pci?				# Sangoma PCI AFT card
-le*	at isapnp?
+#le*	at isapnp?
 pcn*	at pci?				# AMD PCnet-PCI Ethernet
 de*	at pci?				# DC21X4X-based ethernet
 fxp*	at pci?				# EtherExpress 10/100B ethernet
@@ -608,7 +608,7 @@ skc*	at pci?				# SysKonnect GEnesis 984x
 sk*	at skc?				#  each port of above
 mskc*	at pci?				# Marvell Yukon-2
 msk*	at mskc?			#  each port of above
-em*	at pci?				# Intel Pro/1000 ethernet
+#em*	at pci?				# Intel Pro/1000 ethernet
 gcu*	at pci?				# Intel Pro/1000 ethernet GCU
 ixgb*	at pci?				# Intel Pro/10Gb ethernet
 ix*	at pci?				# Intel 82598EB 10Gb ethernet
@@ -652,7 +652,7 @@ bwi*	at cardbus?			# Broadcom AirForce (802.11b/g)
 wi*	at pci?				# WaveLAN IEEE 802.11DS
 wi*	at pcmcia?			# WaveLAN IEEE 802.11DS
 an*	at pci?				# Aironet IEEE 802.11DS
-an*	at isapnp?			# Aironet IEEE 802.11DS
+#an*	at isapnp?			# Aironet IEEE 802.11DS
 an*	at pcmcia?			# Aironet IEEE 802.11DS
 #cnw*	at pcmcia?			# Xircom Netwave
 ray*	at pcmcia?			# Raylink Aviator2.4/Pro 802.11FH
@@ -703,11 +703,11 @@ atphy*	at mii?				# Attansic F1 PHYs
 ipgphy*	at mii?				# IC Plus IP1000A PHYs
 ukphy*	at mii?				# "unknown" PHYs
 
-pss0	at isa? port 0x220 irq 7 drq 6	# Personal Sound System
-sp0	at pss0 port 0x530 irq 10 drq 0	# sound port driver
+#pss0	at isa? port 0x220 irq 7 drq 6	# Personal Sound System
+#sp0	at pss0 port 0x530 irq 10 drq 0	# sound port driver
 
 eap*	at pci?				# Ensoniq AudioPCI S5016
-eso*	at pci?				# ESS Solo-1 PCI AudioDrive
+#eso*	at pci?				# ESS Solo-1 PCI AudioDrive
 sv*	at pci?				# S3 SonicVibes (S3 617)
 neo*	at pci?				# NeoMagic 256AV/ZX
 cmpci*	at pci?				# C-Media CMI8338/8738
@@ -726,37 +726,37 @@ esa*	at pci?				# ESS Maestro3 PCI
 yds*	at pci? flags 0x0000		# Yamaha YMF Audio
 emu*	at pci?				# SB Live!
 envy*	at pci?				# VIA Envy24 (aka ICE1712)
-sb0	at isa? port 0x220 irq 5 drq 1	# SoundBlaster
-sb*	at isapnp?
-ess*	at isapnp?			# ESS Tech ES188[78], ES888
-wss0	at isa? port 0x530 irq 10 drq 0	# Windows Sound System
-wss*	at isapnp?
-pas0	at isa? port 0x220 irq 7 drq 1	# ProAudio Spectrum
-gus0	at isa? port 0x220 irq 7 drq 1 drq2 6	# Gravis (drq2 is record drq)
-ym*	at isapnp?
-mpu*	at isapnp?
-mpu*	at isa? port 0x300		# generic MPU, Yamaha SW60XG
+#sb0	at isa? port 0x220 irq 5 drq 1	# SoundBlaster
+#sb*	at isapnp?
+#ess*	at isapnp?			# ESS Tech ES188[78], ES888
+#wss0	at isa? port 0x530 irq 10 drq 0	# Windows Sound System
+#wss*	at isapnp?
+#pas0	at isa? port 0x220 irq 7 drq 1	# ProAudio Spectrum
+#gus0	at isa? port 0x220 irq 7 drq 1 drq2 6	# Gravis (drq2 is record drq)
+##ym*	at isapnp?
+##mpu*	at isapnp?
+#mpu*	at isa? port 0x300		# generic MPU, Yamaha SW60XG
 
 # MIDI support
-midi*	at sb?			# SB MPU401 port
-midi*	at ym?
-midi*	at mpu?
+#midi*	at sb?			# SB MPU401 port
+#midi*	at ym?
+#midi*	at mpu?
 midi*	at autri?
 midi*	at eap?
 
 spkr0	at pcppi?		# PC speaker
 
 # Audio Support
-audio*	at sb?
-audio*	at gus?
-audio*	at pas?
-audio*	at sp?
-audio*	at ess?
-audio*	at wss?
-audio*	at ym?
+#audio*	at sb?
+#audio*	at gus?
+#audio*	at pas?
+#audio*	at sp?
+#audio*	at ess?
+#audio*	at wss?
+#audio*	at ym?
 audio*	at eap?
 audio*	at envy?
-audio*	at eso?
+#audio*	at eso?
 audio*	at sv?
 audio*	at neo?
 audio*	at cmpci?
@@ -798,7 +798,7 @@ radio*	at fms?
 
 # Joystick driver. Probe is a little strange; add only if you have one.
 #joy0	at isa? port 0x201
-joy*	at isapnp?
+#joy*	at isapnp?
 
 # crypto support
 hifn*	at pci?			# Hi/fn 7751 crypto card

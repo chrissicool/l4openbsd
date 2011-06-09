@@ -112,6 +112,18 @@ extern bios_pciinfo_t *bios_pciinfo;
 #include <i386/pci/pcibiosvar.h>
 #endif
 
+#ifdef L4
+#include <l4/vbus/vbus.h>
+#include <l4/vbus/vbus_pci.h>
+#include <l4/re/c/namespace.h>
+#include <machine/l4/l4lib.h>
+
+int l4pci_probe(void);
+
+l4_cap_idx_t vbus;
+l4vbus_device_handle_t root_bridge;
+#endif	/* L4 */
+
 int pci_mode = -1;
 
 struct mutex pci_conf_lock = MUTEX_INITIALIZER(IPL_HIGH);
@@ -174,6 +186,29 @@ struct bus_dma_tag pci_bus_dma_tag = {
 	_bus_dmamem_unmap,
 	_bus_dmamem_mmap,
 };
+
+#ifdef L4
+int
+l4pci_probe(void) 
+{
+        L4XV_V(f);
+
+        vbus = l4re_get_env_cap("vbus");
+        if (l4_is_invalid_cap(vbus))
+                return 0;
+
+        L4XV_L(f);
+        if (l4vbus_get_device_by_hid(vbus, 0, &root_bridge, "PNP0A03", 0, 0)
+	    < 0) {
+                L4XV_U(f);
+                printf("no root bridge found, no PCI");
+                return 0;
+        } 
+        L4XV_U(f);
+
+	return 1;
+}
+#endif	/* L4 */
 
 void
 pci_attach_hook(struct device *parent, struct device *self,
@@ -260,6 +295,31 @@ pci_decompose_tag(pci_chipset_tag_t pc, pcitag_t tag, int *bp, int *dp, int *fp)
 	}
 }
 
+#ifdef L4
+pcireg_t
+pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
+{
+	L4XV_V(f);
+	pcireg_t data;
+	int ret;
+	int bus, slot, function;
+	l4_uint32_t df;
+
+	PCI_CONF_LOCK();
+
+	pci_decompose_tag(pc, tag, &bus, &slot, &function);
+	df = ((slot & 0xffff) << 16) | (function & 0xffff);
+
+	L4XV_L(f);
+	ret = l4vbus_pci_cfg_read(vbus, root_bridge, bus, df, reg, &data,
+	    sizeof(data) * 8);	/* XXX hshoexer */
+	L4XV_U(f);
+
+	PCI_CONF_UNLOCK();
+
+	return data;
+}
+#else	/* L4 */
 pcireg_t
 pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
 {
@@ -285,7 +345,30 @@ pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
 
 	return data;
 }
+#endif	/* L4 */
 
+#ifdef L4
+void
+pci_conf_write(pci_chipset_tag_t pc, pcitag_t tag, int reg, pcireg_t data)
+{
+	L4XV_V(f);
+	int ret;
+	int bus, slot, function;
+	l4_uint32_t df;
+
+	PCI_CONF_LOCK();
+
+	pci_decompose_tag(pc, tag, &bus, &slot, &function);
+	df = ((slot & 0xffff) << 16) | (function & 0xffff);
+
+	L4XV_L(f);
+	ret = l4vbus_pci_cfg_write(vbus, root_bridge, bus, df, reg, data,
+	    sizeof(data) * 8);	/* XXX hshoexer */
+	L4XV_U(f);
+
+	PCI_CONF_UNLOCK();
+}
+#else	/* L4 */
 void
 pci_conf_write(pci_chipset_tag_t pc, pcitag_t tag, int reg, pcireg_t data)
 {
@@ -308,10 +391,15 @@ pci_conf_write(pci_chipset_tag_t pc, pcitag_t tag, int reg, pcireg_t data)
 	}
 	PCI_CONF_UNLOCK();
 }
+#endif	/* L4 */
 
 int
 pci_mode_detect(void)
 {
+
+#ifdef L4	/* XXX hshoexer */
+#define PCI_CONF_MODE	1
+#endif
 
 #ifdef PCI_CONF_MODE
 #if (PCI_CONF_MODE == 1) || (PCI_CONF_MODE == 2)
@@ -609,8 +697,10 @@ struct extent *pcimem_ex;
 void
 pci_init_extents(void)
 {
+#ifndef L4	/* XXX hshoexer */
 	bios_memmap_t *bmp;
 	u_int64_t size;
+#endif
 
 	if (pciio_ex == NULL) {
 		/*
@@ -632,6 +722,7 @@ pci_init_extents(void)
 		if (pcimem_ex == NULL)
 			return;
 
+#ifndef L4
 		for (bmp = bios_memmap; bmp->type != BIOS_MAP_END; bmp++) {
 			/*
 			 * Ignore address space beyond 4G.
@@ -651,6 +742,7 @@ pci_init_extents(void)
 				printf("memory map conflict 0x%llx/0x%llx\n",
 				    bmp->addr, bmp->size);
 		}
+#endif	/* !L4 */
 
 		/* Take out the video buffer area and BIOS areas. */
 		extent_alloc_region(pcimem_ex, IOM_BEGIN, IOM_SIZE,

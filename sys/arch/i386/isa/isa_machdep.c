@@ -247,9 +247,6 @@ isa_strayintr(int irq)
 
 int intrtype[ICU_LEN], intrmask[ICU_LEN], intrlevel[ICU_LEN];
 int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
-#ifdef L4
-struct intrhand intrhand_internal[ICU_LEN];
-#endif
 struct intrhand *intrhand[ICU_LEN];
 
 int imask[NIPL];	/* Bitmask telling what interrupts are blocked. */
@@ -541,6 +538,8 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 	/*  Register with IO server when establishing first handler. */
 	if (intrhand[irq] == NULL) {
 		if (!l4lx_irq_dev_startup(irq)) {
+			panic("isa_intr_establish: l4lx_irq_dev_startup() "
+			    "failed");
 			free(ih, M_DEVBUF);
 			return (NULL);
 		}
@@ -632,15 +631,6 @@ isa_attach_hook(struct device *parent, struct device *self,
 	if (isa_has_been_seen)
 		panic("isaattach: ISA bus already seen!");
 	isa_has_been_seen = 1;
-
-#ifdef L4
-	int irq;
-
-	/* Initialize the interrupt handler array. */
-	intrhand[0] = &intrhand_internal[0];
-	for (irq = 0; irq < ICU_LEN; irq++)
-		intrhand[irq] = NULL;
-#endif
 }
 
 #if NISADMA > 0
