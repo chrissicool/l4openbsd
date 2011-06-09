@@ -172,6 +172,14 @@ cpu_exit(struct proc *p)
 		npxsave_proc(p, 0);
 #endif
 
+#ifdef L4
+	/* Flag the process to not receive expensive pmap updates anymore. */
+	struct pmap *pmap = p->p_vmspace->vm_map.pmap;
+	pmap_map_pdes(pmap);		/* locks pmap */
+	pmap->l4propagation = 0;
+	pmap_unmap_pdes(pmap);		/* unlocks pmap */
+#endif
+
 	tss_free(p->p_md.md_tss_sel);
 	sched_exit(p);
 }

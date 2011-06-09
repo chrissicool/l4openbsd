@@ -1910,6 +1910,18 @@ identifycpu(struct cpu_info *ci)
 	} else
 		i386_use_fxsave = 0;
 
+#ifdef L4
+	extern void (*pagezero)(void *, size_t);
+	extern void sse2_pagezero(void *, size_t);
+	extern void i686_pagezero(void *, size_t);
+
+	if (cpu_class >= CPUCLASS_686) {
+		pagezero = i686_pagezero;
+		if (cpu_feature & CPUID_SSE2)
+			pagezero = sse2_pagezero;
+	}
+#endif
+
 }
 
 char *

@@ -446,7 +446,17 @@ static struct timecounter l4x_timecounter = {
 u_int
 l4x_get_timecount(struct timecounter *tc)
 {
-	return(l4lx_kinfo->clock);
+	unsigned long long count;
+
+	/* Use the TSC if available. */
+	if ((cpu_feature & CPUID_TSC)) {
+		__asm __volatile("rdtsc" : "=A" (count));
+		count /= cpuspeed;
+	} else {
+		count = l4lx_kinfo->clock;
+	}
+
+	return((u_int)count);
 }
 
 void

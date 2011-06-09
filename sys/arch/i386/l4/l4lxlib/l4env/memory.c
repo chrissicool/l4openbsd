@@ -100,8 +100,11 @@ int l4lx_memory_unmap_virtual_page(vaddr_t address)
 //	l4x_printf("Detaching DS: VA=0x%08lx\n", address);
 	if ((r = l4re_rm_detach((void *)address))) {
 		L4XV_U(f);
+#ifdef DIAGNOSTIC
 		printf("%s: cannot detach vpage 0x%08lx: %d\n",
 				__func__, address, r);
+		Debugger();
+#endif
 		return -1;
 	}
 	L4XV_U(f);

@@ -107,12 +107,10 @@ l4x_run_asts(struct trapframe *tf)
 {
 	while (curproc && curproc->p_md.md_astpending) {
 		i386_atomic_testset_i(&curproc->p_md.md_astpending, 0);
-		if (USERMODE(tf->tf_cs, tf->tf_eflags)) {
-			enable_intr();
-			tf->tf_trapno = T_ASTFLT;
-			trap(tf);
-			disable_intr();
-		}
+		enable_intr();
+		tf->tf_trapno = T_ASTFLT;
+		trap(tf);
+		disable_intr();
 	}
 }
 

@@ -323,9 +323,9 @@ int L4_CV l4start(int argc, char **argv)
 
 	l4x_start_thread_id = l4re_env()->main_thread;
 
-// #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef L4_DEBUG_REGISTER_NAMES
 	l4_debugger_set_object_name(l4x_start_thread_id, "l4bsd.main");
-// #endif /* CONFIG_L4_DEBUG_REGISTER_NAMES */
+#endif /* L4_DEBUG_REGISTER_NAMES */
 
 	l4_thread_control_start();
 	l4_thread_control_commit(l4x_start_thread_id);
@@ -988,12 +988,12 @@ void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu)
 	if (l4_error(r))
 		LOG_printf("Error creating user-gate %d\n", cpu);
 
+#ifdef L4_DEBUG_REGISTER_NAMES
 	char n[14];
 	snprintf(n, sizeof(n), "l4x ugate-%d", cpu);
 	n[sizeof(n) - 1] = 0;
-/* #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES */
 	l4_debugger_set_object_name(l4x_user_gate[cpu], n);
-/* #endif */
+#endif
 	L4XV_U(flags);
 }
 

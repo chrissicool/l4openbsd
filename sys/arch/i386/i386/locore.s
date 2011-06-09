@@ -1789,7 +1789,7 @@ ENTRY(bzero)
 	popl	%edi
 	ret
 
-#if !defined(SMALL_KERNEL)
+#if !defined(SMALL_KERNEL) || defined(L4)
 ENTRY(sse2_pagezero)
 	pushl	%ebx
 	movl	8(%esp),%ecx
