@@ -345,9 +345,9 @@ pmsi*		at pckbc?	# PS/2 "Intelli"mouse for wsmouse
 #vga0		at isa?
 option		X86EMU		# to POST video cards
 vga*		at pci?
-pcdisplay0	at isa?		# CGA, MDA, EGA, HGA
+#pcdisplay0	at isa?		# CGA, MDA, EGA, HGA
 wsdisplay*	at vga?
-wsdisplay*	at pcdisplay?
+#wsdisplay*	at pcdisplay?
 wskbd*		at pckbd? mux 1
 wsmouse*	at pms? mux 0
 wsmouse*	at pmsi? mux 0
