@@ -36,6 +36,8 @@
  * M E M O R Y   M A P P I N G
  */
 
+void l4x_virt_to_phys_show(void);
+
 struct l4x_phys_virt_mem {
 	l4_addr_t phys; /* physical address */
 	vaddr_t   virt; /* virtual address */
@@ -62,6 +64,16 @@ void l4x_v2p_add_item(l4_addr_t phys, vaddr_t virt, l4_size_t size)
 							.size = size };
 }
 
+void l4x_virt_to_phys_show(void)
+{
+        int i;
+        for (i = 0; i < l4x_phys_virt_addr_items; i++) {
+                printf("v = %08lx  p = %08lx   sz = %zx\n",
+                       (unsigned long)l4x_phys_virt_addrs[i].virt,
+                       l4x_phys_virt_addrs[i].phys,
+                       l4x_phys_virt_addrs[i].size);
+        }
+}
 
 paddr_t
 l4x_virt_to_phys(volatile vaddr_t address)
@@ -81,7 +93,7 @@ l4x_virt_to_phys(volatile vaddr_t address)
 		}
 	}
 
-	//l4x_virt_to_phys_show();
+	l4x_virt_to_phys_show();
 	/* Whitelist: */
 
 	/* Debugging check: don't miss a translation, can give nasty
@@ -109,7 +121,7 @@ l4x_phys_to_virt(volatile paddr_t address)
 		}
 	}
 
-	//l4x_virt_to_phys_show();
+	l4x_virt_to_phys_show();
 	/* Whitelist */
 	if ((address < 0x1000) ||		/* first pte, direct mapped */
 	    (address >= 0xa000 &&		/* VGA and ROM space...     */
@@ -123,6 +135,51 @@ l4x_phys_to_virt(volatile paddr_t address)
 
 	return NULL;
 }
+
+#ifdef CONFIG_VGA_CONSOLE
+// we may want to make this function available for a broader usage
+int l4x_pagein(unsigned long addr, unsigned long size, int rw)
+{
+        int err;
+        l4_addr_t a;
+        unsigned long sz;
+        l4_addr_t off;
+        unsigned fl;
+        l4re_ds_t ds;
+        unsigned long map_flags = rw ? L4RE_DS_MAP_FLAG_RW
+                                     : L4RE_DS_MAP_FLAG_RO;
+
+        if (size == 0)
+                return 0;
+
+        size += addr & ~L4_PAGEMASK;
+        size  = l4_round_page(size);
+        addr &= L4_PAGEMASK;
+
+        do {   
+                a = addr;
+                sz = 1;
+
+                err = l4re_rm_find(&a, &sz, &off, &fl, &ds);
+                if (err < 0)
+                        break; 
+
+                if (sz > size)
+                        sz = size;
+
+                err = l4re_ds_map_region(ds, off + (addr - a), map_flags,
+                                         addr, addr + sz);
+                if (err < 0)
+                        break;
+
+                size -= sz;
+                addr += sz;
+        } while (size);
+
+        return err;
+}
+#endif
+
 
 /*
  * M E M O R Y   S E T U P

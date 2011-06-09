@@ -234,7 +234,11 @@ l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 			 /* XXX hshoexer */
 			 -1,                          /* prio */
 			 0,                           /* vcpup */
+#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
 			 name);			      /* name */
+#else
+			 "");
+#endif
 
 	if (!l4lx_thread_is_valid(timer_thread)) {
 		printf("Error creating timer thread!");

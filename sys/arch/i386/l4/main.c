@@ -161,6 +161,8 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 		int allow_noncontig, const char *tag);
 
 void l4x_setup_upage(void);
+void l4x_x86_register_ports(l4io_resource_t *);
+void l4x_scan_hw_resources(void);
 
 L4_CV void l4x_bsd_startup(void *data);
 void l4x_server_loop(void) __attribute__((__noreturn__));
@@ -221,6 +223,64 @@ void l4x_cpu_thread_set(int cpu, l4lx_thread_t tid)
 {
        l4x_cpu_threads[cpu] = tid;
 }
+
+static u_int32_t l4x_x86_kernel_ioports[65536 / sizeof(u_int32_t)];
+
+void l4x_x86_register_ports(l4io_resource_t *res)
+{
+	unsigned i;
+
+	if (res->type != L4IO_RESOURCE_PORT)
+		return;
+
+	if (res->start > res->end)
+		return;
+
+	for (i = res->start; i <= res->end; ++i)
+		if (i < 65536)
+			setbit((volatile u_int32_t *)l4x_x86_kernel_ioports, i);
+
+}
+
+void l4x_scan_hw_resources(void)
+{
+	l4io_device_handle_t dh = l4io_get_root_device();
+	l4io_device_t dev;
+	l4io_resource_handle_t reshandle;
+
+	LOG_printf("Device scan:\n");
+        while (1) {
+                l4io_resource_t res;
+
+                if (l4io_iterate_devices(&dh, &dev, &reshandle))
+                        break;
+
+                if (dev.num_resources == 0)
+                        continue;
+
+                LOG_printf("  Device: %s\n", dev.name);
+
+                while (!l4io_lookup_resource(dh, L4IO_RESOURCE_ANY,
+		    &reshandle, &res)) {
+                        char *t = "undef";
+
+                        switch (res.type) {
+                                case L4IO_RESOURCE_IRQ:  t = "IRQ";  break;
+                                case L4IO_RESOURCE_MEM:  t = "MEM";  break;
+                                case L4IO_RESOURCE_PORT: t = "PORT"; break;
+                        };
+
+                        LOG_printf("    %s: %08lx - %08lx\n", t, res.start,
+			    res.end);
+
+#ifdef ARCH_x86
+                        l4x_x86_register_ports(&res);
+                        l4io_request_ioport(res.start, res.end - res.start + 1);
+#endif
+                }
+        }
+}
+
 
 /*
  * The starting point.
@@ -306,6 +366,16 @@ int L4_CV l4start(int argc, char **argv)
 	 * value... */
 	linux_server_thread_id = l4re_env()->main_thread;
 
+#if defined(ARCH_x86) && defined(CONFIG_VGA_CONSOLE)
+	/* map VGA range */
+        if (l4io_request_iomem_region(0xa0000, 0xa0000, 0xc0000 - 0xa0000, 0)) {
+		LOG_printf("Failed to map VGA area. Ux?\n");
+                return 0;
+        }
+        if (l4x_pagein(0xa0000, 0xc0000 - 0xa0000, 1))
+		LOG_printf("Page-in of VGA failed.\n");
+#endif
+
 #ifdef ARCH_x86
 	{
 		unsigned long gs, fs;
@@ -333,6 +403,8 @@ int L4_CV l4start(int argc, char **argv)
 		= l4_utcb_mr()->mr[L4_THREAD_CONTROL_MR_IDX_PAGER];
 
 	l4x_iodb_init();
+
+	l4x_scan_hw_resources();
 
 	/* Initialize GDT entry offset */
 	l4x_fiasco_gdt_entry_offset 
