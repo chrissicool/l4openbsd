@@ -19,6 +19,7 @@
 
 /*
  * Check if an address is correctly aligned.
+ * XXX hshoexer: wrong for 0x00000000
  */
 #define IS_ALIGNED(addr)	(addr & 0xfffffffcUL)
 
@@ -46,10 +47,17 @@ l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page, int map_rw)
 	offset += page - addr;
 	addr    = address;
 #ifdef DIAGNOSTIC
+	if (page == 0 || address == 0)
+		panic("l4lx_memory_map_virtual_page: address 0x%08lx page "
+		    "0x%08lx\n", (unsigned long)address, (unsigned long)page);
 	/* Sanity checks */
-	if(!IS_ALIGNED(addr))
+	if (!IS_ALIGNED(addr) || !IS_ALIGNED(page))
+		printf("l4lx_memory_map_virtual_page: address 0x%08lx page "
+		    "0x%08x flags 0x%08lx\n", (unsigned long)address,
+		    (unsigned long)page, map_rw);
+	if (!IS_ALIGNED(addr))
 		printf("WARNING: Trying to map unaligned virtual page!\n");
-	if(!IS_ALIGNED(page))
+	if (!IS_ALIGNED(page))
 		printf("WARNING: Trying to map unaligned physical page!\n");
 #endif
 //	l4x_printf("Attaching DS: PA=0x%08lx, VA=0x%08lx, Vaddr=%08lx, off=%08lx\n",
@@ -82,10 +90,12 @@ int l4lx_memory_unmap_virtual_page(vaddr_t address)
 	int r;
 	L4XV_V(f);
 
-	/* Sanety check. */
-	if(!IS_ALIGNED(address))
+	/* Sanity check. */
+	if (!IS_ALIGNED(address)) {
 		printf("WARNING: Trying to unmap unaligned virtual page!\n");
-
+		printf("l4lx_memory_unmap_virtual_page: address 0x%08lx",
+		    (unsigned long)address);
+	}
 	L4XV_L(f);
 //	l4x_printf("Detaching DS: VA=0x%08lx\n", address);
 	if ((r = l4re_rm_detach((void *)address))) {
