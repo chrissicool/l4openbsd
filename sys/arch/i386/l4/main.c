@@ -186,9 +186,7 @@ extern char *rd_root_image;		/* from dev/rd.c */
 static char l4x_rd_path[L4X_MAX_RD_PATH];
 
 void l4x_load_initrd(char **command_line);
-int fprov_load_initrd(const char *filename,
-                             void  *rd_start,
-                             size_t size);
+int fprov_load_initrd(const char *filename, size_t size);
 int l4x_query_and_get_ds(const char *name, const char *logprefix,
 		l4_cap_idx_t *dscap, void **addr,
 		l4re_ds_stats_t *dsstat);
@@ -532,7 +530,7 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 
 	ds_size = l4re_ds_size(ds);
 
-	LOG_printf("%15s: virt: %08p to %08p [%u KiB]\n",
+	LOG_printf("%15s: Virt: %08p to %08p [%u KiB]\n",
 			tag, start, start + ds_size - 1, ds_size >> 10);
 
 	while (offset < ds_size) {
@@ -1146,9 +1144,7 @@ void l4x_load_initrd(char **command_line)
 	if (*l4x_rd_path) {
 		LOG_printf("Loading ramdisk: %s... ", l4x_rd_path);
 
-		if (fprov_load_initrd(l4x_rd_path,
-		                      rd_root_image,
-		                      rd_root_size)) {
+		if (fprov_load_initrd(l4x_rd_path, rd_root_size)) {
 			LOG_printf("failed\n");
 			LOG_flush();
 			l4x_exit_l4linux();
@@ -1156,15 +1152,14 @@ void l4x_load_initrd(char **command_line)
 		}
 
 		LOG_printf("from 0x%08lx to 0x%08lx [%ldKiB]\n",
-		           &rd_root_image[0],
-			   &rd_root_image[0] + rd_root_size - 1,
+		           (unsigned long)rd_root_image,
+			   (unsigned long)rd_root_image + rd_root_size - 1,
 		           rd_root_size >> 10);
 	}
+	l4_touch_rw(rd_root_image, rd_root_size - 1);
 }
 
-int fprov_load_initrd(const char *filename,
-                             void *rd_start,
-                             size_t size)
+int fprov_load_initrd(const char *filename, size_t size)
 {
 	int ret;
 	l4re_ds_stats_t dsstat;
