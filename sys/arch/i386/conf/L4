@@ -65,7 +65,6 @@ config		bsd	root on rd0a swap on rd0b #and wd0b and sd0b
 #npx0		at isa? port 0xf0 irq 13	# math coprocessor
 
 l4bus0		at mainbus0
-l4vpci0		at l4bus0			# L4 virtual PCI bus
 l4ser0		at l4bus0			# L4 serial port driver
 option		L4SER_DDB_KEY="17"		# ASCII code for DDB
 						# DO NOT USE IN PRODUCTION!
