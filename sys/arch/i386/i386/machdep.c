@@ -3486,18 +3486,29 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	int error;
 	struct extent *ex;
 
+#if BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx bpa 0x%08lx size 0x%08lx flags 0x%08lx\n",
+	    __func__, (unsigned long)t, (unsigned long)bpa,
+	    (unsigned long)size, (unsigned long)flags);
+#endif
 	/*
 	 * Pick the appropriate extent map.
 	 */
 	switch (t) {
 	case I386_BUS_SPACE_IO:
 		ex = ioport_ex;
+#if BUS_SPACE_DEBUG
+		printf("%s: I386_BUS_SPACE_IO: ex %p\n", __func__, ex);
+#endif
 		if (flags & BUS_SPACE_MAP_LINEAR)
 			return (EINVAL);
 		break;
 
 	case I386_BUS_SPACE_MEM:
 		ex = iomem_ex;
+#if BUS_SPACE_DEBUG
+		printf("%s: I386_BUS_SPACE_MEM: ex %p\n", __func__, ex);
+#endif
 		break;
 
 	default:
@@ -3513,16 +3524,27 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	if (error)
 		return (error);
 
+#if BUS_SPACE_DEBUG
+	printf("%s: extent alloced\n", __func__);
+#endif
 	/*
 	 * For I/O space, that's all she wrote.
 	 */
 	if (t == I386_BUS_SPACE_IO) {
+#if BUS_SPACE_DEBUG
+		printf("%s: 1. *bshp 0x%08lx\n", __func__,
+		    *(unsigned long *)bshp);
+#endif
 		*bshp = bpa;
 		return (0);
 	}
 
 	if (IOM_BEGIN <= bpa && bpa <= IOM_END) {
 		*bshp = (bus_space_handle_t)ISA_HOLE_VADDR(bpa);
+#if BUS_SPACE_DEBUG
+		printf("%s: 2. *bshp 0x%08lx\n", __func__,
+		    *(unsigned long *)bshp);
+#endif
 		return (0);
 	}
 
@@ -3531,6 +3553,9 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	 * a kernel virtual address.
 	 */
 	error = bus_mem_add_mapping(bpa, size, flags, bshp);
+#if BUS_SPACE_DEBUG
+	printf("%s: bus_mem_add_mapping error %d\n", __func__, error);
+#endif
 	if (error) {
 		if (extent_free(ex, bpa, size, EX_NOWAIT |
 		    (ioport_malloc_safe ? EX_MALLOCOK : 0))) {
@@ -3539,6 +3564,10 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 			printf("bus_space_map: can't free region\n");
 		}
 	}
+
+#if BUS_SPACE_DEBUG
+	printf("%s: done %d\n", __func__, error);
+#endif
 
 	return (error);
 }
@@ -3639,6 +3668,10 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 	bus_size_t map_size;
 	int pmap_flags = PMAP_NOCACHE;
 
+#if BUS_SPACE_DEBUG
+	printf("%s: bpa 0x%08lx size 0x%08lx flags 0x%08lx\n", __func__,
+	    (unsigned long)bpa, (unsigned long)size, (unsigned long)flags);
+#endif
 	pa = trunc_page(bpa);
 	endpa = round_page(bpa + size);
 
@@ -3649,12 +3682,23 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 
 	map_size = endpa - pa;
 
+#if BUS_SPACE_DEBUG
+	printf("%s: pa 0x%08lx endpa 0x%08lx map_size 0x%08lx\n", __func__,
+	    (unsigned long)pa, (unsigned long)endpa, (unsigned long)map_size);
+#endif
+
 	va = uvm_km_valloc(kernel_map, map_size);
+#if BUS_SPACE_DEBUG
+	printf("%s: va 0x%08lx\n", __func__, (unsigned long)va);
+#endif
 	if (va == 0)
 		return (ENOMEM);
 
 	*bshp = (bus_space_handle_t)(va + (bpa & PGOFSET));
 
+#if BUS_SPACE_DEBUG
+	printf("%s: *bshp 0x%08lx\n", __func__, *(unsigned long *)bshp);
+#endif
 	if (flags & BUS_SPACE_MAP_CACHEABLE)
 		pmap_flags = 0;
 	else if (flags & BUS_SPACE_MAP_PREFETCHABLE)
@@ -3666,6 +3710,9 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 		    VM_PROT_READ | VM_PROT_WRITE);
 	pmap_update(pmap_kernel());
 
+#if BUS_SPACE_DEBUG
+	printf("%s: done\n", __func__);
+#endif
 	return 0;
 }
 
