@@ -397,10 +397,6 @@ int
 pci_mode_detect(void)
 {
 
-#ifdef L4	/* XXX hshoexer */
-#define PCI_CONF_MODE	1
-#endif
-
 #ifdef PCI_CONF_MODE
 #if (PCI_CONF_MODE == 1) || (PCI_CONF_MODE == 2)
 	return (pci_mode = PCI_CONF_MODE);
