@@ -478,14 +478,6 @@ l4x_setup_kernel_ptd(void)
 	/* Clear physical memory for a page directory and bootstrap tables. */
 	bzero((void *)(PA_START + pa_off), (nkpde + 1) * NBPG);
 
-	LOG_printf("%s: KVA_START 0x%08lx PA_START 0x%08lx ISA 0x%08lx\n",
-	    __func__, (unsigned long)KVA_START, (unsigned long)PA_START,
-	    (unsigned long)0xa0000);
-
-	LOG_printf("%s: mapping PTD 0x%08lx at 0x%08lx\n", __func__,
-	    (unsigned long)PA_START + pa_off,
-	    (unsigned long)KVA_START + kva_off);
-
 	/* Map our PTD  */
 	l4lx_memory_map_virtual_page((vaddr_t)(KVA_START + kva_off),
 	    (paddr_t)(PA_START + pa_off), PG_V | PG_KW);
@@ -504,21 +496,12 @@ l4x_setup_kernel_ptd(void)
 	/* The following implicitly sets KVA_START for pmap(9). */
 	atdevbase = KVA_START + kva_off;
 
-	LOG_printf("%s: atdevbase 0x%08lx\n", __func__, (unsigned long)atdevbase);
-
 	/* Map ISA I/O memory. */
 	for (i = 0; i < (IOM_SIZE >> PGSHIFT); i++) {
-
-		LOG_printf("%s: mapping ISA 0x%08lx at 0x%08lx\n", __func__,
-		    (unsigned long)(0xa0000 + iom_off),
-		    (unsigned long)atdevbase + iom_off);
-
 		l4lx_memory_map_virtual_page((vaddr_t)(atdevbase + iom_off),
 		    (paddr_t)(0xa0000 + iom_off), (PG_V | PG_KW));
 		iom_off += PAGE_SIZE;
 	}
-
-	LOG_printf("%s: returning 0x%08lx\n", __func__, PA_START + pa_off);
 
 	return (PA_START + pa_off);
 }
