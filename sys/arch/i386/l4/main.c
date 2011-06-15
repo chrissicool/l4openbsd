@@ -369,11 +369,39 @@ int L4_CV l4start(int argc, char **argv)
 #if defined(ARCH_x86) && defined(CONFIG_VGA_CONSOLE)
 	/* map VGA range */
         if (l4io_request_iomem_region(0xa0000, 0xa0000, 0xc0000 - 0xa0000, 0)) {
-		LOG_printf("Failed to map VGA area. Ux?\n");
+		LOG_printf("Failed to map VGA area.\n");
                 return 0;
         }
         if (l4x_pagein(0xa0000, 0xc0000 - 0xa0000, 1))
 		LOG_printf("Page-in of VGA failed.\n");
+#endif
+
+#ifdef ARCH_x86
+#if 0	/* XXX hshoexer */
+	/* map BDA, etc. range */
+        if (l4io_request_iomem_region(0x00000, 0x00000, 0x001000 - 0x00000, 0)) {
+		LOG_printf("Failed to map BDA et al area.\n");
+                return 0;
+        }
+        if (l4x_pagein(0x00000, 0x01000 - 0x00000, 1))
+		LOG_printf("Page-in of BIOS failed.\n");
+#endif
+
+	/* map EBDA range */
+        if (l4io_request_iomem_region(0x9cf00, 0x9cf00, 0x0a0000 - 0x9cf00, 0)) {
+		LOG_printf("Failed to map EBDA area.\n");
+                return 0;
+        }
+        if (l4x_pagein(0x9cf00, 0xa0000 - 0x9cf00, 1))
+		LOG_printf("Page-in of EBDA failed.\n");
+
+	/* map BIOS range */
+        if (l4io_request_iomem_region(0xc0000, 0xc0000, 0x100000 - 0xc0000, 0)) {
+		LOG_printf("Failed to map BIOS area.\n");
+                return 0;
+        }
+        if (l4x_pagein(0xc0000, 0x100000 - 0xc0000, 1))
+		LOG_printf("Page-in of BIOS failed.\n");
 #endif
 
 #ifdef ARCH_x86
@@ -416,8 +444,22 @@ int L4_CV l4start(int argc, char **argv)
 	l4x_register_pointer_section(&__rodata_start, 0, "sec-rodata");
 	l4x_register_pointer_section(&__data_start, 0, "sec-data");
 
-	/* VGA BIOS memory hole */
-	l4x_v2p_add_item(0xa0000, 0xa0000, 0xfffff - 0xa0000);
+#if defined(ARCH_x86) && defined(CONFIG_VGA_CONSOLE)
+	/* VGA memory hole */
+	l4x_v2p_add_item(0xa0000, 0xa0000, 0xbffff - 0xa0000);
+#endif
+#ifdef ARCH_x86
+#if 0	/* XXX hshoexer */
+	/* BDA, etc. */
+	l4x_v2p_add_item(0x00000, 0x00000, 0x01000 - 0x00000);
+#endif
+
+	/* EBDA */
+	l4x_v2p_add_item(0x9cf00, 0x9cf00, 0x9ffff - 0x9cf00);
+
+	/* BIOS memory hole */
+	l4x_v2p_add_item(0xc0000, 0xc0000, 0xfffff - 0xc0000);
+#endif
 
 #ifdef L4_EXTERNAL_RTC
 	l4_uint32_t seconds;
@@ -617,8 +659,8 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 
 		l4x_v2p_add_item(phys_addr, (vaddr_t)(start + offset), phys_size);
 
-		LOG_printf("%15s: Phys: 0x%08lx to 0x%08lx, Size: %8u\n",
-				tag, phys_addr, phys_addr + phys_size - 1, phys_size);
+		LOG_printf("%15s: Phys: 0x%08lx to 0x%08lx [%u KiB]\n",
+		    tag, phys_addr, phys_addr + phys_size - 1, phys_size >> 10);
 
 		offset += phys_size;
 	}

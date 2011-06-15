@@ -10,6 +10,8 @@
 
 #include <uvm/uvm_extern.h>
 
+#include <dev/isa/isareg.h>
+
 #include <machine/vmparam.h>
 #include <machine/pmap.h>
 
@@ -68,7 +70,7 @@ void l4x_virt_to_phys_show(void)
 {
         int i;
         for (i = 0; i < l4x_phys_virt_addr_items; i++) {
-                printf("v = %08lx  p = %08lx   sz = %zx\n",
+                LOG_printf("v = %08lx  p = %08lx   sz = %zx\n",
                        (unsigned long)l4x_phys_virt_addrs[i].virt,
                        l4x_phys_virt_addrs[i].phys,
                        l4x_phys_virt_addrs[i].size);
@@ -460,7 +462,7 @@ paddr_t
 l4x_setup_kernel_ptd(void)
 {
 	pd_entry_t *pd;
-	int kva_off = 0, pa_off = 0;
+	int kva_off = 0, pa_off = 0, iom_off = 0;
 	int i;
 
 	/*
@@ -474,26 +476,49 @@ l4x_setup_kernel_ptd(void)
 		nkpde = NKPTP_MAX;
 
 	/* Clear physical memory for a page directory and bootstrap tables. */
-	bzero((void *)(PA_START+pa_off), (nkpde+1) * NBPG);
+	bzero((void *)(PA_START + pa_off), (nkpde + 1) * NBPG);
+
+	LOG_printf("%s: KVA_START 0x%08lx PA_START 0x%08lx ISA 0x%08lx\n",
+	    __func__, (unsigned long)KVA_START, (unsigned long)PA_START,
+	    (unsigned long)0xa0000);
+
+	LOG_printf("%s: mapping PTD 0x%08lx at 0x%08lx\n", __func__,
+	    (unsigned long)PA_START + pa_off,
+	    (unsigned long)KVA_START + kva_off);
 
 	/* Map our PTD  */
-	l4lx_memory_map_virtual_page((vaddr_t)(KVA_START+kva_off),
-			(paddr_t)(PA_START+pa_off), PG_V | PG_KW);
+	l4lx_memory_map_virtual_page((vaddr_t)(KVA_START + kva_off),
+	    (paddr_t)(PA_START + pa_off), PG_V | PG_KW);
 	proc0paddr->u_pcb.pcb_cr3 = PA_START + pa_off;
 	pd = PTD = (pd_entry_t *)(KVA_START + kva_off);
 	kva_off += PAGE_SIZE;
 	pa_off += PAGE_SIZE;
 
-
 	/* Reserve nkpde page tables. */
 	for (i = pdei(KVA_START); i < pdei(KVA_START) + nkpde; i++) {
 		pd[i] = (pd_entry_t)((PA_START + pa_off) |
-				     (PG_V | PG_KW | PG_M | PG_U));
+		    (PG_V | PG_KW | PG_M | PG_U));
 		pa_off += PAGE_SIZE;
 	}
 
 	/* The following implicitly sets KVA_START for pmap(9). */
 	atdevbase = KVA_START + kva_off;
 
-	return(PA_START + pa_off);
+	LOG_printf("%s: atdevbase 0x%08lx\n", __func__, (unsigned long)atdevbase);
+
+	/* Map ISA I/O memory. */
+	for (i = 0; i < (IOM_SIZE >> PGSHIFT); i++) {
+
+		LOG_printf("%s: mapping ISA 0x%08lx at 0x%08lx\n", __func__,
+		    (unsigned long)(0xa0000 + iom_off),
+		    (unsigned long)atdevbase + iom_off);
+
+		l4lx_memory_map_virtual_page((vaddr_t)(atdevbase + iom_off),
+		    (paddr_t)(0xa0000 + iom_off), (PG_V | PG_KW));
+		iom_off += PAGE_SIZE;
+	}
+
+	LOG_printf("%s: returning 0x%08lx\n", __func__, PA_START + pa_off);
+
+	return (PA_START + pa_off);
 }
