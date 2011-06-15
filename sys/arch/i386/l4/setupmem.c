@@ -230,6 +230,8 @@ void l4x_memory_setup(char **cmdl)
 	extern paddr_t avail_end;
 
 	avail_end = mem_endp;
+
+	l4re_rm_show_lists();
 }
 
 static void l4x_setup_memory(char **cmdl,
@@ -376,7 +378,7 @@ static void l4x_setup_memory(char **cmdl,
 		}
 	} else
 #endif
-	l4x_main_memory_start = (void *)memory_area_addr;
+		l4x_main_memory_start = (void *)memory_area_addr;
 
 	/** Second: the main memory */
 	if (l4re_rm_attach(&l4x_main_memory_start, l4x_mainmem_size,
