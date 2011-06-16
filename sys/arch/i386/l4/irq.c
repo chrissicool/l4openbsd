@@ -191,7 +191,7 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 	 * ICU_LEN.
 	 */
 	if (irq >= ICU_LEN)
-		return result;
+		panic("l4x_run_irq_handlers: invalid irq 0x%x", irq);
 
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
@@ -232,7 +232,7 @@ handle_irq(int irq, struct trapframe *regs)
 	 * ICU_LEN.
 	 */
 	if (irq >= ICU_LEN)
-		return 0;
+		panic("handle_irq: invalid irq 0x%x", irq);
 
 	/* Count number of interrupts. */
 	uvmexp.intrs++;
@@ -240,6 +240,7 @@ handle_irq(int irq, struct trapframe *regs)
 	/* Check current splx(9) level */
 	if (iminlevel[irq] <= lapic_tpr) {
 		atomic_setbits_int(&curcpu()->ci_ipending, (1 << irq));
+		l4lx_irq_dev_eoi(irq);
 		return 1; /* handled */
 	}
 

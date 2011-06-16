@@ -33,7 +33,7 @@
 #include <sys/types.h>
 #include <sys/errno.h>
 
-#include <dev/isa/isavar.h>		/* XXX hshoexer */
+#include <i386/l4/dev/l4_machdep.h>
 #include <i386/l4/dev/l4busvar.h>
 
 #include <machine/atomic.h>
@@ -52,6 +52,8 @@
 #include <l4/log/log.h>
 
 #define PORT0_NAME              "log"
+#define PORT0_IRQ		4
+#define PORT0_PIN		0
 
 cons_decl(l4ser);
 cdev_decl(l4ser);
@@ -85,6 +87,7 @@ static int l4sermajor;
 static struct l4ser_uart {
 	l4_cap_idx_t vcon_cap;
 	l4_cap_idx_t vcon_irq_cap;
+	int vcon_irq;
 	int inited;
 } l4ser;
 
@@ -128,18 +131,8 @@ l4serintr(void *arg)
 int
 l4ser_match(struct device *parent, void *match, void *aux)
 {
-/*	struct cfdata *cf = match;		*/
-	struct l4bus_attach_arg *lba = aux;
-
-	/* Sanety check, IRQ needs to be the same as clock. */
-	if (lba->irq != 0) {
-		printf("ERROR: l4ser configured irq %d != 0.\n", lba->irq);
-		return 0;
-	}
-
-	if (!probe_l4ser()) {
+	if (!probe_l4ser())
 		return 1;
-	}
 
 	return 0;
 }
@@ -148,15 +141,11 @@ void
 l4ser_attach(struct device *parent, struct device *self, void *aux)
 {
 	struct l4ser_softc *sc = (void *)self;
-	struct l4bus_attach_arg *lba = aux;
 
-	printf("\n");
+	printf(" port \"%s\" pin %d irq %d\n", PORT0_NAME, PORT0_PIN,
+	    l4ser.vcon_irq);
 
-	/*
-	 * We share the IRQ with the clock, so we can fetch keys on every tick.
-	 * XXX hshoexer
-	 */
-	isa_intr_establish(0, lba->irq, IST_EDGE, IPL_TTY, l4serintr, sc,
+	l4_intr_establish(l4ser.vcon_irq, IST_EDGE, IPL_TTY, l4serintr, sc,
 	    sc->sc_dev.dv_xname);
 }
 
@@ -340,7 +329,7 @@ static int probe_l4ser(void)
 		return ENOMEM;
 	}
 
-	if ((l4_error(l4_icu_bind(l4ser.vcon_cap, 0,
+	if ((l4_error(l4_icu_bind(l4ser.vcon_cap, PORT0_PIN,
 	                          l4ser.vcon_irq_cap)))) {
 		l4re_util_cap_release(l4ser.vcon_irq_cap);
 		l4x_cap_free(l4ser.vcon_irq_cap);
@@ -348,13 +337,15 @@ static int probe_l4ser(void)
 		// No interrupt, just output
 		LOG_printf("l4ser: No interrupt, just output.\n");
 		l4ser.vcon_irq_cap = L4_INVALID_CAP;
-		irq = 0;
-	} else if ((irq = l4x_register_irq_fixed(4, l4ser.vcon_irq_cap)) < 0) {
+		irq = 0;	/* XXX hshoexer */
+	} else if ((irq = l4x_register_irq_fixed(PORT0_IRQ,
+	    l4ser.vcon_irq_cap)) < 0) {
 		l4x_cap_free(l4ser.vcon_irq_cap);
 		l4x_cap_free(l4ser.vcon_cap);
 		L4XV_U(f);
 		return EIO;
 	}
+	l4ser.vcon_irq = irq;
 
 	vcon_attr.i_flags = 0;
 	vcon_attr.o_flags = 0;

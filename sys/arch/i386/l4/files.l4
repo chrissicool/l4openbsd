@@ -2,6 +2,7 @@
 # rewritten i386-specific files
 
 file	arch/i386/l4/pmap.c				l4
+file	arch/i386/l4/dev/l4_machdep.c			l4
 
 ##
 # specify all L4 components here

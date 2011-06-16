@@ -19,6 +19,6 @@
 
 #include <sys/param.h>
 
-void *l4_intr_establish();
+void *l4_intr_establish(int, int, int, int (*)(void *), void *, const char *);
 
 #endif	/* _L4_DEV_L4_MACHDEP_H_ */
