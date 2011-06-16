@@ -38,34 +38,34 @@ mainbus0 at root
 
 cpu0	at mainbus?
 bios0	at mainbus0
-ioapic*	at mainbus?
-apm0	at bios0 flags 0x0000	# flags 0x0101 to force protocol version 1.1
-acpi0	at bios?
-mpbios0	at bios0
-pcibios0 at bios0 flags 0x0000	# use 0x30 for a total verbose
+#ioapic*	at mainbus?
+#apm0	at bios0 flags 0x0000	# flags 0x0101 to force protocol version 1.1
+#acpi0	at bios?
+#mpbios0	at bios0
+#pcibios0 at bios0 flags 0x0000	# use 0x30 for a total verbose
 #ipmi0	at mainbus? disable	# IPMI
 #vmt0	at mainbus?		# VMware Tools
 #esm0	at mainbus? 		# Dell Embedded Server Management
 #amdmsr0	at mainbus?		# MSR access for AMD Geode LX CPUs with GP
 
-acpitimer*	at acpi?
-acpihpet*	at acpi?
-acpiac*		at acpi?
-acpibat*	at acpi?
-acpibtn*	at acpi?
-acpicpu*	at acpi?
-acpidock*	at acpi?
-acpiec*		at acpi?
-acpimadt0	at acpi?
-acpiprt*	at acpi?
-acpitz*		at acpi?
-acpiasus*	at acpi?
-acpisony*	at acpi?
-acpithinkpad*	at acpi?
-acpivideo*	at acpi?
-acpivout*	at acpivideo?
-acpipwrres*	at acpi?
-aibs*		at acpi?
+#acpitimer*	at acpi?
+#acpihpet*	at acpi?
+#acpiac*		at acpi?
+#acpibat*	at acpi?
+#acpibtn*	at acpi?
+#acpicpu*	at acpi?
+#acpidock*	at acpi?
+#acpiec*		at acpi?
+#acpimadt0	at acpi?
+#acpiprt*	at acpi?
+#acpitz*		at acpi?
+#acpiasus*	at acpi?
+#acpisony*	at acpi?
+#acpithinkpad*	at acpi?
+#acpivideo*	at acpi?
+#acpivout*	at acpivideo?
+#acpipwrres*	at acpi?
+#aibs*		at acpi?
 
 option		PCIVERBOSE
 option		EISAVERBOSE
@@ -121,8 +121,8 @@ piixpm* at pci?				# Intel PIIX power management
 iic*	at piixpm?
 alipm*	at pci?				# Acer Labs M7101 power management
 iic*	at alipm?
-ichiic*	at pci?				# Intel ICH SMBus controller
-iic*	at ichiic?
+#ichiic*	at pci?				# Intel ICH SMBus controller
+#iic*	at ichiic?
 viapm*	at pci?				# VIA VT8237 power management
 iic*	at viapm?
 amdiic*	at pci?				# AMD-8111 SMBus controller
@@ -206,11 +206,11 @@ cbb*		at pci?
 cardslot*	at cbb?
 
 # USB Controllers
-ehci*	at pci?				# Enhanced Host Controller
+#ehci*	at pci?				# Enhanced Host Controller
 ehci*	at cardbus?			# Enhanced Host Controller
-uhci*	at pci?				# Universal Host Controller (Intel)
+#uhci*	at pci?				# Universal Host Controller (Intel)
 uhci*	at cardbus?			# Universal Host Controller (Intel)
-ohci*	at pci?				# Open Host Controller
+#ohci*	at pci?				# Open Host Controller
 ohci*	at cardbus?			# Open Host Controller
 
 # USB bus support
@@ -342,12 +342,12 @@ pckbc0		at isa? flags 0x00	# PC keyboard controller
 pckbd*		at pckbc?	# PC keyboard
 pms*		at pckbc?	# PS/2 mouse for wsmouse
 pmsi*		at pckbc?	# PS/2 "Intelli"mouse for wsmouse
-#vga0		at isa?
+vga0		at isa?
 option		X86EMU		# to POST video cards
 vga*		at pci?
-#pcdisplay0	at isa?		# CGA, MDA, EGA, HGA
+pcdisplay0	at isa?		# CGA, MDA, EGA, HGA
 wsdisplay*	at vga?
-#wsdisplay*	at pcdisplay?
+wsdisplay*	at pcdisplay?
 wskbd*		at pckbd? mux 1
 wsmouse*	at pms? mux 0
 wsmouse*	at pmsi? mux 0
@@ -367,16 +367,16 @@ agp*		at sisagp?	# AGP bridges
 agp*		at viaagp?	# AGP bridges
 
 #option		DRMDEBUG
-inteldrm*	at vga?		# Intel i915, i945 DRM driver
-drm*		at inteldrm?
+#inteldrm*	at vga?		# Intel i915, i945 DRM driver
+#drm*		at inteldrm?
 #machdrm*	at vga?		# mach64 (3D Rage Pro, Rage) DRM driver
 #drm*		at machdrm?
 #mgadrm*	at vga?		# Matrox G[24]00, G[45]50 DRM driver
 #drm*		at mgadrm?
 #ragedrm*	at vga?		# ATI Rage 128 DRM driver
 #drm*		at ragedrm?
-radeondrm*	at vga? 	# ATI Radeon DRM driver
-drm*		at radeondrm?
+#radeondrm*	at vga? 	# ATI Radeon DRM driver
+#drm*		at radeondrm?
 #savagedrm*	at vga?		# S3 Savage DRM driver
 #drm*		at savagedrm?
 #sisdrm*	at vga?		# SiS DRM driver
@@ -449,11 +449,11 @@ scsibus* at bha?
 ahc*	at pci?			# Adaptec 2940/3940/78?? SCSI controllers
 scsibus* at ahc?
 jmb*	at pci?			# JMicron JMB36x controllers
-ahci*	at jmb? flags 0x0000	# flags 0x0001 to force SATA 1 (1.5Gb/s)
+#ahci*	at jmb? flags 0x0000	# flags 0x0001 to force SATA 1 (1.5Gb/s)
 pciide*	at jmb?
-ahci*	at pci?	flags 0x0000	# AHCI SATA controllers
+#ahci*	at pci?	flags 0x0000	# AHCI SATA controllers
 				# flags 0x0001 to force SATA 1 (1.5Gb/s)
-scsibus* at ahci?
+#scsibus* at ahci?
 sili*	at pci?			# Silicon Image 3124/3132/3531 SATA controllers
 scsibus* at sili?
 ahd*	at pci?			# Adaptec 79?? SCSI controllers
@@ -462,8 +462,8 @@ arc*	at pci?			# Areca RAID Controllers
 scsibus* at arc?
 mpi*	at pci?			# LSI Logic Fusion MPT Message Passing Interface
 scsibus* at mpi?
-mpii*	at pci?			# LSI Fusion MPT Message Passing Interface II
-scsibus* at mpii?
+#mpii*	at pci?			# LSI Fusion MPT Message Passing Interface II
+#scsibus* at mpii?
 gdt*	at pci?			# ICP Vortex GDT RAID controllers
 scsibus* at gdt?
 twe*	at pci?			# 3ware Escalade RAID controllers
@@ -610,13 +610,13 @@ mskc*	at pci?				# Marvell Yukon-2
 msk*	at mskc?			#  each port of above
 #em*	at pci?				# Intel Pro/1000 ethernet
 gcu*	at pci?				# Intel Pro/1000 ethernet GCU
-ixgb*	at pci?				# Intel Pro/10Gb ethernet
-ix*	at pci?				# Intel 82598EB 10Gb ethernet
+#ixgb*	at pci?				# Intel Pro/10Gb ethernet
+#ix*	at pci?				# Intel 82598EB 10Gb ethernet
 txp*	at pci?				# 3com 3CR990
 nge*	at pci?				# NS DP83820/DP83821 GigE
 bge*	at pci?				# Broadcom BCM57xx (aka Tigon3)
 bnx*	at pci?				# Broadcom BCM5706/5708 GigE
-re*	at pci?				# Realtek 8169/8169S/8110S
+#re*	at pci?				# Realtek 8169/8169S/8110S
 re*	at cardbus?			# Realtek 8169/8169S/8110S
 stge*	at pci?				# Sundance TC9021 GigE
 lge*	at pci?				# Level1 LXT1001 GigE
@@ -831,7 +831,7 @@ owtemp* at onewire?		# Temperature
 owctr*	at onewire?		# Counter device
 
 #pseudo-device	pctr		1
-pseudo-device	mtrr		1	# Memory range attributes control
+#pseudo-device	mtrr		1	# Memory range attributes control
 #pseudo-device	nvram		1
 pseudo-device	sequencer	1
 #pseudo-device	raid		4	# RAIDframe disk driver

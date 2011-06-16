@@ -29,6 +29,7 @@ paddr_t l4x_virt_to_phys(volatile vaddr_t address);
 vaddr_t l4x_phys_to_virt(volatile paddr_t address);
 void l4x_memory_setup(char **cmdl);
 paddr_t l4x_setup_kernel_ptd(void);
+int l4x_pagein(unsigned long, unsigned long, int);
 
 unsigned l4x_x86_utcb_get_orig_segment(void);
 

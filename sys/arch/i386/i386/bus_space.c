@@ -80,6 +80,10 @@ u_int16_t
 bus_space_read_2(bus_space_tag_t t, bus_space_handle_t h,
     bus_size_t o)
 {
+#if BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx h 0x%08lx o 0x%08lx\n", __func__,
+	    (unsigned long)t, (unsigned long)h, (unsigned long)o);
+#endif
 	return ((t) == I386_BUS_SPACE_IO ? (inw((h) + (o))) :
 	    (*(volatile u_int16_t *)((h) + (o))));
 }
