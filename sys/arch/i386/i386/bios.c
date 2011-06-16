@@ -167,6 +167,11 @@ biosattach(struct device *parent, struct device *self, void *aux)
 	/* remember flags */
 	flags = sc->sc_dev.dv_cfdata->cf_flags;
 
+#ifdef L4
+	/* XXX hshoexer */
+	flags |= (BIOSF_BIOS32 | BIOSF_SMBIOS);
+#endif
+
 	va = ISA_HOLE_VADDR(0xffff0);
 	switch (va[14]) {
 	default:
