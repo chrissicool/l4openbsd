@@ -180,14 +180,11 @@ timer_irq_thread(void *data)
 unsigned int
 l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 {
-	char name[15];
 	int cpu = cpu_number();
 	l4_msgtag_t res;
 	l4lx_thread_t timer_thread;
 	l4_cap_idx_t irq_cap;
 	L4XV_V(timer_f);
-
-	snprintf(name, 15, "%dhz.timer.%d", freq, irq);
 
 	L4XV_L(timer_f);
 	irq_cap = l4x_cap_alloc();
@@ -209,11 +206,14 @@ l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 	}
 	L4XV_U(timer_f);
 
-//#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+	char name[15];
+	snprintf(name, 15, "%dhz.timer.%d", freq, irq);
+
 	L4XV_L(timer_f);
 	l4_debugger_set_object_name(irq_cap, name);
 	L4XV_U(timer_f);
-//#endif
+#endif
 
 	if (l4x_register_irq_fixed(irq, irq_cap) == -1) {
 		printf("Error registering timer irq %d!", irq);
@@ -234,7 +234,11 @@ l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 			 /* XXX hshoexer */
 			 -1,                          /* prio */
 			 0,                           /* vcpup */
+#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
 			 name);			      /* name */
+#else
+			 "");
+#endif
 
 	if (!l4lx_thread_is_valid(timer_thread)) {
 		printf("Error creating timer thread!");

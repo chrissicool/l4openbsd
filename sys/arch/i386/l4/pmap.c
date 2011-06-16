@@ -352,7 +352,6 @@ caddr_t vmmap; /* XXX: used by mem.c... it should really uvm_map_reserve it */
  */
 
 void		 l4x_remove_pte(struct pmap *, vaddr_t, int);
-void		 l4x_remove_ptes(struct pmap *, vaddr_t, vaddr_t, int);
 struct pv_entry	*pmap_add_pvpage(struct pv_page *, boolean_t);
 struct vm_page	*pmap_alloc_ptp(struct pmap *, int, boolean_t, pt_entry_t);
 struct pv_entry	*pmap_alloc_pv(struct pmap *, int); /* see codes below */
@@ -503,6 +502,9 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 			l4x_printf("Unmap non-existant kernel page %p.\n", va);
 		}
 	} else {
+		if (!pmap->l4propagation)
+			return;
+
 		if (l4_is_invalid_cap(pmap->task)) {
 			/*
 			 * This happens, if we lazy allocate the L4 task. pmap(9)
@@ -520,49 +522,12 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 				va, pmap->pm_pdir);
 		L4XV_L(n);
 		tag = l4_task_unmap(pmap->task,
-				l4_fpage(va, NBPG, flush_rights),
+				l4_fpage(va, PGSHIFT, flush_rights),
 				L4_FP_ALL_SPACES);
 		L4XV_U(n);
 		if (l4_error(tag))
 			l4x_printf("Unmap error %ld\n",	l4_error(tag));
 	}
-}
-
-/*
- * Remove permission bits from all specified pages, starting from sva to eva.
- * VAs have to be aligned.
- * Note that eva points to the first page not to drop anymore.
- */
-void
-l4x_remove_ptes(struct pmap *pmap, vaddr_t sva, vaddr_t eva, int flush_rights)
-{
-	l4_msgtag_t tag;
-	L4XV_V(n);
-
-#ifdef DIAGNOSTIC
-	if (pmap == pmap_kernel()) {
-		printf("Removing kernel ptes for 0x%08lx - %08lx\n", sva, eva);
-		Debugger();
-		return;
-	}
-#endif
-
-	if (l4_is_invalid_cap(pmap->task))
-		return;
-
-	pdb_printf("  %s: Removing %s%s%s bit(s) from (%#x--%#x) (PTD: %p)\n",
-			__func__,
-			(flush_rights & L4_FPAGE_RO) ? "R" : "",
-			(flush_rights & L4_FPAGE_W)  ? "W" : "",
-			(flush_rights & L4_FPAGE_X)  ? "X" : "",
-			sva, eva, pmap->pm_pdir);
-	L4XV_L(n);
-	tag = l4_task_unmap(pmap->task,
-			l4_fpage(sva, eva - sva, flush_rights),
-			L4_FP_ALL_SPACES);
-	L4XV_U(n);
-	if (l4_error(tag))
-		l4x_printf("Unmap error %ld\n",	l4_error(tag));
 }
 
 
@@ -910,7 +875,8 @@ pmap_kremove(vaddr_t sva, vsize_t len)
 			panic("pmap_kremove: PG_PVLIST mapping for 0x%lx", va);
 #endif
 		pdb_printf("%s: Unmapping KVA=0x%08lx\n", __func__, va);
-		l4lx_memory_unmap_virtual_page(va);
+		if (pmap_valid_entry(opte))
+			l4lx_memory_unmap_virtual_page(va);
 	}
 	pmap_tlb_shootrange(pmap_kernel(), sva, eva);
 	pmap_tlb_shootwait();
@@ -1704,6 +1670,7 @@ pmap_pinit(struct pmap *pmap)
 
 #ifdef L4
 	pmap->task = L4_INVALID_CAP;
+	pmap->l4propagation = 1;
 #endif
 
 	/*
@@ -1920,8 +1887,7 @@ pmap_switch(struct proc *o, struct proc *p)
 
 	lldt(pcb->pcb_ldt_sel);
 
-#ifdef L4
-// #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef L4_DEBUG_REGISTER_NAMES
 	/*
 	 * Set process's name for Fiasco's kernel debugger.
 	 */
@@ -1929,13 +1895,19 @@ pmap_switch(struct proc *o, struct proc *p)
 	snprintf(s, sizeof(s), "l4bsd.%s", p->p_comm);
 	s[sizeof(s)-1] = 0;
 	l4_debugger_set_object_name(pmap->task, s);
-// #endif /* CONFIG_L4_DEBUG_REGISTER_NAMES */
-#endif
+#endif /* L4_DEBUG_REGISTER_NAMES */
 }
 
 void
 pmap_deactivate(struct proc *p)
 {
+#ifdef L4
+	struct pmap *pmap = p->p_vmspace->vm_map.pmap;
+
+	pmap_map_pdes(pmap);		/* locks pmap */
+	pmap->l4propagation = 0;
+	pmap_unmap_pdes(pmap);		/* unlocks pmap */
+#endif
 }
 
 /*
@@ -2169,13 +2141,6 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 			startva, endva, pmap->pm_pdir, ptp, pte,
 			(pte && pmap_valid_entry(*pte)) ? "v" : "i", pte ? *pte : NULL);
 
-#ifdef L4
-	/* speed hack: we are instructed to remove the whole range. */
-	if ((flags == PMAP_REMOVE_ALL) && (pmap != pmap_kernel()))
-		l4x_remove_ptes(pmap, startva, endva, L4_FPAGE_RWX);
-#endif
-
-
 	for (/*null*/; startva < endva && (ptp == NULL || ptp->wire_count > 1)
 			     ; pte++, startva += NBPG) {
 		if (!pmap_valid_entry(*pte))
@@ -2187,8 +2152,7 @@ pmap_remove_ptes(struct pmap *pmap, struct vm_page *ptp, vaddr_t ptpva,
 		/* atomically save the old PTE and zero it */
 		opte = i386_atomic_testset_ul(pte, 0);
 #ifdef L4
-		if ((pmap == pmap_kernel()) || !(flags == PMAP_REMOVE_ALL))
-			l4x_remove_pte(pmap, startva, L4_FPAGE_RWX);
+		l4x_remove_pte(pmap, startva, L4_FPAGE_RWX);
 #endif
 
 		if (opte & PG_W)
@@ -2601,9 +2565,6 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 		type |= L4_FPAGE_RO;
 	if ((prot & VM_PROT_EXECUTE) == 0)
 		type |= L4_FPAGE_X;
-
-	if (pmap != pmap_kernel())
-		l4x_remove_ptes(pmap, sva, eva, type);
 #endif
 
 
@@ -2657,8 +2618,7 @@ pmap_write_protect(struct pmap *pmap, vaddr_t sva, vaddr_t eva,
 				    (~md_prot & opte) & PG_PROT);
 				i386_atomic_setbits_l(spte, md_prot);
 #ifdef L4
-				if (pmap == pmap_kernel())
-					l4x_remove_pte(pmap, va, type);
+				l4x_remove_pte(pmap, va, type);
 #endif
 			}
 		}

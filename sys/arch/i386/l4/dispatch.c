@@ -177,14 +177,14 @@ l4x_vcpu_create_user_task(struct proc *p)
 		printf("%s: Failed to create user task\n", __func__);
 		return;
 	}
-// #ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef L4_DEBUG_REGISTER_NAMES
 	{
 		char s[20];
 		snprintf(s, sizeof(s), "l4bsd.%s", p->p_comm);
 		s[sizeof(s)-1] = 0;
 		l4_debugger_set_object_name(pmap->task, s);
 	}
-// #endif
+#endif
 /*
 	l4x_arch_task_setup(&p->p_addr);
 */
@@ -322,10 +322,8 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	 */
 	l4vcpu_irq_disable(vcpu);
 
-	l4x_run_asts(regs);
-
-	ptregs_to_vcpu(vcpu, regs);
 	if (USERMODE(regs->tf_cs, regs->tf_eflags)) {
+		l4x_run_asts(regs);
 
 		/* Create user thread on first invocation. */
 		if (l4_is_invalid_cap(pmap->task)) {
@@ -347,6 +345,7 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 	} else {
 		vcpu->r.gs = l4x_x86_utcb_get_orig_segment();
 	}
+	ptregs_to_vcpu(vcpu, regs);
 
 
 	dbg_printf("vCPU exit: trapno=%d, err=%d, pfa=%08lx, "
