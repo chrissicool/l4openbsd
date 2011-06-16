@@ -20,7 +20,7 @@ include		"arch/i386/conf/GENERIC.L4"
 #
 # Adjust the options below to your environment.
 option		L4
-makeoptions     L4_BUILDDIR="/home/hshoexer/L4/l4re-snapshot-2011022209/obj/l4/x86"
+makeoptions     L4_BUILDDIR="/changes/L4.hshoexer/l4re/obj/l4/x86"
 option		L4_MEMSIZE="32"	# Default memory size (in MB).
 				# Override with mem=xxx boot parameter.
 option		ARCH_x86	# provide L4re with our architecture
