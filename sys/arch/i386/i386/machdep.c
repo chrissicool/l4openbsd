@@ -3531,11 +3531,11 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	 * For I/O space, that's all she wrote.
 	 */
 	if (t == I386_BUS_SPACE_IO) {
+		*bshp = bpa;
 #if BUS_SPACE_DEBUG
 		printf("%s: 1. *bshp 0x%08lx\n", __func__,
 		    *(unsigned long *)bshp);
 #endif
-		*bshp = bpa;
 		return (0);
 	}
 

@@ -72,6 +72,10 @@ u_int8_t
 bus_space_read_1(bus_space_tag_t t, bus_space_handle_t h,
     bus_size_t o)
 {
+#if BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx h 0x%08lx o 0x%08lx\n", __func__,
+	    (unsigned long)t, (unsigned long)h, (unsigned long)o);
+#endif
 	return ((t) == I386_BUS_SPACE_IO ? (inb((h) + (o))) :
 	    (*(volatile u_int8_t *)((h) + (o))));
 }
@@ -92,6 +96,10 @@ u_int32_t
 bus_space_read_4(bus_space_tag_t t, bus_space_handle_t h,
     bus_size_t o)
 {
+#if BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx h 0x%08lx o 0x%08lx\n", __func__,
+	    (unsigned long)t, (unsigned long)h, (unsigned long)o);
+#endif
 	return ((t) == I386_BUS_SPACE_IO ? (inl((h) + (o))) :
 	    (*(volatile u_int32_t *)((h) + (o))));
 }
