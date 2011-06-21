@@ -788,11 +788,6 @@ l4pci_device_enable(struct pci_attach_args *pa, int altirq)
 	if (irq < 0)
 		panic("Failed to enable PCI INT %c: no GSI\n", 'A' + pin);
 
-#if 0
-	printf("%s: enabled interrupt %d for pin %d on line %d, airq %d\n",
-	    __func__, irq, pin, line, altirq);
-#endif
-
 	L4XV_U(f);
 }
 #endif	/* L4 */
