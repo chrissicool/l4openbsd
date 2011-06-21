@@ -534,18 +534,6 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 		break;
 	}
 
-#ifdef L4
-	/*  Register with IO server when establishing first handler. */
-	if (intrhand[irq] == NULL) {
-		if (!l4lx_irq_dev_startup(irq)) {
-			panic("isa_intr_establish: l4lx_irq_dev_startup() "
-			    "failed");
-			free(ih, M_DEVBUF);
-			return (NULL);
-		}
-	}
-#endif
-
 	/*
 	 * Figure out where to put the handler.
 	 * This is O(N^2), but we want to preserve the order, and N is
@@ -560,6 +548,18 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 	 * until masking is set up.
 	 */
 	fakehand.ih_level = level;
+#ifdef L4
+	/*  Register with IO server when establishing first handler. */
+	if (intrhand[irq] == NULL) {
+		*p = &fakehand;
+		if (!l4lx_irq_dev_startup(irq)) {
+			panic("isa_intr_establish: l4lx_irq_dev_startup() "
+			    "failed");
+			free(ih, M_DEVBUF);
+			return (NULL);
+		}
+	} else
+#endif
 	*p = &fakehand;
 
 	intr_calculatemasks();
