@@ -528,7 +528,7 @@ uk*	at scsibus?		# unknown SCSI
 #mcd0	at isa? port 0x300 irq 10	# Mitsumi CD-ROM drives
 
 # IDE controllers
-#pciide* at pci? flags 0x0000
+pciide* at pci? flags 0x0000
 
 #wdc0	at isa? port 0x1f0 irq 14 flags 0x00
 #wdc1	at isa? port 0x170 irq 15 flags 0x00
@@ -537,11 +537,11 @@ uk*	at scsibus?		# unknown SCSI
 
 # IDE hard drives
 #wd*	at wdc? flags 0x0000
-#wd*	at pciide? flags 0x0000
+wd*	at pciide? flags 0x0000
 
 # ATAPI<->SCSI
 #atapiscsi* at wdc?
-#atapiscsi* at pciide?
+atapiscsi* at pciide?
 scsibus* at atapiscsi?
 
 # Networking devices
