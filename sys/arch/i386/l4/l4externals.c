@@ -50,6 +50,7 @@ L4_EXTERNAL_FUNC(l4re_ma_free_srv);
 L4_EXTERNAL_FUNC(l4vbus_pci_cfg_read);
 L4_EXTERNAL_FUNC(l4vbus_pci_cfg_write);
 L4_EXTERNAL_FUNC(l4vbus_get_device_by_hid);
+L4_EXTERNAL_FUNC(l4vbus_pci_irq_enable);
 #endif
 
 L4_EXTERNAL_FUNC(l4re_debug_obj_debug);
