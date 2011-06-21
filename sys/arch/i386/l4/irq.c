@@ -183,7 +183,7 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 {
 	extern void isa_strayintr(int irq);
 	struct intrhand **p, *q;
-	int r, result = 0;
+	int s, r, result = 0;
 
 	/*
 	 * Handle only hardware IRQs routed throug PIC.
@@ -192,6 +192,8 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 	 */
 	if (irq >= ICU_LEN)
 		panic("l4x_run_irq_handlers: invalid irq 0x%x", irq);
+
+	s = splraise(imaxlevel[irq]);
 
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
@@ -213,6 +215,8 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 	/* Ack current handled IRQ. */
 	l4lx_irq_dev_eoi(irq);
 
+	splx(s);
+
 	return result;
 }
 
@@ -224,8 +228,6 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 static int
 handle_irq(int irq, struct trapframe *regs)
 {
-	int s, result = 0;
-
 	/*
 	 * Handle only hardware IRQs routed throug PIC.
 	 * XXX hshoexer:  With APIC we have more vector numbers than
@@ -244,19 +246,7 @@ handle_irq(int irq, struct trapframe *regs)
 		return 1; /* handled */
 	}
 
-	s = splraise(imaxlevel[irq]);
-	result = l4x_run_irq_handlers(irq, regs);
-
-#if 0	/* XXX hshoexer */
-	lapic_tpr = s;
-
-	l4x_run_softintr();	/* handle softintrs */
-#else
-	/* XXX hshoexer: enough for doreti? */
-	splx(s);
-#endif
-
-	return result;
+	return l4x_run_irq_handlers(irq, regs);
 }
 
 static void
