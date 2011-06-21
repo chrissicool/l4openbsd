@@ -64,6 +64,5 @@ l4bus_attach(struct device *parent, struct device *self, void *aux)
 
         /* l4ser */
 	attach_arg.lba_busname = "l4ser";
-	attach_arg.irq = 0;
 	config_found(self, &attach_arg, NULL);
 }
