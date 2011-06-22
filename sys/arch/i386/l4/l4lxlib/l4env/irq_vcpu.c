@@ -206,9 +206,9 @@ l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 	}
 	L4XV_U(timer_f);
 
-#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef L4_DEBUG_REGISTER_NAMES
 	char name[15];
-	snprintf(name, 15, "%dhz.timer.%d", freq, irq);
+	snprintf(name, 15, "%dhz.t.%d", freq, irq);
 
 	L4XV_L(timer_f);
 	l4_debugger_set_object_name(irq_cap, name);
@@ -234,7 +234,7 @@ l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 			 /* XXX hshoexer */
 			 -1,                          /* prio */
 			 0,                           /* vcpup */
-#ifdef CONFIG_L4_DEBUG_REGISTER_NAMES
+#ifdef L4_DEBUG_REGISTER_NAMES
 			 name);			      /* name */
 #else
 			 "");
