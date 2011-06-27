@@ -16,7 +16,6 @@
 
 struct l4bus_attach_arg {
 	char	*lba_busname;
-	int	 irq;
 };
 
 int l4bus_probe(void);

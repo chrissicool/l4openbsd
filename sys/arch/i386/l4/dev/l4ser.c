@@ -52,7 +52,6 @@
 #include <l4/log/log.h>
 
 #define PORT0_NAME              "log"
-#define PORT0_IRQ		4
 #define PORT0_PIN		0
 
 cons_decl(l4ser);
@@ -103,8 +102,15 @@ l4serintr(void *arg)
 	int c, i = 0;
 
 	if (tp == NULL  || !ISSET(tp->t_state, TS_ISOPEN)
-			|| ISSET(tp->t_state, TS_BUSY))
+			|| ISSET(tp->t_state, TS_BUSY)) {
+		/*
+		 * We end up here, when there's a character pending to
+		 * be read from the L4 virutal console.  Consume it in
+		 * any case, otherwise we won't get any further interrupts.
+		 */
+		l4sercngetc(NODEV);
 		return 0;
+	}
 
 	/* Fetch max. 20 character at once into line. */
 	SET(tp->t_state, TS_BUSY);
@@ -338,8 +344,7 @@ static int probe_l4ser(void)
 		LOG_printf("l4ser: No interrupt, just output.\n");
 		l4ser.vcon_irq_cap = L4_INVALID_CAP;
 		irq = 0;	/* XXX hshoexer */
-	} else if ((irq = l4x_register_irq_fixed(PORT0_IRQ,
-	    l4ser.vcon_irq_cap)) < 0) {
+	} else if ((irq = l4x_register_irq(l4ser.vcon_irq_cap)) < 0) {
 		l4x_cap_free(l4ser.vcon_irq_cap);
 		l4x_cap_free(l4ser.vcon_cap);
 		L4XV_U(f);

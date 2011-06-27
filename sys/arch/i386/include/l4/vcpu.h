@@ -40,6 +40,7 @@ void l4x_run_asts(struct trapframe *tf);
 void l4x_fake_int3(void);	/* emulate int3 */
 void l4x_do_vcpu_irq(l4_vcpu_state_t *);	/* emulate interrupt */
 void l4x_recurse_irq_handlers(int);		/* recurse interrupts */
+void *l4x_intr_establish(int, int, int, int (*)(void *), void *, const char *);
 
 void l4x_vcpu_create_user_task(struct proc *p);
 

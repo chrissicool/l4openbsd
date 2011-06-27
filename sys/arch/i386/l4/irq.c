@@ -4,6 +4,7 @@
 
 #include <sys/param.h>
 #include <sys/systm.h>
+#include <sys/malloc.h>
 #include <sys/rwlock.h>
 #include <sys/proc.h>
 
@@ -19,10 +20,12 @@
 
 #include <machine/l4/vcpu.h>
 #include <machine/l4/irq.h>
+#include <machine/l4/cap_alloc.h>
 #include <machine/l4/l4lxapi/irq.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/consts.h>
+#include <l4/log/log.h>
 
 #define NR_REQUESTABLE			256
 
@@ -47,6 +50,8 @@ extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
 #error IOAPIC support not yet implemented!
 //extern struct intrhand *apic_intrhand[256];	/*  APIC  */
 #endif
+
+struct intrhand *l4x_intrhand[NR_REQUESTABLE];
 
 /*
  * Recurse into all interrupts pending on the new lower IPL.
@@ -74,7 +79,8 @@ retry:
 		i386_atomic_clearbits_l(&curcpu()->ci_ipending, (1 << irq));
 		enable_intr();
 
-		if (irq < ICU_LEN)
+		/* XXX hshoexer */
+		if (irq < SIR_TTY)
 			l4x_recurse_irq_handlers(irq);
 		else {
 			/* XXX hshoexer */
@@ -183,20 +189,24 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 {
 	extern void isa_strayintr(int irq);
 	struct intrhand **p, *q;
-	int r, result = 0;
+	int level, s, r, result = 0;
 
-	/*
-	 * Handle only hardware IRQs routed throug PIC.
-	 * XXX hshoexer:  With APIC we have more vector numbers than
-	 * ICU_LEN.
-	 */
-	if (irq >= ICU_LEN)
-		panic("l4x_run_irq_handlers: invalid irq 0x%x", irq);
+	if (irq >= ICU_LEN) {
+		q = l4x_intrhand[irq];
+		if (q == NULL)		/* XXX hshoexer */
+			panic("%s: no hander for L4 interrupt %d", __func__,
+			    irq);
+		level = q->ih_level;
+	} else {
+		level = imaxlevel[irq];
+	}
+
+	s = splraise(level);
 
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
-	for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
-		/* NULL means framepointer */
+	if (irq >= ICU_LEN) {
+		q = l4x_intrhand[irq];
 		if (q->ih_arg == NULL)
 			r = (*q->ih_fun)(regs);
 		else
@@ -204,14 +214,27 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 		if (r != 0)
 			q->ih_count.ec_count++;
 		result |= r;
+	} else {
+		for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
+			/* NULL means framepointer */
+			if (q->ih_arg == NULL)
+				r = (*q->ih_fun)(regs);
+			else
+				r = (*q->ih_fun)(q->ih_arg);
+			if (r != 0)
+				q->ih_count.ec_count++;
+			result |= r;
+		}
+		if (intrhand[irq] == NULL)
+			isa_strayintr(irq);
 	}
-	if (intrhand[irq] == NULL)
-		isa_strayintr(irq);
 
 	i386_atomic_dec_i(&curcpu()->ci_idepth);
 
 	/* Ack current handled IRQ. */
 	l4lx_irq_dev_eoi(irq);
+
+	splx(s);
 
 	return result;
 }
@@ -224,39 +247,30 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 static int
 handle_irq(int irq, struct trapframe *regs)
 {
-	int s, result = 0;
+	struct intrhand *q;
 
-	/*
-	 * Handle only hardware IRQs routed throug PIC.
-	 * XXX hshoexer:  With APIC we have more vector numbers than
-	 * ICU_LEN.
-	 */
-	if (irq >= ICU_LEN)
-		panic("handle_irq: invalid irq 0x%x", irq);
+	int level;
+	if (irq >= ICU_LEN) {
+		q = l4x_intrhand[irq];
+		if (q == NULL)
+			panic("%s: no hander for L4 interrupt %d", __func__,
+			    irq);
+		level = q->ih_level;
+	} else {
+		level = iminlevel[irq];
+	}
 
 	/* Count number of interrupts. */
 	uvmexp.intrs++;
 
 	/* Check current splx(9) level */
-	if (iminlevel[irq] <= lapic_tpr) {
+	if (level <= lapic_tpr) {
 		atomic_setbits_int(&curcpu()->ci_ipending, (1 << irq));
 		l4lx_irq_dev_eoi(irq);
 		return 1; /* handled */
 	}
 
-	s = splraise(imaxlevel[irq]);
-	result = l4x_run_irq_handlers(irq, regs);
-
-#if 0	/* XXX hshoexer */
-	lapic_tpr = s;
-
-	l4x_run_softintr();	/* handle softintrs */
-#else
-	/* XXX hshoexer: enough for doreti? */
-	splx(s);
-#endif
-
-	return result;
+	return l4x_run_irq_handlers(irq, regs);
 }
 
 static void
@@ -311,7 +325,7 @@ l4x_register_irq(l4_cap_idx_t irqcap)
 	rw_enter_write(&irq_lock);
 	s = splhigh();
 
-	for (i = 0; i < NR_REQUESTABLE; ++i) {
+	for (i = ICU_LEN; i < NR_REQUESTABLE; ++i) {
 		if (l4_is_invalid_cap(caps[i])) {
 			caps[i] = irqcap;
 			irq = i;
@@ -335,4 +349,56 @@ l4x_have_irqcap(int irq)
 		return caps[irq];
 
 	return L4_INVALID_CAP;
+}
+
+void *
+l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
+    void *ih_arg, const char *ih_what)
+{
+	struct intrhand *ih;
+
+	/* XXX hshoexer */
+	extern int fakeintr(void *);
+	static struct intrhand fakehand = {fakeintr};
+
+	/* no point in sleeping unless someone can free memory. */
+	ih = malloc(sizeof *ih, M_DEVBUF, cold ? M_NOWAIT : M_WAITOK);
+	if (ih == NULL) {
+		printf("%s: l4x_intr_establish: can't malloc handler info\n",
+		    ih_what);
+		return (NULL);
+	}
+
+	if (l4x_intrhand[irq] != NULL)
+		panic("%s: cannot share interrupt %d", __func__, irq);
+
+	/*
+	 * Actually install a fake handler momentarily, since we might be doing
+	 * this with interrupts enabled and don't want the real routine called
+	 * until masking is set up.
+	 *
+	 * Register with IO server when establishing first handler.
+	 */
+	fakehand.ih_level = level;
+	l4x_intrhand[irq] = &fakehand;
+	if (!l4lx_irq_dev_startup(irq)) {
+		panic("isa_intr_establish: l4lx_irq_dev_startup() "
+		    "failed");
+		free(ih, M_DEVBUF);
+		return (NULL);
+	}
+
+	/*
+	 * Poke the real handler in now.
+	 */
+	ih->ih_fun = ih_fun;
+	ih->ih_arg = ih_arg;
+	ih->ih_next = NULL;
+	ih->ih_level = level;
+	ih->ih_irq = irq;
+	evcount_attach(&ih->ih_count, ih_what, (void *)&ih->ih_irq,
+	    &evcount_intr);
+	l4x_intrhand[irq] = ih;
+
+	return (ih);
 }
