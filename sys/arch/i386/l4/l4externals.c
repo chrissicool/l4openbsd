@@ -32,8 +32,12 @@ L4_EXTERNAL_FUNC(l4io_request_irq);
 L4_EXTERNAL_FUNC(l4io_iterate_devices);
 L4_EXTERNAL_FUNC(l4io_lookup_resource);
 L4_EXTERNAL_FUNC(l4io_request_ioport);
+L4_EXTERNAL_FUNC(l4io_request_iomem);
 L4_EXTERNAL_FUNC(l4io_request_iomem_region);
 L4_EXTERNAL_FUNC(l4re_ds_map_region);
+L4_EXTERNAL_FUNC(l4io_has_resource);
+L4_EXTERNAL_FUNC(l4io_search_iomem_region);
+L4_EXTERNAL_FUNC(l4io_release_iomem);
 
 #ifdef L4_EXTERNAL_RTC
 L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
