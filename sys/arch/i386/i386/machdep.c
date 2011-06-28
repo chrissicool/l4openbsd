@@ -169,6 +169,8 @@ extern struct proc *npxproc;
 #include <l4/re/c/rm.h>
 #endif
 
+#define BUS_SPACE_DEBUG	1
+
 /* the following is used externally (sysctl_hw) */
 char machine[] = MACHINE;
 
@@ -3488,7 +3490,7 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	int error;
 	struct extent *ex;
 
-#if BUS_SPACE_DEBUG
+#ifdef BUS_SPACE_DEBUG
 	printf("%s: t 0x%08lx bpa 0x%08lx size 0x%08lx flags 0x%08lx\n",
 	    __func__, (unsigned long)t, (unsigned long)bpa,
 	    (unsigned long)size, (unsigned long)flags);
@@ -3499,18 +3501,12 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	switch (t) {
 	case I386_BUS_SPACE_IO:
 		ex = ioport_ex;
-#if BUS_SPACE_DEBUG
-		printf("%s: I386_BUS_SPACE_IO: ex %p\n", __func__, ex);
-#endif
 		if (flags & BUS_SPACE_MAP_LINEAR)
 			return (EINVAL);
 		break;
 
 	case I386_BUS_SPACE_MEM:
 		ex = iomem_ex;
-#if BUS_SPACE_DEBUG
-		printf("%s: I386_BUS_SPACE_MEM: ex %p\n", __func__, ex);
-#endif
 		break;
 
 	default:
@@ -3526,27 +3522,16 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	if (error)
 		return (error);
 
-#if BUS_SPACE_DEBUG
-	printf("%s: extent alloced\n", __func__);
-#endif
 	/*
 	 * For I/O space, that's all she wrote.
 	 */
 	if (t == I386_BUS_SPACE_IO) {
 		*bshp = bpa;
-#if BUS_SPACE_DEBUG
-		printf("%s: 1. *bshp 0x%08lx\n", __func__,
-		    *(unsigned long *)bshp);
-#endif
 		return (0);
 	}
 
 	if (IOM_BEGIN <= bpa && bpa <= IOM_END) {
 		*bshp = (bus_space_handle_t)ISA_HOLE_VADDR(bpa);
-#if BUS_SPACE_DEBUG
-		printf("%s: 2. *bshp 0x%08lx\n", __func__,
-		    *(unsigned long *)bshp);
-#endif
 		return (0);
 	}
 
@@ -3555,10 +3540,10 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	 * a kernel virtual address.
 	 */
 	error = bus_mem_add_mapping(bpa, size, flags, bshp);
-#if BUS_SPACE_DEBUG
-	printf("%s: bus_mem_add_mapping error %d\n", __func__, error);
-#endif
 	if (error) {
+#ifdef BUS_SPACE_DEBUG
+		printf("%s: bus_mem_add_mapping error %d\n", __func__, error);
+#endif
 		if (extent_free(ex, bpa, size, EX_NOWAIT |
 		    (ioport_malloc_safe ? EX_MALLOCOK : 0))) {
 			printf("bus_space_map: pa 0x%lx, size 0x%lx\n",
@@ -3566,10 +3551,6 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 			printf("bus_space_map: can't free region\n");
 		}
 	}
-
-#if BUS_SPACE_DEBUG
-	printf("%s: done %d\n", __func__, error);
-#endif
 
 	return (error);
 }
@@ -3675,7 +3656,7 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 	L4XV_V(f);
 #endif
 
-#if BUS_SPACE_DEBUG
+#ifdef BUS_SPACE_DEBUG
 	printf("%s: bpa 0x%08lx size 0x%08lx flags 0x%08lx\n", __func__,
 	    (unsigned long)bpa, (unsigned long)size, (unsigned long)flags);
 #endif
@@ -3713,15 +3694,16 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 #endif	/* L4 */
 
 	va = uvm_km_valloc(kernel_map, map_size);
-#if BUS_SPACE_DEBUG
+#ifdef BUS_SPACE_DEBUG
 	printf("%s: va 0x%08lx\n", __func__, (unsigned long)va);
 #endif
 	if (va == 0)
 		return (ENOMEM);
 
 	*bshp = (bus_space_handle_t)(va + (bpa & PGOFSET));
-#if BUS_SPACE_DEBUG
-	printf("%s: *bshp 0x%08lx\n", __func__, *(unsigned long *)bshp);
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: pa 0x%08lx *bshp 0x%08lx\n", __func__, (unsigned long)pa,
+	    *(unsigned long *)bshp);
 #endif
 	if (flags & BUS_SPACE_MAP_CACHEABLE)
 		pmap_flags = 0;
@@ -3747,6 +3729,11 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 	L4XV_V(f);
 #endif
 
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx bsh 0x%08lx size %zu\n", __func__,
+	    (unsigned long)t, (unsigned long)bsh, size);
+#endif
+
 	/*
 	 * Find the correct extent and bus physical address.
 	 */
@@ -3762,6 +3749,10 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 		va = trunc_page(bsh);
 		endva = round_page(bsh + size);
 
+#ifdef BUS_SPACE_DEBUG
+		printf("%s: va 0x%08lx endva 0x%08lx\n", __func__,
+		    (unsigned long)va, (unsigned long)endva);
+#endif
 #ifdef DIAGNOSTIC
 		if (endva <= va)
 			panic("bus_space_unmap: overflow");
@@ -3769,6 +3760,9 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 
 		(void) pmap_extract(pmap_kernel(), va, &bpa);
 		bpa += (bsh & PGOFSET);
+#ifdef BUS_SPACE_DEBUG
+		printf("%s: bpa 0x%08lx\n", __func__, (unsigned long)bpa);
+#endif
 
 		pmap_kremove(va, endva - va);
 		pmap_update(pmap_kernel());
@@ -3811,6 +3805,11 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 	L4XV_V(f);
 #endif
 
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx bsh 0x%08lx size %zu\n", __func__,
+	    (unsigned long)t, (unsigned long)bsh, size);
+#endif
+
 	/*
 	 * Find the correct bus physical address.
 	 */
@@ -3824,6 +3823,10 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 		va = trunc_page(bsh);
 		endva = round_page(bsh + size);
 
+#ifdef BUS_SPACE_DEBUG
+		printf("%s: va 0x%08lx endva 0x%08lx\n", __func__,
+		    (unsigned long)va, (unsigned long)endva);
+#endif
 #ifdef DIAGNOSTIC
 		if (endva <= va)
 			panic("_bus_space_unmap: overflow");
@@ -3831,6 +3834,9 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 
 		(void) pmap_extract(pmap_kernel(), va, &bpa);
 		bpa += (bsh & PGOFSET);
+#ifdef BUS_SPACE_DEBUG
+		printf("%s: bpa 0x%08lx\n", __func__, (unsigned long)bpa);
+#endif
 
 		pmap_kremove(va, endva - va);
 		pmap_update(pmap_kernel());
