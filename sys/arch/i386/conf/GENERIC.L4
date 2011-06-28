@@ -608,7 +608,7 @@ skc*	at pci?				# SysKonnect GEnesis 984x
 sk*	at skc?				#  each port of above
 mskc*	at pci?				# Marvell Yukon-2
 msk*	at mskc?			#  each port of above
-#em*	at pci?				# Intel Pro/1000 ethernet
+em*	at pci?				# Intel Pro/1000 ethernet
 gcu*	at pci?				# Intel Pro/1000 ethernet GCU
 #ixgb*	at pci?				# Intel Pro/10Gb ethernet
 #ix*	at pci?				# Intel 82598EB 10Gb ethernet
@@ -616,7 +616,7 @@ txp*	at pci?				# 3com 3CR990
 nge*	at pci?				# NS DP83820/DP83821 GigE
 bge*	at pci?				# Broadcom BCM57xx (aka Tigon3)
 bnx*	at pci?				# Broadcom BCM5706/5708 GigE
-#re*	at pci?				# Realtek 8169/8169S/8110S
+re*	at pci?				# Realtek 8169/8169S/8110S
 re*	at cardbus?			# Realtek 8169/8169S/8110S
 stge*	at pci?				# Sundance TC9021 GigE
 lge*	at pci?				# Level1 LXT1001 GigE
