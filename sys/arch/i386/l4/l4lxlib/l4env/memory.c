@@ -19,9 +19,8 @@
 
 /*
  * Check if an address is correctly aligned.
- * XXX hshoexer: wrong for 0x00000000
  */
-#define IS_ALIGNED(addr)	(addr & 0xfffffffcUL)
+#define IS_ALIGNED(addr)	(addr == (addr & 0xfffffffcUL))
 
 int
 l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page, int map_rw)
@@ -56,9 +55,9 @@ l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page, int map_rw)
 		    "0x%08x flags 0x%08lx\n", (unsigned long)address,
 		    (unsigned long)page, map_rw);
 	if (!IS_ALIGNED(addr))
-		printf("WARNING: Trying to map unaligned virtual page!\n");
+		panic("WARNING: Trying to map unaligned virtual page!\n");
 	if (!IS_ALIGNED(page))
-		printf("WARNING: Trying to map unaligned physical page!\n");
+		panic("WARNING: Trying to map unaligned physical page!\n");
 #endif
 //	l4x_printf("Attaching DS: PA=0x%08lx, VA=0x%08lx, Vaddr=%08lx, off=%08lx\n",
 //			page, address, addr, offset);
