@@ -169,8 +169,6 @@ extern struct proc *npxproc;
 #include <l4/re/c/rm.h>
 #endif
 
-#define BUS_SPACE_DEBUG	1
-
 /* the following is used externally (sysctl_hw) */
 char machine[] = MACHINE;
 
