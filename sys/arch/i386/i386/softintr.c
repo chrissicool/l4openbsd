@@ -117,12 +117,10 @@ l4x_run_netisrs(void)
 void
 l4x_exec_softintr(int ipl)
 {
-	int spl;
 	int which;
+	int s;
 
-	spl = CPL;
-	/* XXX hshoexer */
-	CPL = ipl;
+	s = splraise(ipl);
 
 	switch (ipl) {
 	case IPL_SOFTCLOCK:
@@ -159,8 +157,7 @@ l4x_exec_softintr(int ipl)
 	i386_softintunlock();
 #endif
 
-	/* XXX hshoexer */
-	CPL = spl;
+	splx(s);
 }
 
 /*
