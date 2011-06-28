@@ -103,8 +103,15 @@ l4serintr(void *arg)
 	int c, i = 0;
 
 	if (tp == NULL  || !ISSET(tp->t_state, TS_ISOPEN)
-			|| ISSET(tp->t_state, TS_BUSY))
+			|| ISSET(tp->t_state, TS_BUSY)) {
+		/*
+		 * We end up here, when there's a character pending to
+		 * be read from the L4 virutal console.  Consume it in
+		 * any case, otherwise we won't get any further interrupts.
+		 */
+		l4sercngetc(NODEV);
 		return 0;
+	}
 
 	/* Fetch max. 20 character at once into line. */
 	SET(tp->t_state, TS_BUSY);
