@@ -89,7 +89,6 @@ softintr_init(void)
 }
 
 #ifdef L4
-
 /*
  * Run all network related soft interrupts. Do not run masked
  * service routines.
@@ -103,7 +102,7 @@ l4x_run_netisrs(void)
 	/* Execute all unmasked network service routines. */
 	for (i = 0; i < NETISR_MAX; i++) {
 		if ((netisr & BIT(i))) {
-			f = i386_softintr_netisrs[BIT(i)];
+			f = i386_softintr_netisrs[i];
 			if (f)
 				(*f)();
 		}
@@ -120,7 +119,8 @@ l4x_exec_softintr(int ipl)
 	int which;
 	int s;
 
-	s = splraise(ipl);
+	s = CPL;
+	CPL = ipl;
 
 	switch (ipl) {
 	case IPL_SOFTCLOCK:
@@ -150,14 +150,14 @@ l4x_exec_softintr(int ipl)
 	 */
 	if (ipl == IPL_SOFTNET)
 		l4x_run_netisrs();
-
-	softintr_dispatch(which);
+	else
+		softintr_dispatch(which);
 
 #ifdef MULTIPROCESSOR
 	i386_softintunlock();
 #endif
 
-	splx(s);
+	CPL = s;
 }
 
 /*
