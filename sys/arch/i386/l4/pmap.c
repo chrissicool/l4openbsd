@@ -847,7 +847,7 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot)
 		/* ... but just in case ... */
 		l4lx_memory_unmap_virtual_page(va);
 	}
-	l4lx_memory_map_virtual_page(va, pa, prot);
+	l4lx_memory_map_virtual_page(va, pa & PMAP_PA_MASK, prot);
 }
 
 /*
