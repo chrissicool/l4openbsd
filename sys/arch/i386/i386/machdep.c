@@ -294,6 +294,10 @@ void	(*cpuresetfn)(void);
 int	bus_mem_add_mapping(bus_addr_t, bus_size_t,
 	    int, bus_space_handle_t *);
 
+#ifdef L4
+void	_bus_phys_to_virt(bus_addr_t, bus_size_t, bus_addr_t *);
+#endif
+
 #ifdef KGDB
 #ifndef KGDB_DEVNAME
 #define KGDB_DEVNAME "com"
@@ -3511,6 +3515,11 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 		panic("bus_space_map: bad bus space tag");
 	}
 
+#ifdef L4
+	if (t == I386_BUS_SPACE_MEM)
+		_bus_phys_to_virt(bpa, size, &bpa);
+#endif
+
 	/*
 	 * Before we go any further, let's make sure that this
 	 * region is available.
@@ -3565,6 +3574,11 @@ _bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size,
 		return (0);
 	}
 
+#ifdef L4
+	if (t == I386_BUS_SPACE_MEM)
+		_bus_phys_to_virt(bpa, size, &bpa);
+#endif
+
 	/*
 	 * For memory space, map the bus physical address to
 	 * a kernel virtual address.
@@ -3597,6 +3611,13 @@ bus_space_alloc(bus_space_tag_t t, bus_addr_t rstart, bus_addr_t rend,
 		panic("bus_space_alloc: bad bus space tag");
 	}
 
+#ifdef L4
+	if (t == I386_BUS_SPACE_MEM) {
+		_bus_phys_to_virt(rstart, size, &rstart);
+		rend = rstart + size;
+	}
+#endif	/* L4 */
+
 	/*
 	 * Sanity check the allocation against the extent's boundaries.
 	 */
@@ -3609,6 +3630,10 @@ bus_space_alloc(bus_space_tag_t t, bus_addr_t rstart, bus_addr_t rend,
 	error = extent_alloc_subregion(ex, rstart, rend, size, alignment, 0,
 	    boundary, EX_NOWAIT | (ioport_malloc_safe ?  EX_MALLOCOK : 0),
 	    &bpa);
+
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: bpa 0x%08lx error %d\n", __func__, bpa, error);
+#endif
 
 	if (error)
 		return (error);
@@ -3648,11 +3673,6 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 	vaddr_t va;
 	bus_size_t map_size;
 	int pmap_flags = PMAP_NOCACHE;
-#ifdef L4
-	l4_addr_t reg, reglen;
-	int ret;
-	L4XV_V(f);
-#endif
 
 #ifdef BUS_SPACE_DEBUG
 	printf("%s: bpa 0x%08lx size 0x%08lx flags 0x%08lx\n", __func__,
@@ -3667,29 +3687,6 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 #endif
 
 	map_size = endpa - pa;
-
-#ifdef L4
-	/*
-	 * Request I/O memory space. 
-	 */
-	L4XV_L(f);
-
-	if (!l4io_has_resource(L4IO_RESOURCE_MEM, bpa, pa + size - 1))
-		panic("bus_mem_add_mapping: no I/O memory at 0x%08lx/%zx",
-		    (unsigned long)pa, (size_t)map_size - 1);
-	if ((ret = l4io_search_iomem_region(pa, map_size, &reg, &reglen))
-	    != 0) {
-		panic("bus_mem_add_mapping: no region found for 0x%08lx: %d",
-		    (unsigned long)pa, ret);
-	}
-	/* Replaces pa with address actually used. */
-	if ((ret = l4io_request_iomem(reg, reglen, 0, &pa)) != 0) {
-		panic("bus_mem_add_mapping: could not request 0x%08lx: %d",
-		    (unsigned long)reg, ret);
-	}
-
-	L4XV_U(f);
-#endif	/* L4 */
 
 	va = uvm_km_valloc(kernel_map, map_size);
 #ifdef BUS_SPACE_DEBUG
@@ -3878,6 +3875,46 @@ bus_space_subregion(bus_space_tag_t t, bus_space_handle_t bsh,
 	*nbshp = bsh + offset;
 	return (0);
 }
+
+#ifdef L4
+/*
+ * Request I/O memory space and translate the provided physical address
+ * to the virtual address actually used.
+ */
+void
+_bus_phys_to_virt(bus_addr_t bpa, bus_size_t size, bus_addr_t *newbpa)
+{
+	l4_addr_t reg, regln;
+	bus_addr_t tmpbpa;
+	int error;
+	L4XV_V(f);
+
+	L4XV_L(f);
+
+	if (!l4io_has_resource(L4IO_RESOURCE_MEM, bpa, bpa + size - 1))
+		panic("_bus_phys_to_virt: no I/O memory at 0x%08lx/%zx",
+		    (unsigned long)bpa, (size_t)size - 1);
+
+	if ((error = l4io_search_iomem_region(bpa, size, &reg, &regln)) != 0) {
+		panic("_bus_phys_to_virt: no region found for 0x%08lx: %d",
+		    (unsigned long)bpa, error);
+	}
+
+	if ((error = l4io_request_iomem(reg, regln, 0, &tmpbpa)) != 0) {
+		panic("_bus_phys_to_virt: could not request 0x%08lx: %d",
+		    (unsigned long)reg, error);
+	}
+
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: bpa 0x%08lx -> 0x%08lx\n", __func__,
+	    (unsigned long)bpa, (unsigned long)tmpbpa);
+#endif
+
+	*newbpa = tmpbpa;
+
+	L4XV_U(f);
+}
+#endif
 
 #ifdef DIAGNOSTIC
 void
