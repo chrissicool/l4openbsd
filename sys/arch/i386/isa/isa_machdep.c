@@ -553,7 +553,7 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 	if (intrhand[irq] == NULL) {
 		*p = &fakehand;
 		if (!l4lx_irq_dev_startup(irq)) {
-			panic("isa_intr_establish: l4lx_irq_dev_startup() "
+			printf("isa_intr_establish: l4lx_irq_dev_startup() "
 			    "failed");
 			free(ih, M_DEVBUF);
 			return (NULL);
