@@ -35,10 +35,8 @@
  */
 extern void trap(struct trapframe *frame);
 
-static int handle_irq(int irq, struct trapframe *regs);
 static void init_array(void);
 
-static struct trapframe *irq_regs;
 static struct rwlock irq_lock;
 static l4_cap_idx_t caps[NR_REQUESTABLE];
 static int init_done = 0;
@@ -120,68 +118,42 @@ l4x_run_asts(struct trapframe *tf)
 	}
 }
 
-static inline struct trapframe *
-set_irq_regs(struct trapframe *new_regs)
-{
-	struct trapframe *old_regs, **pp_regs = &irq_regs;
-
-	old_regs = *pp_regs;
-	*pp_regs = new_regs;
-	return old_regs;
-}
-
 /*
  * Handle a pending IRQ event.
  * => Needs to be called with IRQ events disabled on t.
- * => Enables IRQ event delivery on t. This is recursive.
+ * => Enables IRQ event delivery on t. This is recursive. XXX hshoexer:  ?
 */
 void
 l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 {
-	int irq = t->i.label >> 2;
+	struct intrhand *q;
+	int level, irq = t->i.label >> 2;
 
 	regs->tf_err = 0;
 	regs->tf_trapno = T_ASTFLT;
 
-	enable_intr();
-
-#ifdef MULTIPROCESSOR	/* unported */
-	if (irq & L4X_VCPU_IRQ_IPI)
-		l4x_vcpu_handle_ipi(regs);
-	else
-#endif
-	{
-		do_IRQ(irq, regs);
-
-#ifdef MULTIPROCESSOR	/* unported */
-		if (smp_processor_id() == 0 && irq == TIMER_IRQ)
-			l4x_smp_broadcast_timer();
-#endif
+	if (irq >= ICU_LEN) {
+		q = l4x_intrhand[irq];
+		if (q == NULL)
+			panic("%s: no hander for L4 interrupt %d", __func__,
+			    irq);
+		level = q->ih_level;
+	} else {
+		level = iminlevel[irq];
 	}
-}
 
-/*
- * do_IRQ handles all normal device IRQ's (the special
- * SMP cross-CPU interrupts have their own specific
- * handlers).
- */
-unsigned int
-do_IRQ(int irq, struct trapframe *regs)
-{
-	struct trapframe *old_regs = set_irq_regs(regs);
+	/* Count number of interrupts. XXX hshoexer maybe somewhere else. */
+	uvmexp.intrs++;
 
-	cpu_unidle();
-
-	handle_irq(irq, regs);
-/*	if (!handle_irq(irq, regs)) {
-		//ack_APIC_irq();
-		printf("%s: %d.%d: Error processing interrupt!\n",
-				__func__, cpu_number(), irq);
+	/* Check current splx(9) level */
+	if (level <= lapic_tpr) {
+		atomic_setbits_int(&curcpu()->ci_ipending, (1 << irq));
+		return;
 	}
-*/
 
-	set_irq_regs(old_regs);
-	return 1;
+	l4x_run_irq_handlers(irq, regs);
+
+	return;
 }
 
 int
@@ -203,16 +175,22 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 
 	s = splraise(level);
 
+	/* XXX hshoexer:  Also on recurse? */
+	enable_intr();
+
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
 	if (irq >= ICU_LEN) {
 		q = l4x_intrhand[irq];
+
+		/* NULL means framepointer */
 		if (q->ih_arg == NULL)
 			r = (*q->ih_fun)(regs);
 		else
 			r = (*q->ih_fun)(q->ih_arg);
 		if (r != 0)
 			q->ih_count.ec_count++;
+
 		result |= r;
 	} else {
 		for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
@@ -223,6 +201,7 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 				r = (*q->ih_fun)(q->ih_arg);
 			if (r != 0)
 				q->ih_count.ec_count++;
+
 			result |= r;
 		}
 		if (intrhand[irq] == NULL)
@@ -231,46 +210,12 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 
 	i386_atomic_dec_i(&curcpu()->ci_idepth);
 
-	/* Ack current handled IRQ. */
+	/* Ack currently handled IRQ. */
 	l4lx_irq_dev_eoi(irq);
 
 	splx(s);
 
 	return result;
-}
-
-/*
- * Note, we only run hardware IRQs here.
- * The code is mainly taken from INTRSTUB() at vector.s
- * Interrupt exit code is mainly inspired from Xdoreti() at icu.s
- */
-static int
-handle_irq(int irq, struct trapframe *regs)
-{
-	struct intrhand *q;
-
-	int level;
-	if (irq >= ICU_LEN) {
-		q = l4x_intrhand[irq];
-		if (q == NULL)
-			panic("%s: no hander for L4 interrupt %d", __func__,
-			    irq);
-		level = q->ih_level;
-	} else {
-		level = iminlevel[irq];
-	}
-
-	/* Count number of interrupts. */
-	uvmexp.intrs++;
-
-	/* Check current splx(9) level */
-	if (level <= lapic_tpr) {
-		atomic_setbits_int(&curcpu()->ci_ipending, (1 << irq));
-		l4lx_irq_dev_eoi(irq);
-		return 1; /* handled */
-	}
-
-	return l4x_run_irq_handlers(irq, regs);
 }
 
 static void
