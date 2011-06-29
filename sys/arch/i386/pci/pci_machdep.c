@@ -117,6 +117,7 @@ extern bios_pciinfo_t *bios_pciinfo;
 #include <l4/vbus/vbus_pci.h>
 #include <l4/re/c/namespace.h>
 #include <machine/l4/l4lib.h>
+#include <i386/l4/dev/l4_machdep.h>
 
 int l4pci_probe(void);
 
@@ -619,7 +620,8 @@ pci_intr_map(struct pci_attach_args *pa, pci_intr_handle_t *ihp)
 #endif
 
 #ifdef L4
-	l4pci_device_enable(pa, 0);
+	if ((ihp->line = l4pci_device_enable(pa, 0)) < 0)
+		goto bad;
 #endif
 
 	return 0;
@@ -634,6 +636,14 @@ pci_intr_string(pci_chipset_tag_t pc, pci_intr_handle_t ih)
 {
 	static char irqstr[64];
 	int line = ih.line & APIC_INT_LINE_MASK;
+
+#ifdef L4
+	if (line >= 0) {
+		snprintf(irqstr, sizeof(irqstr), "irq %d", line);
+		return (irqstr);
+	} else
+		panic("%s: line %d", __func__, line);
+#endif
 
 #if NIOAPIC > 0
 	if (ih.line & APIC_INT_VIA_APIC) {
@@ -672,6 +682,10 @@ pci_intr_establish(pci_chipset_tag_t pc, pci_intr_handle_t ih, int level,
 	if (l != -1 && ih.line & APIC_INT_VIA_APIC)
 		return (apic_intr_establish(ih.line, IST_LEVEL, level, func, 
 		    arg, what));
+#endif
+
+#ifdef L4
+	return (l4_intr_establish(ih.line, IST_LEVEL, level, func, arg, what));
 #endif
 	if (l == 0 || l >= ICU_LEN || l == 2)
 		panic("pci_intr_establish: bogus handle 0x%x", l);
@@ -764,15 +778,15 @@ pci_dev_postattach(struct device *dev, struct pci_attach_args *pa)
 }
 
 #ifdef L4
-void
+int
 l4pci_device_enable(struct pci_attach_args *pa, int altirq)
 {
 	int pin = pa->pa_rawintrpin;
 	int line = pa->pa_intrline;
 	l4_uint32_t df;
-	L4XV_V(f);
 	unsigned char trigger, polarity;
 	int irq, bus, dev, func;
+	L4XV_V(f);
 
 	/* XXX hshoexer */
 	if (altirq != 0)
@@ -789,5 +803,7 @@ l4pci_device_enable(struct pci_attach_args *pa, int altirq)
 		panic("Failed to enable PCI INT %c: no GSI\n", 'A' + pin);
 
 	L4XV_U(f);
+
+	return irq;
 }
 #endif	/* L4 */

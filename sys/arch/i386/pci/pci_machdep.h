@@ -105,7 +105,7 @@ void		pci_decompose_tag(pci_chipset_tag_t, pcitag_t,
 void 		pci_dev_postattach(struct device *, struct pci_attach_args *);
 
 #ifdef L4
-void		l4pci_device_enable(struct pci_attach_args *, int);
+int		l4pci_device_enable(struct pci_attach_args *, int);
 #endif
 
 /*
