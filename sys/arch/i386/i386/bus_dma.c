@@ -78,6 +78,10 @@
 
 #include <uvm/uvm_extern.h>
 
+#ifdef L4
+#include <machine/l4/setup.h>
+#endif
+
 extern paddr_t avail_end;
 
 int	_bus_dmamap_load_buffer(bus_dma_tag_t, bus_dmamap_t, void *,
@@ -547,6 +551,10 @@ _bus_dmamap_load_buffer(bus_dma_tag_t t, bus_dmamap_t map, void *buf,
 		 * Get the physical address for this segment.
 		 */
 		pmap_extract(pmap, vaddr, (paddr_t *)&curaddr);
+#ifdef L4
+		/* Get host physical address. */
+		curaddr = (bus_addr_t)l4x_virt_to_phys(curaddr);
+#endif
 
 		/*
 		 * Compute the segment size, and adjust counts.

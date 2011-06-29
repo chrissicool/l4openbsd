@@ -379,6 +379,11 @@ pci_probe_device(struct pci_softc *sc, pcitag_t tag,
 		}
 	}
 
+#ifdef L4X
+	if (pa.pa_intrpin != 0)
+		l4pci_device_enable(&pa, 0);
+#endif
+
 	return (ret);
 }
 

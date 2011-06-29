@@ -93,6 +93,10 @@ pciide_machdep_compat_intr_establish(struct device *dev,
 	cookie = isa_intr_establish(NULL, irq, IST_EDGE, IPL_BIO, func, arg,
 	    dev->dv_xname);
 
+#ifdef L4
+	l4pci_device_enable(pa, irq);
+#endif
+
 	return (cookie);
 }
 

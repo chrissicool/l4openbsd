@@ -528,7 +528,7 @@ uk*	at scsibus?		# unknown SCSI
 #mcd0	at isa? port 0x300 irq 10	# Mitsumi CD-ROM drives
 
 # IDE controllers
-#pciide* at pci? flags 0x0000
+pciide* at pci? flags 0x0000
 
 #wdc0	at isa? port 0x1f0 irq 14 flags 0x00
 #wdc1	at isa? port 0x170 irq 15 flags 0x00
@@ -537,11 +537,11 @@ uk*	at scsibus?		# unknown SCSI
 
 # IDE hard drives
 #wd*	at wdc? flags 0x0000
-#wd*	at pciide? flags 0x0000
+wd*	at pciide? flags 0x0000
 
 # ATAPI<->SCSI
 #atapiscsi* at wdc?
-#atapiscsi* at pciide?
+atapiscsi* at pciide?
 scsibus* at atapiscsi?
 
 # Networking devices
@@ -608,7 +608,7 @@ skc*	at pci?				# SysKonnect GEnesis 984x
 sk*	at skc?				#  each port of above
 mskc*	at pci?				# Marvell Yukon-2
 msk*	at mskc?			#  each port of above
-#em*	at pci?				# Intel Pro/1000 ethernet
+em*	at pci?				# Intel Pro/1000 ethernet
 gcu*	at pci?				# Intel Pro/1000 ethernet GCU
 #ixgb*	at pci?				# Intel Pro/10Gb ethernet
 #ix*	at pci?				# Intel 82598EB 10Gb ethernet
@@ -616,7 +616,7 @@ txp*	at pci?				# 3com 3CR990
 nge*	at pci?				# NS DP83820/DP83821 GigE
 bge*	at pci?				# Broadcom BCM57xx (aka Tigon3)
 bnx*	at pci?				# Broadcom BCM5706/5708 GigE
-#re*	at pci?				# Realtek 8169/8169S/8110S
+re*	at pci?				# Realtek 8169/8169S/8110S
 re*	at cardbus?			# Realtek 8169/8169S/8110S
 stge*	at pci?				# Sundance TC9021 GigE
 lge*	at pci?				# Level1 LXT1001 GigE

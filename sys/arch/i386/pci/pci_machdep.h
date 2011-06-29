@@ -104,6 +104,10 @@ void		pci_decompose_tag(pci_chipset_tag_t, pcitag_t,
 
 void 		pci_dev_postattach(struct device *, struct pci_attach_args *);
 
+#ifdef L4
+void		l4pci_device_enable(struct pci_attach_args *, int);
+#endif
+
 /*
  * Section 6.2.4, `Miscellaneous Functions' of the PIC Specification,
  * says that 255 means `unknown' or `no connection' to the interrupt

@@ -132,6 +132,9 @@ l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 	regs->tf_err = 0;
 	regs->tf_trapno = T_ASTFLT;
 
+	/* Count number of interrupts. XXX hshoexer maybe somewhere else. */
+	uvmexp.intrs++;
+
 	if (irq >= ICU_LEN) {
 		q = l4x_intrhand[irq];
 		if (q == NULL)
@@ -142,12 +145,10 @@ l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 		level = iminlevel[irq];
 	}
 
-	/* Count number of interrupts. XXX hshoexer maybe somewhere else. */
-	uvmexp.intrs++;
-
 	/* Check current splx(9) level */
 	if (level <= lapic_tpr) {
 		atomic_setbits_int(&curcpu()->ci_ipending, (1 << irq));
+		/* XXX hshoexer:  enable_intr()? */
 		return;
 	}
 

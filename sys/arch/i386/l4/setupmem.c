@@ -229,7 +229,7 @@ void l4x_memory_setup(char **cmdl)
 	 */
 	extern paddr_t avail_end;
 
-	avail_end = mem_endp;
+	avail_end = round_page(mem_endp);
 
 	l4re_rm_show_lists();
 }

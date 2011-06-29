@@ -618,6 +618,10 @@ pci_intr_map(struct pci_attach_args *pa, pci_intr_handle_t *ihp)
 	}
 #endif
 
+#ifdef L4
+	l4pci_device_enable(pa, 0);
+#endif
+
 	return 0;
 
 bad:
@@ -758,3 +762,32 @@ pci_dev_postattach(struct device *dev, struct pci_attach_args *pa)
 	acpi_pci_match(dev, pa);
 #endif
 }
+
+#ifdef L4
+void
+l4pci_device_enable(struct pci_attach_args *pa, int altirq)
+{
+	int pin = pa->pa_rawintrpin;
+	int line = pa->pa_intrline;
+	l4_uint32_t df;
+	L4XV_V(f);
+	unsigned char trigger, polarity;
+	int irq, bus, dev, func;
+
+	/* XXX hshoexer */
+	if (altirq != 0)
+		line = altirq;
+
+	L4XV_L(f);
+
+	pci_decompose_tag(pa->pa_pc, pa->pa_tag, &bus, &dev, &func);
+	df = ((dev & 0xffff) << 16) | (func & 0xffff);
+
+	irq = l4vbus_pci_irq_enable(vbus, root_bridge, bus, df, pin, &trigger,
+	    &polarity);
+	if (irq < 0)
+		panic("Failed to enable PCI INT %c: no GSI\n", 'A' + pin);
+
+	L4XV_U(f);
+}
+#endif	/* L4 */
