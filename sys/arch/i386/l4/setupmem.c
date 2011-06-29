@@ -100,7 +100,7 @@ l4x_virt_to_phys(volatile vaddr_t address)
 
 	/* Debugging check: don't miss a translation, can give nasty
 	 *                  DMA problems */
-	LOG_printf("%s: Could not translate VA %p\n", __func__, address);
+	panic("%s: Could not translate VA %p\n", __func__, address);
 
 	return NULL;
 }
@@ -126,14 +126,14 @@ l4x_phys_to_virt(volatile paddr_t address)
 	l4x_virt_to_phys_show();
 	/* Whitelist */
 	if ((address < 0x1000) ||		/* first pte, direct mapped */
-	    (address >= 0xa000 &&		/* VGA and ROM space...     */
-	     address <= 0xffff)) {		/*   ... direct mapped      */
+	    (address >= IOM_BEGIN &&		/* VGA and ROM space...     */
+	     address < IOM_END)) {		/*   ... direct mapped      */
 		return address;
 	}
 
 	/* Debugging check: don't miss a translation, can give nasty
 	 *                  DMA problems */
-	LOG_printf("%s: Could not translate PA %p\n", __func__, address);
+	panic("%s: Could not translate PA %p\n", __func__, address);
 
 	return NULL;
 }
@@ -461,9 +461,10 @@ extern struct user *proc0paddr;
  * KVA starts at: l4x_kv_memory_start
  */
 paddr_t
-l4x_setup_kernel_ptd(void)
+l4x_setup_kernel_ptd(l4_addr_t stack, size_t stacklen)
 {
-	pd_entry_t *pd;
+	pd_entry_t *pd, *ptes, *pte;
+	l4_addr_t addr;
 	int kva_off = 0, pa_off = 0, iom_off = 0;
 	int i;
 
@@ -498,10 +499,25 @@ l4x_setup_kernel_ptd(void)
 	/* The following implicitly sets KVA_START for pmap(9). */
 	atdevbase = KVA_START + kva_off;
 
+	/* XXX hshoexer: map kernel text, data, bss? */
+
+	/*
+	 * Map init_stack.
+	 *
+	 * XXX Assumes page alignment of stack.
+	 */
+	for (addr = stack; addr < stack + stacklen; addr += PAGE_SIZE) {
+		ptes = (pt_entry_t *)(pd[pdei(addr)] & PG_FRAME);
+		pte = &ptes[ptei(addr)];
+		*pte = (addr & PG_FRAME) | (PG_V|PG_KW);
+	}
+
+	/* XXX hshoexer:  Put ISA I/O memory into pagetabels? */
+
 	/* Map ISA I/O memory. */
 	for (i = 0; i < (IOM_SIZE >> PGSHIFT); i++) {
 		l4lx_memory_map_virtual_page((vaddr_t)(atdevbase + iom_off),
-		    (paddr_t)(0xa0000 + iom_off), (PG_V | PG_KW));
+		    (paddr_t)(IOM_BEGIN + iom_off), (PG_V | PG_KW));
 		iom_off += PAGE_SIZE;
 	}
 

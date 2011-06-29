@@ -42,8 +42,9 @@
 #include <uvm/uvm_extern.h>
 
 #ifdef L4
+#include <l4/log/log.h>
 #include <net/netisr.h>
-#define NETISR_MAX		sizeof(netisr)
+#define NETISR_MAX		(sizeof(netisr) * 8)	/* XXX hshoexer */
 #define BIT(n)			(1 << n)
 #define CPL			lapic_tpr
 
@@ -96,15 +97,20 @@ softintr_init(void)
 void
 l4x_run_netisrs(void)
 {
-	int i;
+	int i, tmpnetisr;
 	void (*f)(void);
+
+	/* Read and clear netisr atomically. */
+	tmpnetisr = 0;
+	__asm__ volatile ("xchgl netisr, %0" : "+r" (tmpnetisr));
 
 	/* Execute all unmasked network service routines. */
 	for (i = 0; i < NETISR_MAX; i++) {
-		if ((netisr & BIT(i))) {
-			f = i386_softintr_netisrs[i];
-			if (f)
-				(*f)();
+		if ((tmpnetisr & BIT(i)) == 0)
+			continue;
+		f = i386_softintr_netisrs[i];
+		if (f) {
+			(*f)();
 		}
 	}
 }

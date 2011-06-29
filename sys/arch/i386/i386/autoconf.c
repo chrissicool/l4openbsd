@@ -121,8 +121,10 @@ cpu_configure(void)
 	if (nioapics > 0)
 		goto nomasks;
 #endif
+#ifndef L4
 	printf("biomask %x netmask %x ttymask %x\n", (u_short)IMASK(IPL_BIO),
 	    (u_short)IMASK(IPL_NET), (u_short)IMASK(IPL_TTY));
+#endif
 
 #if NIOAPIC > 0
  nomasks:

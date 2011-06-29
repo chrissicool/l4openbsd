@@ -449,11 +449,11 @@ scsibus* at bha?
 ahc*	at pci?			# Adaptec 2940/3940/78?? SCSI controllers
 scsibus* at ahc?
 jmb*	at pci?			# JMicron JMB36x controllers
-#ahci*	at jmb? flags 0x0000	# flags 0x0001 to force SATA 1 (1.5Gb/s)
+ahci*	at jmb? flags 0x0000	# flags 0x0001 to force SATA 1 (1.5Gb/s)
 pciide*	at jmb?
 #ahci*	at pci?	flags 0x0000	# AHCI SATA controllers
 				# flags 0x0001 to force SATA 1 (1.5Gb/s)
-#scsibus* at ahci?
+scsibus* at ahci?
 sili*	at pci?			# Silicon Image 3124/3132/3531 SATA controllers
 scsibus* at sili?
 ahd*	at pci?			# Adaptec 79?? SCSI controllers
@@ -462,8 +462,8 @@ arc*	at pci?			# Areca RAID Controllers
 scsibus* at arc?
 mpi*	at pci?			# LSI Logic Fusion MPT Message Passing Interface
 scsibus* at mpi?
-#mpii*	at pci?			# LSI Fusion MPT Message Passing Interface II
-#scsibus* at mpii?
+mpii*	at pci?			# LSI Fusion MPT Message Passing Interface II
+scsibus* at mpii?
 gdt*	at pci?			# ICP Vortex GDT RAID controllers
 scsibus* at gdt?
 twe*	at pci?			# 3ware Escalade RAID controllers
@@ -610,8 +610,8 @@ mskc*	at pci?				# Marvell Yukon-2
 msk*	at mskc?			#  each port of above
 em*	at pci?				# Intel Pro/1000 ethernet
 gcu*	at pci?				# Intel Pro/1000 ethernet GCU
-#ixgb*	at pci?				# Intel Pro/10Gb ethernet
-#ix*	at pci?				# Intel 82598EB 10Gb ethernet
+ixgb*	at pci?				# Intel Pro/10Gb ethernet
+ix*	at pci?				# Intel 82598EB 10Gb ethernet
 txp*	at pci?				# 3com 3CR990
 nge*	at pci?				# NS DP83820/DP83821 GigE
 bge*	at pci?				# Broadcom BCM57xx (aka Tigon3)

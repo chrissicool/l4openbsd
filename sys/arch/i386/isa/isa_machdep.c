@@ -98,7 +98,7 @@
 #include "isadma.h"
 
 #ifdef L4
-#include <machine/l4/l4lxapi/irq.h>
+#include <i386/l4/dev/l4_machdep.h>
 #endif
 
 extern	paddr_t avail_end;
@@ -467,6 +467,10 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 	struct intrhand **p, *q, *ih;
 	static struct intrhand fakehand = {fakeintr};
 
+#if L4
+	return (l4_intr_establish(irq, type, level, ih_fun, ih_arg, ih_what));
+#endif
+
 #if NIOAPIC > 0
 	struct mp_intr_map *mip;
 
@@ -548,18 +552,6 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 	 * until masking is set up.
 	 */
 	fakehand.ih_level = level;
-#ifdef L4
-	/*  Register with IO server when establishing first handler. */
-	if (intrhand[irq] == NULL) {
-		*p = &fakehand;
-		if (!l4lx_irq_dev_startup(irq)) {
-			printf("isa_intr_establish: l4lx_irq_dev_startup() "
-			    "failed");
-			free(ih, M_DEVBUF);
-			return (NULL);
-		}
-	} else
-#endif
 	*p = &fakehand;
 
 	intr_calculatemasks();
@@ -589,6 +581,10 @@ isa_intr_disestablish(isa_chipset_tag_t ic, void *arg)
 	int irq = ih->ih_irq;
 	struct intrhand **p, *q;
 
+#ifdef L4
+	return l4_intr_disestablish(ih);
+#endif
+
 #if NIOAPIC > 0
 	if (irq & APIC_INT_VIA_APIC) {
 		apic_intr_disestablish(arg);
@@ -597,7 +593,7 @@ isa_intr_disestablish(isa_chipset_tag_t ic, void *arg)
 #endif
 
 	if (!LEGAL_IRQ(irq))
-		panic("intr_disestablish: bogus irq %d", irq);
+		panic("isa_intr_disestablish: bogus irq %d", irq);
 
 	/*
 	 * Remove the handler from the chain.
@@ -608,7 +604,7 @@ isa_intr_disestablish(isa_chipset_tag_t ic, void *arg)
 	if (q)
 		*p = q->ih_next;
 	else
-		panic("intr_disestablish: handler not registered");
+		panic("isa_intr_disestablish: handler not registered");
 	evcount_detach(&ih->ih_count);
 	free(ih, M_DEVBUF);
 

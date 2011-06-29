@@ -493,7 +493,7 @@ try586:	/* Use the `cpuid' instruction. */
  * Virtual address space of kernel:
  *
  * text | data | bss | [syms] | proc0 stack | page dir     | Sysmap
- *			      0             1       2      3
+ *			      0      1      2              3
  */
 #define	PROC0STACK	((0)		* NBPG)
 #define	PROC0PDIR	((  UPAGES)	* NBPG)

@@ -117,6 +117,7 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <l4/sys/types.h>
 #include <l4/sys/utcb.h>
 #include <l4/util/util.h>
+#include <i386/l4/dev/l4_machdep.h>
 #endif
 
 #ifdef L4_EXTERNAL_RTC
@@ -472,11 +473,8 @@ l4x_inittimecounter(void)
 void
 l4x_initclocks(void)
 {
-	/* Initialize callback to run hardclock(9) on every interrupt. */
-	(void)isa_intr_establish(NULL, 0, IST_EDGE, IPL_CLOCK,
-			clockintr, 0, "clock");
-	(void)isa_intr_establish(NULL, 8, IST_EDGE, IPL_CLOCK,
-			rtcintr, 0, "clock");
+	(void)l4_intr_establish(0, IST_EDGE, IPL_CLOCK, clockintr, 0, "clock");
+	(void)l4_intr_establish(8, IST_EDGE, IPL_CLOCK, rtcintr, 0, "rtc");
 
 	/* Initialize timecounter. */
 #ifdef L4_TIMECOUNTER

@@ -90,7 +90,8 @@ l4_cap_idx_t l4x_user_gate[MAXCPUS];
 unsigned l4x_fiasco_gdt_entry_offset;
 
 struct simplelock l4x_cap_lock;
-static char init_stack[2*PAGE_SIZE];	/* XXX cl: this is wrong, but sufficient */
+/* XXX cl: this is wrong, but sufficient */
+char init_stack[2*PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
 enum {
 	L4X_SERVER_EXIT = 1,
 };
@@ -460,7 +461,7 @@ int L4_CV l4start(int argc, char **argv)
 	/* create simple_lock for l4x_bsd_startup thread */
 	simple_lock_init(&l4x_cap_lock);
 
-	/* fire up Linux server, will wait until start message */
+	/* fire up OpenBSD server, will wait until start message */
 	main_id = l4lx_thread_create(l4x_bsd_startup, 0,
 			(char *)init_stack + sizeof(init_stack),
 			&l4x_start_thread_id, sizeof(l4x_start_thread_id),
@@ -472,6 +473,9 @@ int L4_CV l4start(int argc, char **argv)
 		LOG_printf("No caps to create main thread\n");
 		return 1;
 	}
+
+	/* Register stack */
+	l4x_register_pointer_section(&init_stack, 0, "init_stack");
 
 	LOG_printf("main thread will be " PRINTF_L4TASK_FORM "\n",
 			PRINTF_L4TASK_ARG(l4lx_thread_get_cap(main_id)));
@@ -684,8 +688,10 @@ void l4x_setup_upage(void)
 L4_CV void l4x_bsd_startup(void *data)
 {
 	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
+	paddr_t first_avail;
 	extern int main(void *framep);		/* see: sys/kern/init_main.c */
 	extern char **bootargv;
+	extern void init386(paddr_t); 		/* machdep.c */
 
 	/* Wait for start signal */
 	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
@@ -708,7 +714,8 @@ L4_CV void l4x_bsd_startup(void *data)
 	 * which we will skip here.
 	 */
 	l4x_memory_setup(bootargv);
-	paddr_t first_avail = l4x_setup_kernel_ptd();
+	first_avail = l4x_setup_kernel_ptd((l4_addr_t)&init_stack,
+	    sizeof(init_stack));
 
 	/*
 	 * At this point we have a halfway usable proc0 structure.
@@ -727,9 +734,7 @@ L4_CV void l4x_bsd_startup(void *data)
 	 */
 	enable_intr();
 
-	extern void init386(paddr_t first_avail); 	/* machdep.c */
 	init386(first_avail);
-
 
 	/* Finally, fasten your seatbelts... */
 	main(data);

@@ -3537,10 +3537,12 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 		return (0);
 	}
 
-	if (IOM_BEGIN <= bpa && bpa <= IOM_END) {
+#ifndef L4	/* XXX hshoexer */
+	if (IOM_BEGIN <= bpa && bpa < IOM_END) {
 		*bshp = (bus_space_handle_t)ISA_HOLE_VADDR(bpa);
 		return (0);
 	}
+#endif
 
 	/*
 	 * For memory space, map the bus physical address to
@@ -3721,7 +3723,7 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 	} else if (t == I386_BUS_SPACE_MEM) {
 		ex = iomem_ex;
 		bpa = (bus_addr_t)ISA_PHYSADDR(bsh);
-		if (IOM_BEGIN <= bpa && bpa <= IOM_END)
+		if (IOM_BEGIN <= bpa && bpa < IOM_END)
 			goto ok;
 
 		va = trunc_page(bsh);
@@ -3788,7 +3790,7 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 		bpa = bsh;
 	} else if (t == I386_BUS_SPACE_MEM) {
 		bpa = (bus_addr_t)ISA_PHYSADDR(bsh);
-		if (IOM_BEGIN <= bpa && bpa <= IOM_END)
+		if (IOM_BEGIN <= bpa && bpa < IOM_END)
 			goto ok;
 
 		va = trunc_page(bsh);
@@ -3874,14 +3876,14 @@ _bus_phys_to_virt(bus_addr_t bpa, bus_size_t size, bus_addr_t *newbpa)
 		    (unsigned long)reg, error);
 	}
 
+	L4XV_U(f);
+
 #ifdef BUS_SPACE_DEBUG
 	printf("%s: bpa 0x%08lx -> 0x%08lx\n", __func__,
 	    (unsigned long)bpa, (unsigned long)tmpbpa);
 #endif
 
 	*newbpa = tmpbpa;
-
-	L4XV_U(f);
 }
 #endif
 

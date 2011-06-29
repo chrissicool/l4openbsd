@@ -19,10 +19,17 @@
 #include <machine/l4/vcpu.h>
 
 void *l4_intr_establish(int, int, int, int (*)(void *), void *, const char *);
+void l4_intr_disestablish(struct intrhand *);
 
 void *
 l4_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
     void *ih_arg, const char *ih_what)
 {
 	return l4x_intr_establish(irq, type, level, ih_fun, ih_arg, ih_what);
+}
+
+void
+l4_intr_disestablish(struct intrhand *ih)
+{
+	/* XXX hshoexer: implement! */
 }

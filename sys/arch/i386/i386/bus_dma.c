@@ -423,6 +423,9 @@ _bus_dmamem_map(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 	vaddr_t va, sva;
 	size_t ssize;
 	bus_addr_t addr;
+#ifdef L4
+	bus_addr_t origaddr;
+#endif
 	int curseg, pmapflags = 0, ret;
 
 	if (flags & BUS_DMA_NOCACHE)
@@ -447,6 +450,10 @@ _bus_dmamem_map(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 			 * we don't want pmap to panic here if it can't
 			 * alloc
 			 */
+#ifdef L4
+			origaddr = addr;
+			addr = l4x_phys_to_virt(addr);	
+#endif
 			ret = pmap_enter(pmap_kernel(), va, addr | pmapflags,
 			    VM_PROT_READ | VM_PROT_WRITE, VM_PROT_READ |
 			    VM_PROT_WRITE | PMAP_WIRED | PMAP_CANFAIL);
@@ -462,6 +469,9 @@ _bus_dmamem_map(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 				return (ret);
 			}
 
+#ifdef L4
+			addr = origaddr;
+#endif
 		}
 	}
 	pmap_update(pmap_kernel());
@@ -550,7 +560,9 @@ _bus_dmamap_load_buffer(bus_dma_tag_t t, bus_dmamap_t map, void *buf,
 		/*
 		 * Get the physical address for this segment.
 		 */
-		pmap_extract(pmap, vaddr, (paddr_t *)&curaddr);
+		if (pmap_extract(pmap, vaddr, (paddr_t *)&curaddr) == 0)
+			panic("%s: could not extract vaddr 0x%08lx pmap %p\n",
+			    __func__, (unsigned long)vaddr, pmap);
 #ifdef L4
 		/* Get host physical address. */
 		curaddr = (bus_addr_t)l4x_virt_to_phys(curaddr);
@@ -656,7 +668,12 @@ _bus_dmamem_alloc_range(bus_dma_tag_t t, bus_size_t size, bus_size_t alignment,
 	 */
 	m = TAILQ_FIRST(&mlist);
 	curseg = 0;
+#ifdef L4
+	lastaddr = segs[curseg].ds_addr =
+	    (bus_addr_t)l4x_virt_to_phys(VM_PAGE_TO_PHYS(m));
+#else
 	lastaddr = segs[curseg].ds_addr = VM_PAGE_TO_PHYS(m);
+#endif
 	segs[curseg].ds_len = PAGE_SIZE;
 
 	for (m = TAILQ_NEXT(m, pageq); m != NULL; m = TAILQ_NEXT(m, pageq)) {
@@ -671,6 +688,9 @@ _bus_dmamem_alloc_range(bus_dma_tag_t t, bus_size_t size, bus_size_t alignment,
 			    " address 0x%lx\n", curaddr);
 			panic("_bus_dmamem_alloc_range");
 		}
+#endif
+#ifdef L4
+		curaddr = (bus_addr_t)l4x_virt_to_phys(curaddr);
 #endif
 		if (curaddr == (lastaddr + PAGE_SIZE))
 			segs[curseg].ds_len += PAGE_SIZE;

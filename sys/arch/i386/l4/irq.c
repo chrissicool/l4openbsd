@@ -41,15 +41,8 @@ static struct rwlock irq_lock;
 static l4_cap_idx_t caps[NR_REQUESTABLE];
 static int init_done = 0;
 
-/* On x86 all hardware interrupts end up in this handler list. */
-extern struct intrhand *intrhand[ICU_LEN];	/* (E)ISA */
-extern int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
-#if NIOAPIC > 0
-#error IOAPIC support not yet implemented!
-//extern struct intrhand *apic_intrhand[256];	/*  APIC  */
-#endif
-
 struct intrhand *l4x_intrhand[NR_REQUESTABLE];
+u_int32_t l4x_pending[NR_REQUESTABLE / (sizeof(u_int32_t) * 8)];
 
 /*
  * Recurse into all interrupts pending on the new lower IPL.
@@ -58,17 +51,59 @@ struct intrhand *l4x_intrhand[NR_REQUESTABLE];
 void
 l4x_spllower(void)
 {
-	int irq, pending;
+	struct intrhand *q;
+	int i, irq, pending;
 
 	/*
 	 * XXX hshoexer:  Proof-of-concept, still needs rewrite.
 	 */
+	
+	disable_intr();
+	for (i = 0; i < 8; i++) {
+		if (l4x_pending[i] == 0)
+			continue;
+
+		irq = ffs(l4x_pending[i]) - 1;
+		irq += i * 32;
+#if 0
+		if (irq != 0 && irq != 8 && irq != 16)
+			LOG_printf("%s: irq %d l4x_pending[%d] = 0x%08lx\n",
+			    __func__, irq, i, l4x_pending[i]);
+#endif
+
+		q = l4x_intrhand[irq];
+		if (q == NULL)
+			panic("%s: no handler for irq %d", __func__, irq);
+#if 0
+		if (irq != 0 && irq != 8 && irq != 16)
+			LOG_printf("%s: pending irq %d %x at %x\n", __func__,
+			    irq, q->ih_level, lapic_tpr);
+#endif
+		if (q->ih_level <= lapic_tpr)
+			continue;
+		
+		l4x_pending[i] &= ~(1 << (irq % 32));
+		l4x_recurse_irq_handlers(irq);
+#if 0
+		if (irq != 0 && irq != 8 && irq != 16)
+			LOG_printf("%s: irq %d cleared, l4x_pending[%d] = "
+			    "0x%08lx\n", __func__, irq, i, l4x_pending[i]);
+#endif
+	}
+	enable_intr();	/* XXX hshoexer */
+
 retry:
 	disable_intr();
 	if ((pending = curcpu()->ci_ipending & IUNMASK(lapic_tpr)) != 0) {
 		enable_intr();
 
 		irq = ffs(pending) - 1;
+
+#if 0
+		if (irq != SIR_CLOCK)
+			LOG_printf("%s: pending softirq %d at %x\n", __func__,
+			    irq, lapic_tpr);
+#endif
 
 		if (!(curcpu()->ci_ipending & (1 << irq)))
 			goto retry;
@@ -77,24 +112,18 @@ retry:
 		i386_atomic_clearbits_l(&curcpu()->ci_ipending, (1 << irq));
 		enable_intr();
 
-		/* XXX hshoexer */
-		if (irq < SIR_TTY)
-			l4x_recurse_irq_handlers(irq);
-		else {
-			/* XXX hshoexer */
-			switch (irq) {
-			case SIR_TTY:
-				l4x_exec_softintr(IPL_SOFTTTY);
-				break;
-			case SIR_NET:
-				l4x_exec_softintr(IPL_SOFTNET);
-				break;
-			case SIR_CLOCK:
-				l4x_exec_softintr(IPL_SOFTCLOCK);
-				break;
-			default:
-				panic("l4x_spllower: unknown softint %d", irq);
-			}
+		switch (irq) {
+		case SIR_TTY:
+			l4x_exec_softintr(IPL_SOFTTTY);
+			break;
+		case SIR_NET:
+			l4x_exec_softintr(IPL_SOFTNET);
+			break;
+		case SIR_CLOCK:
+			l4x_exec_softintr(IPL_SOFTCLOCK);
+			break;
+		default:
+			panic("l4x_spllower: unknown softint %d", irq);
 		}
 
 		goto retry;
@@ -129,25 +158,38 @@ l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 	struct intrhand *q;
 	int level, irq = t->i.label >> 2;
 
+#if 0
+	if (irq != 0 && irq != 8 && irq != 16)
+		LOG_printf("%s: irq %d\n", __func__, irq);
+#endif
+
+	if (irq >= NR_REQUESTABLE)
+		panic("%s: bogus irq %d\n", irq);
+
 	regs->tf_err = 0;
 	regs->tf_trapno = T_ASTFLT;
 
 	/* Count number of interrupts. XXX hshoexer maybe somewhere else. */
 	uvmexp.intrs++;
 
-	if (irq >= ICU_LEN) {
-		q = l4x_intrhand[irq];
-		if (q == NULL)
-			panic("%s: no hander for L4 interrupt %d", __func__,
-			    irq);
-		level = q->ih_level;
-	} else {
-		level = iminlevel[irq];
-	}
+	q = l4x_intrhand[irq];
+	if (q == NULL)
+		panic("%s: no handler for L4 interrupt %d", __func__, irq);
+	level = q->ih_level;
 
 	/* Check current splx(9) level */
 	if (level <= lapic_tpr) {
-		atomic_setbits_int(&curcpu()->ci_ipending, (1 << irq));
+#if 0
+		if (irq != 0 && irq != 8 && irq != 16)
+			LOG_printf("%s: blocking irq %d/%x at %x\n", __func__,
+			    irq, level, lapic_tpr);
+#endif
+		l4x_pending[irq >> 5] |= (1 << (irq % 32));
+#if 0
+		if (irq != 0 && irq != 8 && irq != 16)
+			LOG_printf("%s: l4x_pending[%d] 0x%08lx\n", __func__,
+			    irq >> 5, l4x_pending[irq >> 5]);
+#endif
 		/* XXX hshoexer:  enable_intr()? */
 		return;
 	}
@@ -160,19 +202,17 @@ l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 int
 l4x_run_irq_handlers(int irq, struct trapframe *regs)
 {
-	extern void isa_strayintr(int irq);
-	struct intrhand **p, *q;
+	struct intrhand  *q;
 	int level, s, r, result = 0;
 
-	if (irq >= ICU_LEN) {
-		q = l4x_intrhand[irq];
-		if (q == NULL)		/* XXX hshoexer */
-			panic("%s: no hander for L4 interrupt %d", __func__,
-			    irq);
-		level = q->ih_level;
-	} else {
-		level = imaxlevel[irq];
-	}
+	if (irq >= NR_REQUESTABLE)
+		panic("%s: bogus irq %d\n", irq);
+
+	q = l4x_intrhand[irq];
+	if (q == NULL)		/* XXX hshoexer */
+		panic("%s: no hander for L4 interrupt %d", __func__,
+		    irq);
+	level = q->ih_level;
 
 	s = splraise(level);
 
@@ -181,33 +221,25 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 
 	i386_atomic_inc_i(&curcpu()->ci_idepth);
 
-	if (irq >= ICU_LEN) {
-		q = l4x_intrhand[irq];
+	q = l4x_intrhand[irq];
+	if (q == NULL)
+		panic("%s: no handler for L4 interrupt %d", __func__, irq);
 
-		/* NULL means framepointer */
-		if (q->ih_arg == NULL)
-			r = (*q->ih_fun)(regs);
-		else
-			r = (*q->ih_fun)(q->ih_arg);
-		if (r != 0)
-			q->ih_count.ec_count++;
+#if 0
+	if (irq != 0 && irq != 8 && irq != 16)
+		LOG_printf("%s: irq %d level %x handler %p\n", __func__, irq,
+		    level, q);
+#endif
 
-		result |= r;
-	} else {
-		for (p = &intrhand[irq]; (q = *p) != NULL; p = &q->ih_next) {
-			/* NULL means framepointer */
-			if (q->ih_arg == NULL)
-				r = (*q->ih_fun)(regs);
-			else
-				r = (*q->ih_fun)(q->ih_arg);
-			if (r != 0)
-				q->ih_count.ec_count++;
+	/* NULL means framepointer */
+	if (q->ih_arg == NULL)
+		r = (*q->ih_fun)(regs);
+	else
+		r = (*q->ih_fun)(q->ih_arg);
+	if (r != 0)
+		q->ih_count.ec_count++;
 
-			result |= r;
-		}
-		if (intrhand[irq] == NULL)
-			isa_strayintr(irq);
-	}
+	result |= r;
 
 	i386_atomic_dec_i(&curcpu()->ci_idepth);
 
@@ -240,7 +272,7 @@ l4x_register_irq_fixed(int irq, l4_cap_idx_t irqcap)
 	if (!init_done)
 		init_array();
 
-	if (irq > NR_REQUESTABLE)
+	if (irq >= NR_REQUESTABLE)
 		return -1;
 
 	rw_enter_write(&irq_lock);
@@ -271,6 +303,7 @@ l4x_register_irq(l4_cap_idx_t irqcap)
 	rw_enter_write(&irq_lock);
 	s = splhigh();
 
+	/* Reserve ICU_LEN IRQs for fixed interrupts, eg. ISA */
 	for (i = ICU_LEN; i < NR_REQUESTABLE; ++i) {
 		if (l4_is_invalid_cap(caps[i])) {
 			caps[i] = irqcap;
@@ -304,6 +337,7 @@ l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
 	struct intrhand *ih;
 
 	/* XXX hshoexer */
+	extern void intr_calculatemasks(void);
 	extern int fakeintr(void *);
 	static struct intrhand fakehand = {fakeintr};
 
@@ -328,7 +362,7 @@ l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
 	fakehand.ih_level = level;
 	l4x_intrhand[irq] = &fakehand;
 	if (!l4lx_irq_dev_startup(irq)) {
-		panic("isa_intr_establish: l4lx_irq_dev_startup() "
+		panic("l4x_intr_establish: l4lx_irq_dev_startup() "
 		    "failed");
 		free(ih, M_DEVBUF);
 		return (NULL);
@@ -345,6 +379,9 @@ l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
 	evcount_attach(&ih->ih_count, ih_what, (void *)&ih->ih_irq,
 	    &evcount_intr);
 	l4x_intrhand[irq] = ih;
+
+	/* calculate imask[] and iunmask[] for softinterrupts. */
+	intr_calculatemasks();	/* XXX only needed once? */
 
 	return (ih);
 }

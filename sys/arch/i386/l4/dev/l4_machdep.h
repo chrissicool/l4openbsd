@@ -20,5 +20,6 @@
 #include <sys/param.h>
 
 void *l4_intr_establish(int, int, int, int (*)(void *), void *, const char *);
+void  l4_intr_disestablish(struct intrhand *);
 
 #endif	/* _L4_DEV_L4_MACHDEP_H_ */
