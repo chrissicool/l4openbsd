@@ -3548,9 +3548,6 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	 */
 	error = bus_mem_add_mapping(bpa, size, flags, bshp);
 	if (error) {
-#ifdef BUS_SPACE_DEBUG
-		printf("%s: bus_mem_add_mapping error %d\n", __func__, error);
-#endif
 		if (extent_free(ex, bpa, size, EX_NOWAIT |
 		    (ioport_malloc_safe ? EX_MALLOCOK : 0))) {
 			printf("bus_space_map: pa 0x%lx, size 0x%lx\n",
@@ -3631,10 +3628,6 @@ bus_space_alloc(bus_space_tag_t t, bus_addr_t rstart, bus_addr_t rend,
 	    boundary, EX_NOWAIT | (ioport_malloc_safe ?  EX_MALLOCOK : 0),
 	    &bpa);
 
-#ifdef BUS_SPACE_DEBUG
-	printf("%s: bpa 0x%08lx error %d\n", __func__, bpa, error);
-#endif
-
 	if (error)
 		return (error);
 
@@ -3674,10 +3667,6 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 	bus_size_t map_size;
 	int pmap_flags = PMAP_NOCACHE;
 
-#ifdef BUS_SPACE_DEBUG
-	printf("%s: bpa 0x%08lx size 0x%08lx flags 0x%08lx\n", __func__,
-	    (unsigned long)bpa, (unsigned long)size, (unsigned long)flags);
-#endif
 	pa = trunc_page(bpa);
 	endpa = round_page(bpa + size);
 
@@ -3689,17 +3678,11 @@ bus_mem_add_mapping(bus_addr_t bpa, bus_size_t size, int flags,
 	map_size = endpa - pa;
 
 	va = uvm_km_valloc(kernel_map, map_size);
-#ifdef BUS_SPACE_DEBUG
-	printf("%s: va 0x%08lx\n", __func__, (unsigned long)va);
-#endif
 	if (va == 0)
 		return (ENOMEM);
 
 	*bshp = (bus_space_handle_t)(va + (bpa & PGOFSET));
-#ifdef BUS_SPACE_DEBUG
-	printf("%s: pa 0x%08lx *bshp 0x%08lx\n", __func__, (unsigned long)pa,
-	    *(unsigned long *)bshp);
-#endif
+
 	if (flags & BUS_SPACE_MAP_CACHEABLE)
 		pmap_flags = 0;
 	else if (flags & BUS_SPACE_MAP_PREFETCHABLE)
@@ -3744,10 +3727,6 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 		va = trunc_page(bsh);
 		endva = round_page(bsh + size);
 
-#ifdef BUS_SPACE_DEBUG
-		printf("%s: va 0x%08lx endva 0x%08lx\n", __func__,
-		    (unsigned long)va, (unsigned long)endva);
-#endif
 #ifdef DIAGNOSTIC
 		if (endva <= va)
 			panic("bus_space_unmap: overflow");
@@ -3755,9 +3734,6 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 
 		(void) pmap_extract(pmap_kernel(), va, &bpa);
 		bpa += (bsh & PGOFSET);
-#ifdef BUS_SPACE_DEBUG
-		printf("%s: bpa 0x%08lx\n", __func__, (unsigned long)bpa);
-#endif
 
 		pmap_kremove(va, endva - va);
 		pmap_update(pmap_kernel());
@@ -3818,10 +3794,6 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 		va = trunc_page(bsh);
 		endva = round_page(bsh + size);
 
-#ifdef BUS_SPACE_DEBUG
-		printf("%s: va 0x%08lx endva 0x%08lx\n", __func__,
-		    (unsigned long)va, (unsigned long)endva);
-#endif
 #ifdef DIAGNOSTIC
 		if (endva <= va)
 			panic("_bus_space_unmap: overflow");
@@ -3829,9 +3801,6 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 
 		(void) pmap_extract(pmap_kernel(), va, &bpa);
 		bpa += (bsh & PGOFSET);
-#ifdef BUS_SPACE_DEBUG
-		printf("%s: bpa 0x%08lx\n", __func__, (unsigned long)bpa);
-#endif
 
 		pmap_kremove(va, endva - va);
 		pmap_update(pmap_kernel());
