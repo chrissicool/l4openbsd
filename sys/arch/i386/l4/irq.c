@@ -57,7 +57,7 @@ l4x_spllower(void)
 	/*
 	 * XXX hshoexer:  Proof-of-concept, still needs rewrite.
 	 */
-	
+
 	disable_intr();
 	for (i = 0; i < 8; i++) {
 		if (l4x_pending[i] == 0)
@@ -81,7 +81,7 @@ l4x_spllower(void)
 #endif
 		if (q->ih_level <= lapic_tpr)
 			continue;
-		
+
 		l4x_pending[i] &= ~(1 << (irq % 32));
 		l4x_recurse_irq_handlers(irq);
 #if 0
