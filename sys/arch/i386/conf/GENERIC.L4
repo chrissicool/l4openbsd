@@ -451,7 +451,7 @@ scsibus* at ahc?
 jmb*	at pci?			# JMicron JMB36x controllers
 ahci*	at jmb? flags 0x0000	# flags 0x0001 to force SATA 1 (1.5Gb/s)
 pciide*	at jmb?
-#ahci*	at pci?	flags 0x0000	# AHCI SATA controllers
+ahci*	at pci?	flags 0x0000	# AHCI SATA controllers
 				# flags 0x0001 to force SATA 1 (1.5Gb/s)
 scsibus* at ahci?
 sili*	at pci?			# Silicon Image 3124/3132/3531 SATA controllers
