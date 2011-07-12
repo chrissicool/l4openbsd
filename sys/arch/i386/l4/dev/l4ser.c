@@ -106,7 +106,7 @@ l4serintr(void *arg)
 	SET(tp->t_state, TS_BUSY);
 	do {
 		if ((c = l4sercngetc(NODEV)) != -1) {
-#ifdef L4SER_DDB_KEY
+#if defined(L4SER_DDB_KEY) && defined(DDB)
 			if (c == L4SER_DDB_KEY)
 				Debugger();
 #endif
