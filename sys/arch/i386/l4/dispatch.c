@@ -239,7 +239,7 @@ void
 l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 		struct trapframe *regsp)
 {
-	paddr_t *kpa;
+	paddr_t kpa;
 	vaddr_t  uva = (vaddr_t)trunc_page(rcr2());
 	vm_prot_t prot = VM_PROT_READ;
 	l4_umword_t upage = 0, kpage = 0;
@@ -251,16 +251,16 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 
 	kpa = l4x_pmap_walk_pd(p, uva, prot);
 
-	if (!kpa || uva > VM_MAXUSER_ADDRESS)
+	if (kpa == 0 || uva > VM_MAXUSER_ADDRESS)
 		return;
 
 #ifdef DIAGNOSTIC
 	/*
-	 * Sanety check results. Page fault handler might have gone crazy.
+	 * Sanity check results. Page fault handler might have gone crazy.
 	 */
-	if (((unsigned long)kpa < PA_START) || ((unsigned long)kpa > PA_START + l4x_mainmem_size)) {
-		printf("Got invalid PA %p for VA %p (%d, %s)\n",
-				kpa, uva, p->p_pid, p->p_comm);
+	if ((kpa < PA_START) || (kpa >= PA_START + l4x_mainmem_size)) {
+		panic("%s: Got invalid PA 0x%08lx for VA 0x%08lx (%d, %s)\n",
+		    __func__, kpa, uva, p->p_pid, p->p_comm);
 		return;
 	}
 #endif
@@ -268,11 +268,9 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 	upage = (upage & L4_PAGEMASK) | L4_ITEM_MAP;
 
 	if (prot & VM_PROT_WRITE)
-		kpage = l4_fpage((unsigned long)kpa, fpage_size,
-				L4_FPAGE_RW).fpage;
+		kpage = l4_fpage(kpa, fpage_size, L4_FPAGE_RW).fpage;
 	else
-		kpage = l4_fpage((unsigned long)kpa, fpage_size,
-				L4_FPAGE_RO).fpage;
+		kpage = l4_fpage(kpa, fpage_size, L4_FPAGE_RO).fpage;
 
 	l4x_vcpu_iret(p, u, regsp, upage, kpage, 1);
 	/* NOTREACHED */
