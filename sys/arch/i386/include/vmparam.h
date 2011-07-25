@@ -109,7 +109,7 @@
 #define VM_MIN_ADDRESS		((vaddr_t)PAGE_SIZE)
 #ifdef L4
 #define VM_MAXUSER_ADDRESS	((vaddr_t)L4LX_USER_END_ADDRESS)
-#define VM_MAX_ADDRESS		((vaddr_t)0xffffffff)
+#define VM_MAX_ADDRESS		VM_MAXUSER_ADDRESS
 #else /* !L4 */
 #define VM_MAXUSER_ADDRESS	((vaddr_t)((PDSLOT_PTE<<PDSHIFT) - USPACE))
 #define VM_MAX_ADDRESS		((vaddr_t)((PDSLOT_PTE<<PDSHIFT) + \

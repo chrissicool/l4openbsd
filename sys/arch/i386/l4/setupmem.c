@@ -502,7 +502,7 @@ l4x_setup_kernel_ptd(l4_addr_t stack, size_t stacklen)
 	/* XXX hshoexer: map kernel text, data, bss? */
 
 	/*
-	 * Map init_stack.
+	 * Enter mapping for init_stack[].
 	 *
 	 * XXX Assumes page alignment of stack.
 	 */

@@ -60,8 +60,8 @@
 #define	LSEL(s,r)	(((s) << 3) | r | SEL_LDT)	/* a local selector */
 
 #ifdef L4
-#define	USERMODE(c, f)		((c & 3) == 3)
-#define	KERNELMODE(c, f)	((c & 3) == 0)
+#define	USERMODE(c, f)		(ISPL(c) == SEL_UPL)
+#define	KERNELMODE(c, f)	(ISPL(c) == SEL_KPL)
 #else /* !L4 */
 #ifdef VM86
 #define	USERMODE(c, f)		(ISPL(c) == SEL_UPL || ((f) & PSL_VM) != 0)

@@ -374,7 +374,7 @@ void l4sercnprobe(struct consdev *cp)
 	for (l4sermajor = 0; l4sermajor < nchrdev; l4sermajor++)
 		if (cdevsw[l4sermajor].d_open == l4seropen)
 			break;
-			
+
 	if (probe_l4ser() || (l4sermajor == nchrdev)) {
 		/* something went wrong, give up */
 		l4x_printf("Error initializing l4ser console. NO CONSOLE!\n");
