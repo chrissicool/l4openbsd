@@ -1,7 +1,17 @@
 /*
+ * License:
+ * This file is largely based on code from the Linux kernel.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation. This program is distributed in
+ * the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
+ * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ */
+
+/*
  * Linux compatibility library.
- * This code was taken from he Linux kernel.
- * Suppose it's licensed under the GPL then.
  */
 
 /* XXX we should move this file to a more general location */

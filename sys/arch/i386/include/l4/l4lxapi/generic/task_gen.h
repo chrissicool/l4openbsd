@@ -1,4 +1,16 @@
 /*
+ * License:
+ * This file is largely based on code from the L4Linux project.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation. This program is distributed in
+ * the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
+ * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ */
+
+/*
  * Header file for generic task handling code.
  */
 #ifndef __ASM_L4__L4LXAPI__GENERIC__TASK_GEN_H__
@@ -33,7 +45,7 @@ inline int l4lx_task_number_allocate_vector(void);
  * \param task_no	Task number to free.
  *
  * \return 0 on succes, -1 on invalid task number or when task was already
- * 			free. 
+ * 			free.
  *
  * This function implements a generic version of the l4lx_task_used[]
  * freeing code which is useful most API implementation but not all.
@@ -55,7 +67,7 @@ inline int l4lx_task_number_allocate_rmgr(void);
  * \param task_no	Task number to free.
  *
  * \return 0 on succes, -1 on invalid task number or when task was already
- * 			free. 
+ * 			free.
  */
 inline int l4lx_task_number_free_rmgr(int task_no);
 
