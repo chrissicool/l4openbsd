@@ -42,6 +42,9 @@ void l4x_do_vcpu_irq(l4_vcpu_state_t *);	/* emulate interrupt */
 void l4x_recurse_irq_handlers(int);		/* recurse interrupts */
 void *l4x_intr_establish(int, int, int, int (*)(void *), void *, const char *);
 
+void l4x_intr_set(int irq, struct intrhand *);
+void l4x_intr_clear(int irq);
+
 void l4x_vcpu_create_user_task(struct proc *p);
 
 static inline void l4x_vcpu_init(l4_vcpu_state_t *v)

@@ -47,7 +47,8 @@ static struct tirq_arg stat_arg;
 //#define dd_printf(format, args...) do { printf(format , ## args); } while (0)
 #define dd_printf(format, args...) do { } while (0)
 
-static unsigned int l4lx_irq_dev_startup_timer(int, int, struct tirq_arg *);
+static unsigned int l4lx_irq_dev_startup_timer(int, struct intrhand *ih,
+    struct tirq_arg *);
 void L4_CV timer_irq_thread(void *data);
 
 /*
@@ -117,31 +118,29 @@ int l4lx_irq_set_type(unsigned int irq, unsigned int type)
 }
 #endif	/* notyet */
 
-static inline void attach_to_irq(int irq)
+static inline void attach_to_irq(struct intrhand *ih)
 {
-	long ret;
-	l4_cap_idx_t irq_cap = l4x_have_irqcap(irq);
+	long	ret;
+	int	irq = ih->ih_vec;
 	L4XV_V(flags);
 
 	L4XV_L(flags);
-	if ((ret  = l4_error(l4_irq_attach(irq_cap, irq << 2,
-	                                   l4x_cpu_thread_get_cap(cpu_number())))));
-		dd_printf("%s: can't register to irq %u: return=%ld\n",
-		          __func__, irq, ret);
+	if ((ret  = l4_error(l4_irq_attach(ih->ih_cap, irq << 2,
+	    l4x_cpu_thread_get_cap(cpu_number())))))
+		printf("%s: can't register to irq %u: return=%ld\n",
+		    __func__, irq, ret);
 	L4XV_U(flags);
 }
 
-#ifdef notyet
-static void detach_from_interrupt(struct irq_desc *desc)
+static void detach_from_interrupt(struct intrhand *ih)
 {
-	struct l4x_irq_desc_private *p = desc->chip_data;
-	unsigned long flags;
-	local_irq_save(flags);
-	if (l4_error(l4_irq_detach(p->irq_cap)))
-		dd_printf("%02d: Unable to detach from IRQ\n", desc->irq);
-	local_irq_restore(flags);
+	L4XV_V(flags);
+
+	L4XV_L(flags);
+	if (l4_error(l4_irq_detach(ih->ih_cap)))
+		dd_printf("%02d: Unable to detach from IRQ\n", ih->ih_vec);
+	L4XV_U(flags);
 }
-#endif
 
 #ifdef notyet
 void l4lx_irq_init(void)
@@ -178,27 +177,27 @@ timer_irq_thread(void *data)
 } /* timer_irq_thread */
 
 unsigned int
-l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
+l4lx_irq_dev_startup_timer(int freq, struct intrhand *ih, struct tirq_arg *arg)
 {
 	int cpu = cpu_number();
 	l4_msgtag_t res;
 	l4lx_thread_t timer_thread;
-	l4_cap_idx_t irq_cap;
+	int irq = ih->ih_vec;
 	L4XV_V(timer_f);
 
 	L4XV_L(timer_f);
-	irq_cap = l4x_cap_alloc();
-	if (l4_is_invalid_cap(irq_cap)) {
+	ih->ih_cap = l4x_cap_alloc();
+	if (l4_is_invalid_cap(ih->ih_cap)) {
 		printf("Cap alloc failed for timer\n");
 		l4x_exit_l4linux();
 		/* NOTREACHED */
 		return 0;
 	}
 
-	res = l4_factory_create_irq(l4re_env()->factory, irq_cap);
+	res = l4_factory_create_irq(l4re_env()->factory, ih->ih_cap);
 	if (l4_error(res)) {
 		printf("Failed to create timer IRQ\n");
-		l4x_cap_free(irq_cap);
+		l4x_cap_free(ih->ih_cap);
 		L4XV_U(timer_f);
 		l4x_exit_l4linux();
 		/* NOTREACHED */
@@ -211,11 +210,11 @@ l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 	snprintf(name, 15, "%dhz.t.%d", freq, irq);
 
 	L4XV_L(timer_f);
-	l4_debugger_set_object_name(irq_cap, name);
+	l4_debugger_set_object_name(ih->ih_cap, name);
 	L4XV_U(timer_f);
 #endif
 
-	if (l4x_register_irq_fixed(irq, irq_cap) == -1) {
+	if (l4x_register_irq_fixed(irq, ih->ih_cap) == -1) {
 		printf("Error registering timer irq %d!", irq);
 		l4x_exit_l4linux();
 		/* NOTREACHED */
@@ -223,7 +222,7 @@ l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 	}
 
 	arg->hz = freq;
-	arg->irq_cap = irq_cap;
+	arg->irq_cap = ih->ih_cap;
 
 	L4XV_L(timer_f);
 	timer_thread = l4lx_thread_create
@@ -248,43 +247,43 @@ l4lx_irq_dev_startup_timer(int freq, int irq, struct tirq_arg *arg)
 	}
 	L4XV_U(timer_f);
 
-	l4lx_irq_dev_enable(irq);
+	l4lx_irq_dev_enable(ih);
 	return 1;
 }
 
-#ifdef notyet
-void
-l4lx_irq_dev_shutdown_timer(unsigned int irq)
+static void
+l4lx_irq_dev_shutdown_timer(struct intrhand *ih)
 {
 	// No one is calling this, right? Why?
+	ih = ih;
 }
-#endif
 
 unsigned int
-l4lx_irq_dev_startup(int irq)
+l4lx_irq_dev_startup(struct intrhand *ih)
 {
-	l4_cap_idx_t irq_cap;
+	int	irq = ih->ih_vec;
+
 	if (irq == TIMER_IRQ)	/* The Timer interrupt. */
-		return l4lx_irq_dev_startup_timer(hz, TIMER_IRQ, &timer_arg);
+		return l4lx_irq_dev_startup_timer(hz, ih, &timer_arg);
 	if (irq == STAT_IRQ)
-		return l4lx_irq_dev_startup_timer(STAT_HZ, STAT_IRQ, &stat_arg);
+		return l4lx_irq_dev_startup_timer(STAT_HZ, ih, &stat_arg);
 
 	/* First test whether a capability has been registered with
 	 * this IRQ number */
-	irq_cap = l4x_have_irqcap(irq);
-	if (l4_is_invalid_cap(irq_cap)) {
+	ih->ih_cap = l4x_have_irqcap(irq);
+	if (l4_is_invalid_cap(ih->ih_cap)) {
 		/* No, get IRQ from IO service */
-		irq_cap = l4x_cap_alloc();
 		L4XV_V(irq_f);
 
 		L4XV_L(irq_f);
-		if (l4_is_invalid_cap(irq_cap)) {
+		ih->ih_cap = l4x_cap_alloc();
+		if (l4_is_invalid_cap(ih->ih_cap)) {
 			LOG_printf("l4lx_irq_dev_startup: did not get valid "
 			    "capability for irq %d\n", irq);
 			L4XV_U(irq_f);
 			return 0;
 		}
-		if (l4io_request_irq(irq, irq_cap)) {
+		if (l4io_request_irq(irq, ih->ih_cap)) {
 			/* "reset" handler ... */
 			//irq_desc[irq].chip = &no_irq_type;
 			/* ... and bail out  */
@@ -293,55 +292,43 @@ l4lx_irq_dev_startup(int irq)
 			L4XV_U(irq_f);
 			return 0;
 		}
-		l4x_register_irq_fixed(irq, irq_cap);
 		L4XV_U(irq_f);
 	}
-	l4lx_irq_dev_enable(irq);
+	l4lx_irq_dev_enable(ih);
 	return 1;
 }
 
-#ifdef notyet
 void
-l4lx_irq_dev_shutdown(unsigned int irq)
+l4lx_irq_dev_shutdown(struct intrhand *ih)
 {
-	struct l4x_irq_desc_private *p = get_irq_chip_data(irq);
+	int	irq = ih->ih_vec;
 
-	if (irq == TIMER_IRQ) {
-		l4lx_irq_dev_shutdown_timer(irq);
+	if (irq == TIMER_IRQ || irq == STAT_IRQ) {
+		l4lx_irq_dev_shutdown_timer(ih);
 		return;
 	}
 
 	dd_printf("%s: %u\n", __func__, irq);
-	l4lx_irq_dev_disable(irq);
+	l4lx_irq_dev_disable(ih);
 
 	if (l4_is_invalid_cap(l4x_have_irqcap(irq)))
-		l4io_release_irq(irq, p->irq_cap);
+		l4io_release_irq(irq, ih->ih_cap);
 }
-#endif
 
 void
-l4lx_irq_dev_enable(int irq)
+l4lx_irq_dev_enable(struct intrhand *ih)
 {
 
-	dd_printf("%s: %u\n", __func__, irq);
-
-	attach_to_irq(irq);
-	l4lx_irq_dev_eoi(irq);
+	attach_to_irq(ih);
+	l4lx_irq_dev_eoi(ih);
 }
 
-#ifdef notyet
 void
-l4lx_irq_dev_disable(unsigned int irq)
+l4lx_irq_dev_disable(struct intrhand *ih)
 {
-	struct irq_desc *desc = irq_to_desc(irq);
-	struct l4x_irq_desc_private *p = desc->chip_data;
-
-	dd_printf("%s: %u\n", __func__, irq);
-
-	p->enabled = 0;
-	detach_from_interrupt(desc);
+	dd_printf("%s: %u\n", __func__, ih->ih_vec);
+	detach_from_interrupt(ih);
 }
-#endif
 
 #ifdef notyet
 void
@@ -372,15 +359,13 @@ l4lx_irq_dev_end(unsigned int irq)
 #endif
 
 void
-l4lx_irq_dev_eoi(int irq)
+l4lx_irq_dev_eoi(struct intrhand *ih)
 {
-	l4_cap_idx_t irq_cap = l4x_have_irqcap(irq);
-
-	dd_printf("%s: %u\n", __func__, irq);
+	dd_printf("%s: %u\n", __func__, ih->ih_vec);
 	L4XV_V(flags);
 
 	L4XV_L(flags);
-	l4_irq_unmask(irq_cap);
+	l4_irq_unmask(ih->ih_cap);
 	L4XV_U(flags);
 }
 #ifdef MULTIPROCESSOR

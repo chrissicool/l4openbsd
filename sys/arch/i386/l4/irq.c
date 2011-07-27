@@ -28,6 +28,7 @@
 #include <l4/log/log.h>
 
 #define NR_REQUESTABLE			256
+#define FIRST_REQUESTABLE		128
 
 /*
  * XXX trap()  should be in a header file.
@@ -244,7 +245,7 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 	i386_atomic_dec_i(&curcpu()->ci_idepth);
 
 	/* Ack currently handled IRQ. */
-	l4lx_irq_dev_eoi(irq);
+	l4lx_irq_dev_eoi(q);
 
 	splx(s);
 
@@ -258,8 +259,10 @@ init_array(void)
 
 	rw_init(&irq_lock, "l4x-irqlock");
 
-	for (i = 0; i < NR_REQUESTABLE; i++)
+	for (i = 0; i < NR_REQUESTABLE; i++) {
 		caps[i] = L4_INVALID_CAP;
+		l4x_intrhand[i] = NULL;
+	}
 
 	init_done = 1;
 }
@@ -304,7 +307,7 @@ l4x_register_irq(l4_cap_idx_t irqcap)
 	s = splhigh();
 
 	/* Reserve ICU_LEN IRQs for fixed interrupts, eg. ISA */
-	for (i = ICU_LEN; i < NR_REQUESTABLE; ++i) {
+	for (i = FIRST_REQUESTABLE; i < NR_REQUESTABLE; ++i) {
 		if (l4_is_invalid_cap(caps[i])) {
 			caps[i] = irqcap;
 			irq = i;
@@ -361,12 +364,6 @@ l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
 	 */
 	fakehand.ih_level = level;
 	l4x_intrhand[irq] = &fakehand;
-	if (!l4lx_irq_dev_startup(irq)) {
-		panic("l4x_intr_establish: l4lx_irq_dev_startup() "
-		    "failed");
-		free(ih, M_DEVBUF);
-		return (NULL);
-	}
 
 	/*
 	 * Poke the real handler in now.
@@ -375,8 +372,16 @@ l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
 	ih->ih_arg = ih_arg;
 	ih->ih_next = NULL;
 	ih->ih_level = level;
-	ih->ih_irq = irq;
-	evcount_attach(&ih->ih_count, ih_what, (void *)&ih->ih_irq,
+	ih->ih_irq = irq;	/* XXX CEH: Probably bogus, don't use! */
+	ih->ih_vec = irq;
+	if (!l4lx_irq_dev_startup(ih)) {
+		panic("l4x_intr_establish: l4lx_irq_dev_startup() "
+		    "failed");
+		free(ih, M_DEVBUF);
+		return (NULL);
+	}
+
+	evcount_attach(&ih->ih_count, ih_what, (void *)&ih->ih_vec,
 	    &evcount_intr);
 	l4x_intrhand[irq] = ih;
 
@@ -384,4 +389,20 @@ l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
 	intr_calculatemasks();	/* XXX only needed once? */
 
 	return (ih);
+}
+
+void
+l4x_intr_set(int irq, struct intrhand *ih)
+{
+	if (l4x_intrhand[irq])
+		panic("%s: Cannot shore irq %d\n", __func__, irq);
+	if (ih->ih_vec != irq || l4_is_invalid_cap(ih->ih_cap))
+		panic("%s: Bad interupt handle in for %d", __func__, irq);
+	l4x_intrhand[irq] = ih;
+}
+
+void
+l4x_intr_clear(int irq)
+{
+	l4x_intrhand[irq] = NULL;
 }

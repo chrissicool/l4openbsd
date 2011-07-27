@@ -29,6 +29,7 @@ L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
 L4_EXTERNAL_FUNC(l4util_micros2l4to);
 
 L4_EXTERNAL_FUNC(l4io_request_irq);
+L4_EXTERNAL_FUNC(l4io_release_irq);
 L4_EXTERNAL_FUNC(l4io_iterate_devices);
 L4_EXTERNAL_FUNC(l4io_lookup_resource);
 L4_EXTERNAL_FUNC(l4io_request_ioport);
