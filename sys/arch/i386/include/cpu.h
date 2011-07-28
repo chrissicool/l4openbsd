@@ -244,7 +244,7 @@ extern void need_resched(struct cpu_info *);
 #ifdef L4
 #define	CLKF_USERMODE(frame)	USERMODE((frame)->tf_cs, (frame)->tf_eflags)
 #define	CLKF_PC(frame)		((frame)->tf_eip)
-#define	CLKF_INTR(frame)	(IDXSEL((frame)->tf_cs) == GICODE_SEL)
+#define	CLKF_INTR(frame)	(curcpu()->ci_idepth > 1)
 #else /* !L4 */
 #define	CLKF_USERMODE(frame)	USERMODE((frame)->if_cs, (frame)->if_eflags)
 #define	CLKF_PC(frame)		((frame)->if_eip)
