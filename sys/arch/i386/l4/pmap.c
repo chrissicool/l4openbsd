@@ -2995,7 +2995,7 @@ pmap_growkernel(vaddr_t maxkvaddr)
 	pd = kpm->pm_pdir;
 	for (/*null*/ ; nkpde < needed_kpde ; nkpde++) {
 
-		ind = pdei(maxkvaddr) - nkpde + needed_kpde;
+		ind = pdei(KVA_START) + nkpde;
 		if (uvm.page_init_done == FALSE) {
 
 			/*
@@ -3007,11 +3007,7 @@ pmap_growkernel(vaddr_t maxkvaddr)
 			if (uvm_page_physget(&ptaddr) == FALSE)
 				panic("pmap_growkernel: out of memory");
 			pmap_zero_phys(ptaddr);
-#if 0
-			kpm->pm_pdir[PDSLOT_KERN + nkpde] =
-				ptaddr | PG_RW | PG_V | PG_U | PG_M;
-#endif
-			pd[ind] = (pd_entry_t)ptaddr;
+			pd[ind] = ptaddr | PG_RW | PG_V | PG_U | PG_M;
 
 			/* count PTP as resident */
 			kpm->pm_stats.resident_count++;
