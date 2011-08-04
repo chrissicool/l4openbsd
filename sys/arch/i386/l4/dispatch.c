@@ -256,7 +256,8 @@ l4x_handle_user_pf(l4_vcpu_state_t *vcpu, struct proc *p, struct user *u,
 	/*
 	 * Sanity check results. Page fault handler might have gone crazy.
 	 */
-	if ((kpa < PA_START) || (kpa >= PA_START + l4x_mainmem_size)) {
+	if ((kpa < l4x_main_memory_start) || (kpa >= (l4x_main_memory_start +
+	    l4x_mainmem_size))) {
 		panic("%s: Got invalid PA 0x%08lx for VA 0x%08lx (%d, %s)\n",
 		    __func__, kpa, uva, p->p_pid, p->p_comm);
 		return;

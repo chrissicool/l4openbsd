@@ -195,14 +195,14 @@ unsigned long l4x_mainmem_size = L4_MEMSIZE << 20;
 #endif
 
 l4re_ds_t l4x_ds_mainmem;
-void *l4x_main_memory_start;	/* paddr_t */
+paddr_t l4x_main_memory_start;
 l4re_ds_t l4x_ds_isa_dma;
 static void *l4x_isa_dma_memory_start;
 static unsigned long l4x_isa_dma_size   = 0;
 
 unsigned long l4x_kvmem_size;
 l4re_ds_t l4x_ds_kvmem;
-void *l4x_kv_memory_start;	/* vaddr_t */
+vaddr_t l4x_kv_memory_start;
 
 static void l4x_setup_memory(char **cmdl,
                              vaddr_t *main_mem_startv,
@@ -378,10 +378,10 @@ static void l4x_setup_memory(char **cmdl,
 		}
 	} else
 #endif
-		l4x_main_memory_start = (void *)memory_area_addr;
+		l4x_main_memory_start = memory_area_addr;
 
 	/** Second: the main memory */
-	if (l4re_rm_attach(&l4x_main_memory_start, l4x_mainmem_size,
+	if (l4re_rm_attach((void **)&l4x_main_memory_start, l4x_mainmem_size,
 	                   L4RE_RM_IN_AREA | L4RE_RM_EAGER_MAP,
 	                   l4x_ds_mainmem, 0, L4_PAGESHIFT)) {
 		LOG_printf("Error attaching to L4Linux main memory\n");
@@ -394,8 +394,8 @@ static void l4x_setup_memory(char **cmdl,
 //		l4x_exit_l4linux();
 //	}
 
-	*main_mem_startp = (paddr_t)l4x_main_memory_start;
-	*main_mem_endp   = (paddr_t)(l4x_main_memory_start + l4x_mainmem_size - 1);
+	*main_mem_startp = l4x_main_memory_start;
+	*main_mem_endp   = (l4x_main_memory_start + l4x_mainmem_size - 1);
 
 	if (l4_is_invalid_cap(l4x_ds_isa_dma))
 		*isa_dma_mem_startp = *isa_dma_mem_endp = 0;
@@ -408,7 +408,7 @@ static void l4x_setup_memory(char **cmdl,
 	if (!l4_is_invalid_cap(l4x_ds_isa_dma))
 		l4x_register_region(l4x_ds_isa_dma, l4x_isa_dma_memory_start,
 		                      0, "ISA DMA memory");
-	l4x_register_region(l4x_ds_mainmem, l4x_main_memory_start,
+	l4x_register_region(l4x_ds_mainmem, (void *)l4x_main_memory_start,
 	                    0, "Main memory");
 
 	/*
@@ -423,7 +423,7 @@ static void l4x_setup_memory(char **cmdl,
 		LOG_printf("%s: Error reserving kernel virtual memory!\n", __func__);
 		l4x_exit_l4linux();
 	}
-	l4x_kv_memory_start = (void *)kvm_area_id;
+	l4x_kv_memory_start = kvm_area_id;
 	LOG_printf("Registered kernel virtual memory at: VA=0x%08lx, size=0x%08lx\n",
 			kvm_area_id, l4x_kvmem_size);
 
@@ -479,25 +479,29 @@ l4x_setup_kernel_ptd(l4_addr_t stack, size_t stacklen)
 		nkpde = NKPTP_MAX;
 
 	/* Clear physical memory for a page directory and bootstrap tables. */
-	bzero((void *)(PA_START + pa_off), (nkpde + 1) * NBPG);
+	bzero((void *)(l4x_main_memory_start + pa_off), (nkpde + 1) * NBPG);
 
 	/* Map our PTD  */
-	l4lx_memory_map_virtual_page((vaddr_t)(KVA_START + kva_off),
-	    (paddr_t)(PA_START + pa_off), PG_V | PG_KW);
-	proc0paddr->u_pcb.pcb_cr3 = PA_START + pa_off;
-	pd = PTD = (pd_entry_t *)(KVA_START + kva_off);
+	l4lx_memory_map_virtual_page(l4x_kv_memory_start + kva_off,
+	    l4x_main_memory_start + pa_off, PG_V | PG_KW);
+	proc0paddr->u_pcb.pcb_cr3 = l4x_main_memory_start + pa_off;
+	pd = PTD = (pd_entry_t *)(l4x_kv_memory_start + kva_off);
 	kva_off += PAGE_SIZE;
 	pa_off += PAGE_SIZE;
 
 	/* Reserve nkpde page tables. */
-	for (i = pdei(KVA_START); i < pdei(KVA_START) + nkpde; i++) {
-		pd[i] = (pd_entry_t)((PA_START + pa_off) |
+	for (i = pdei(l4x_kv_memory_start); i < pdei(l4x_kv_memory_start) +
+	    nkpde; i++) {
+		pd[i] = (pd_entry_t)((l4x_main_memory_start + pa_off) |
 		    (PG_V | PG_KW | PG_M | PG_U));
 		pa_off += PAGE_SIZE;
 	}
 
-	/* The following implicitly sets KVA_START for pmap(9). */
-	atdevbase = KVA_START + kva_off;
+	/*
+	 * The following implicitly sets KVA_START (aka
+	 * l4x_kv_memory_start) for pmap(9).
+	 */
+	atdevbase = l4x_kv_memory_start + kva_off;
 
 	/* XXX hshoexer: map kernel text, data, bss? */
 
@@ -521,5 +525,5 @@ l4x_setup_kernel_ptd(l4_addr_t stack, size_t stacklen)
 		iom_off += PAGE_SIZE;
 	}
 
-	return (PA_START + pa_off);
+	return (l4x_main_memory_start + pa_off);
 }

@@ -20,7 +20,8 @@ extern char *esym;	/* End of symbol table */
 #define PA_START	(L4LX_USER_KERN_AREA_END + round_page((unsigned long)esym) - KERNBASE)
 extern l4re_ds_t l4x_ds_mainmem;
 extern l4re_ds_t l4x_ds_isa_dma;
-extern void *l4x_main_memory_start;		/* paddr_t */
+extern paddr_t l4x_main_memory_start;
+extern vaddr_t l4x_kv_memory_start;
 extern unsigned long l4x_mainmem_size;
 
 void l4x_v2p_init(void);

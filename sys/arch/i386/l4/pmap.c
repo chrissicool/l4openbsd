@@ -2995,7 +2995,7 @@ pmap_growkernel(vaddr_t maxkvaddr)
 	pd = kpm->pm_pdir;
 	for (/*null*/ ; nkpde < needed_kpde ; nkpde++) {
 
-		ind = pdei(KVA_START) + nkpde;
+		ind = pdei(l4x_kv_memory_start) + nkpde;
 		if (uvm.page_init_done == FALSE) {
 
 			/*

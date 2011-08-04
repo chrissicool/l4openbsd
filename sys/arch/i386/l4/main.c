@@ -671,7 +671,7 @@ void l4x_setup_upage(void)
 
 	upage_addr = UPAGE_USER_ADDRESS;
 	if (l4re_rm_attach((void **)&upage_addr, USPACE,
-			L4RE_RM_SEARCH_ADDR,
+			L4RE_RM_SEARCH_ADDR | L4RE_RM_EAGER_MAP,
 			ds, 0, L4_PAGESHIFT)) {
 		LOG_printf("Cannot attach upage properly\n");
 		l4x_linux_main_exit();
