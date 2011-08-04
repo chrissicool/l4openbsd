@@ -66,30 +66,21 @@ l4x_spllower(void)
 
 		irq = ffs(l4x_pending[i]) - 1;
 		irq += i * 32;
-#if 0
-		if (irq != 0 && irq != 8 && irq != 16)
-			LOG_printf("%s: irq %d l4x_pending[%d] = 0x%08lx\n",
-			    __func__, irq, i, l4x_pending[i]);
-#endif
 
 		q = l4x_intrhand[irq];
+
+		/*
+		 * XXX hshoexer: If a handler can be disestablished()
+		 * while an interrupt is pending for it, q == NULL would
+		 * be ok.
+		 */
 		if (q == NULL)
 			panic("%s: no handler for irq %d", __func__, irq);
-#if 0
-		if (irq != 0 && irq != 8 && irq != 16)
-			LOG_printf("%s: pending irq %d %x at %x\n", __func__,
-			    irq, q->ih_level, lapic_tpr);
-#endif
 		if (q->ih_level <= lapic_tpr)
 			continue;
 
 		l4x_pending[i] &= ~(1 << (irq % 32));
 		l4x_recurse_irq_handlers(irq);
-#if 0
-		if (irq != 0 && irq != 8 && irq != 16)
-			LOG_printf("%s: irq %d cleared, l4x_pending[%d] = "
-			    "0x%08lx\n", __func__, irq, i, l4x_pending[i]);
-#endif
 	}
 	enable_intr();	/* XXX hshoexer */
 
@@ -99,12 +90,6 @@ retry:
 		enable_intr();
 
 		irq = ffs(pending) - 1;
-
-#if 0
-		if (irq != SIR_CLOCK)
-			LOG_printf("%s: pending softirq %d at %x\n", __func__,
-			    irq, lapic_tpr);
-#endif
 
 		if (!(curcpu()->ci_ipending & (1 << irq)))
 			goto retry;
@@ -159,11 +144,6 @@ l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 	struct intrhand *q;
 	int level, irq = t->i.label >> 2;
 
-#if 0
-	if (irq != 0 && irq != 8 && irq != 16)
-		LOG_printf("%s: irq %d\n", __func__, irq);
-#endif
-
 	if (irq >= NR_REQUESTABLE)
 		panic("%s: bogus irq %d\n", irq);
 
@@ -180,17 +160,8 @@ l4x_vcpu_handle_irq(l4_vcpu_state_t *t, struct trapframe *regs)
 
 	/* Check current splx(9) level */
 	if (level <= lapic_tpr) {
-#if 0
-		if (irq != 0 && irq != 8 && irq != 16)
-			LOG_printf("%s: blocking irq %d/%x at %x\n", __func__,
-			    irq, level, lapic_tpr);
-#endif
 		l4x_pending[irq >> 5] |= (1 << (irq % 32));
-#if 0
-		if (irq != 0 && irq != 8 && irq != 16)
-			LOG_printf("%s: l4x_pending[%d] 0x%08lx\n", __func__,
-			    irq >> 5, l4x_pending[irq >> 5]);
-#endif
+
 		/* XXX hshoexer:  enable_intr()? */
 		return;
 	}
@@ -225,12 +196,6 @@ l4x_run_irq_handlers(int irq, struct trapframe *regs)
 	q = l4x_intrhand[irq];
 	if (q == NULL)
 		panic("%s: no handler for L4 interrupt %d", __func__, irq);
-
-#if 0
-	if (irq != 0 && irq != 8 && irq != 16)
-		LOG_printf("%s: irq %d level %x handler %p\n", __func__, irq,
-		    level, q);
-#endif
 
 	/* NULL means framepointer */
 	if (q->ih_arg == NULL)
