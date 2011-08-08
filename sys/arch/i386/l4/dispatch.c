@@ -222,10 +222,8 @@ l4x_ret_from_fork(struct trapframe *tf)
 {
 	struct proc *p = curproc;
 	struct user *u = p->p_addr;
-	l4_vcpu_state_t *vcpu = l4x_stack_vcpu_state_get();
 
 	tf->tf_cs = GSEL(GUCODE_SEL, SEL_UPL);		/* set USERMODE */
-	vcpu->saved_state |= L4_VCPU_F_USER_MODE;
 
 	l4x_vcpu_iret(p, u, tf, 0, 0, 1);
 }
