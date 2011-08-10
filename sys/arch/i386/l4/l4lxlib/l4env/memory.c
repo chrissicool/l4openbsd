@@ -1,4 +1,16 @@
 /*
+ * License:
+ * This file is largely based on code from the L4Linux project.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation. This program is distributed in
+ * the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
+ * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU General Public License for more details.
+ */
+
+/*
  * Implementation of include/asm-l4/l4lxapi/memory.h
  */
 
@@ -66,18 +78,21 @@ l4lx_memory_map_virtual_page(vaddr_t address, paddr_t page, int map_rw)
 	                        | (map_rw & PG_RW ? 0 : L4RE_RM_READ_ONLY),
 	                        ds, offset, L4_PAGESHIFT))) {
 		L4XV_U(f);
+#if defined(DIAGNOSTIC) && defined(DDB)
 		// FIXME wrt L4_EUSED
 		panic("%s: cannot attach vpage (0x%08lx, 0x%08lx): %d\n",
 		       __func__, address, page, r);
+		Debugger();
+#endif
 		return -1;
 	}
 	L4XV_U(f);
-#ifdef DIAGNOSTIC
+#if defined(DIAGNOSTIC) && defined(DDB)
 	if (addr != address) {
 		panic("%s: ERROR: Did not attach vpage @0x%08lx."
 				"Attached to 0x%08lx instead\n",
 				__func__, address, addr);
-		l4lx_memory_unmap_virtual_page(addr);
+		Debugger();
 		return -1;
 	}
 #endif
@@ -99,7 +114,7 @@ int l4lx_memory_unmap_virtual_page(vaddr_t address)
 //	l4x_printf("Detaching DS: VA=0x%08lx\n", address);
 	if ((r = l4re_rm_detach((void *)address))) {
 		L4XV_U(f);
-#ifdef DIAGNOSTIC
+#if defined(DIAGNOSTIC) && defined(DDB)
 		printf("%s: cannot detach vpage 0x%08lx: %d\n",
 				__func__, address, r);
 		Debugger();
