@@ -40,17 +40,26 @@
 	   )
 
 #else
+
+#if defined(ARCH_x86)
+#define PSTOR ".long"
+#elif defined(ARCH_amd64)
+#define PSTOR ".quad"
+#else
+#error define PSTOR for your arch!
+#endif
+
 #define L4_EXTERNAL_FUNC(func) \
 	__asm(".section \".data.l4externals.str\"                         \n" \
 	    "9: .string \"" __STRING(func) "\"                       \n" \
 	    ".previous                                                  \n" \
 	    \
 	    ".section \".data.l4externals.symtab\"                      \n" \
-	    "7: .long 9b                                                \n" \
+	    "7: "PSTOR" 9b                                                \n" \
 	    ".previous                                                  \n" \
 	    \
 	    ".section \".data.l4externals.jmptbl\"                      \n" \
-	    "8: .long " __STRING(func##_resolver) "                  \n" \
+	    "8: "PSTOR" " __STRING(func##_resolver) "                  \n" \
 	    ".previous                                                  \n" \
 	    \
 	    ".section \"" __STRING(.text.l4externals.fu##nc) "\"     \n" \

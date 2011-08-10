@@ -55,6 +55,6 @@ static inline l4_cap_idx_t l4x_user_pager_cap(unsigned cpu)
 static inline l4_utcb_t *l4x_user_utcb_addr(unsigned cpu)
 {
 	BUILD_BUG_ON(MAXCPUS * L4_UTCB_OFFSET > (1 << L4X_USER_UTCB_SIZE));
-	return (l4_utcb_t *)(L4X_USER_UTCB_ADDR + L4_UTCB_OFFSET * cpu);
+	return (l4_utcb_t *)((unsigned long)L4X_USER_UTCB_ADDR + L4_UTCB_OFFSET * cpu);
 }
 #endif /* ! __INCLUDE__ASM_L4__GENERIC__USER_H__ */

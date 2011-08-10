@@ -407,11 +407,13 @@ int L4_CV l4start(int argc, char **argv)
  */
 L4_CV l4_utcb_t *l4_utcb_wrap(void)
 {
-#ifdef ARCH_x86
+#if defined(ARCH_arm) || defined(ARCH_amd64)
+	return l4_utcb_direct();
+#elif defined(ARCH_x86)
 	unsigned long v;
-	__asm __volatile ("mov %%gs, %0": "=r" (v));
+	__asm __volatile ("mov %%fs, %0": "=r" (v));
 	if (v == 0x43 || v == 7) {
-		__asm __volatile("mov %%gs:0, %0" : "=r" (v));
+		__asm __volatile("mov %%fs:0, %0" : "=r" (v));
 		return (l4_utcb_t *)v;
 	}
 	return l4x_stack_utcb_get();
@@ -471,33 +473,41 @@ static int l4x_cpu_virt_phys_map_init(void) {
 	return 0;
 }
 
+#ifdef ARCH_x86
 static unsigned l4x_x86_orig_utcb_segment;
 static inline void l4x_x86_utcb_save_orig_segment(void)
 {
-	asm volatile ("mov %%gs, %0": "=r" (l4x_x86_orig_utcb_segment));
+	asm volatile ("mov %%fs, %0": "=r" (l4x_x86_orig_utcb_segment));
 }
 
 unsigned l4x_x86_utcb_get_orig_segment(void)
 {
 	return l4x_x86_orig_utcb_segment;
 }
+#else
+static inline void l4x_x86_utcb_save_orig_segment(void) {}
+#endif
 
 static void get_initial_cpu_capabilities(void)
 {
 	/* XXX cl: we should set a l4util_cpu_capabilities() here */
 }
 
+#ifdef ARCH_x86
 /*
  * Set the global descriptor table.
  */
 void l4x_load_gdt_register(struct region_descriptor *gdt)
 {
-	if (fiasco_gdt_set(L4_INVALID_CAP,
-				gdt, 8, 2, l4_utcb()))
-		LOG_printf("GDT setting failed\n");
+	long r;
+
+	if ((r = fiasco_gdt_set(L4_INVALID_CAP,
+				gdt, 8, 2, l4_utcb())))
+		LOG_printf("GDT setting failed: %ld\n", r);
 	asm("mov %0, %%fs"
 			: : "r" ((l4x_fiasco_gdt_entry_offset + 2) * 8 + 3) : "memory");
 }
+#endif
 
 /*
  * Register program section(s) for virt_to_phys.
@@ -597,6 +607,7 @@ static L4_CV void l4x_bsd_startup(void *data)
 	/* Wait for start signal */
 	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
 	LOG_printf("l4x_bsd_startup: received startup message.\n");
+	LOG_printf("l4re_global_env: %p\n", l4re_global_env);
 
 	/* Setup kernel stack for init386().  */
 	l4x_setup_curproc();
@@ -721,8 +732,15 @@ l4x_setup_curproc(void)
 }
 
 /*
- * Exception scheduler
+ * Exception scheduling
  */
+
+#if defined(ARCH_x86)
+#define RN(n) e##n
+#elif defined(ARCH_amd64)
+#define RN(n) r##n
+#endif
+
 static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
 {
 	l4_exc_regs_t exc;
@@ -811,21 +829,37 @@ static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
 	return 1; // no reply
 }
 
+#if defined(ARCH_x86) || defined(ARCH_amd64)
 static inline
 l4_exc_regs_t *cast_to_utcb_exc(l4_vcpu_regs_t *vcpu_regs)
 {
+#ifdef ARCH_x86
 	enum { OFF = offsetof(l4_vcpu_regs_t, gs), };
+#elif defined(ARCH_amd64)
+	enum { OFF = offsetof(l4_vcpu_regs_t, r15), };
+#endif
 
+#ifdef ARCH_x86
 	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, gs)     - OFF != offsetof(l4_exc_regs_t, gs));
 	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, fs)     - OFF != offsetof(l4_exc_regs_t, fs));
-	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, di)     - OFF != offsetof(l4_exc_regs_t, edi));
-	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, si)     - OFF != offsetof(l4_exc_regs_t, esi));
-	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, bp)     - OFF != offsetof(l4_exc_regs_t, ebp));
+#else
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, r15)    - OFF != offsetof(l4_exc_regs_t, r15));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, r14)    - OFF != offsetof(l4_exc_regs_t, r14));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, r13)    - OFF != offsetof(l4_exc_regs_t, r13));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, r12)    - OFF != offsetof(l4_exc_regs_t, r12));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, r11)    - OFF != offsetof(l4_exc_regs_t, r11));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, r10)    - OFF != offsetof(l4_exc_regs_t, r10));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, r9)     - OFF != offsetof(l4_exc_regs_t, r9));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, r8)     - OFF != offsetof(l4_exc_regs_t, r8));
+#endif
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, di)     - OFF != offsetof(l4_exc_regs_t, RN(di)));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, si)     - OFF != offsetof(l4_exc_regs_t, RN(si)));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, bp)     - OFF != offsetof(l4_exc_regs_t, RN(bp)));
 	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, pfa)    - OFF != offsetof(l4_exc_regs_t, pfa));
-	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, bx)     - OFF != offsetof(l4_exc_regs_t, ebx));
-	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, dx)     - OFF != offsetof(l4_exc_regs_t, edx));
-	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, cx)     - OFF != offsetof(l4_exc_regs_t, ecx));
-	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, ax)     - OFF != offsetof(l4_exc_regs_t, eax));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, bx)     - OFF != offsetof(l4_exc_regs_t, RN(bx)));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, dx)     - OFF != offsetof(l4_exc_regs_t, RN(dx)));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, cx)     - OFF != offsetof(l4_exc_regs_t, RN(cx)));
+	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, ax)     - OFF != offsetof(l4_exc_regs_t, RN(ax)));
 	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, trapno) - OFF != offsetof(l4_exc_regs_t, trapno));
 	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, err)    - OFF != offsetof(l4_exc_regs_t, err));
 	BUILD_BUG_ON(offsetof(l4_vcpu_regs_t, ip)     - OFF != offsetof(l4_exc_regs_t, ip));
@@ -834,6 +868,7 @@ l4_exc_regs_t *cast_to_utcb_exc(l4_vcpu_regs_t *vcpu_regs)
 
 	return (l4_exc_regs_t *)((char *)vcpu_regs + OFF);
 }
+#endif	/* defined(ARCH_x86) || defined(ARCH_amd64) */
 
 /*
  * Return true, if an exception was handled successfully.
@@ -934,9 +969,9 @@ static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 	regs_addr = exc->sp;
 
 	/* Fill arguments in regs for die params */
-	exc->ecx = exc->err;
-	exc->edx = regs_addr;
-	exc->eax = (unsigned long)message;
+	exc->RN(cx) = exc->err;
+	exc->RN(dx) = regs_addr;
+	exc->RN(ax) = (unsigned long)message;
 
 	exc->sp -= sizeof(unsigned long);
 	*(unsigned long *)exc->sp = 0;
@@ -1066,7 +1101,7 @@ int l4x_re_resolve_name(const char *name, l4_cap_idx_t *cap)
 static int l4x_handle_msr(l4_exc_regs_t *exc)
 {
 	void *pc = (void *)l4_utcb_exc_pc(exc);
-	unsigned long reg = exc->ecx;
+	unsigned long reg = exc->RN(cx);
 
 	/* wrmsr */
 	if (*(unsigned short *)pc == 0x300f) {
@@ -1082,7 +1117,7 @@ static int l4x_handle_msr(l4_exc_regs_t *exc)
 	/* rdmsr */
 	if (*(unsigned short *)pc == 0x320f) {
 		if (reg == MSR_MISC_ENABLE) {
-			exc->eax = exc->edx = 0;
+			exc->RN(ax) = exc->RN(dx) = 0;
 /*		} else if (reg == MSR_K7_CLK_CTL) {
 			exc->eax = 0x20000000;		*/
 		} else

@@ -86,11 +86,8 @@ static int get_more_kumem(unsigned order_pages, unsigned blk_sz,
 	l4_addr_t kumem;
 	if (l4re_util_kumem_alloc(&kumem, order_pages,
 	                          L4_BASE_TASK_CAP, l4re_env()->rm))
-	{
-		enter_kdebug("eins");
 		return 1;
-	}
-	LOG_printf("kumem = %lx\n", kumem);
+
 	add_to_free_list(kumem, kumem + (1 << order_pages) * L4_PAGESIZE,
 	                 blk_sz, head);
 	return 0;
@@ -136,19 +133,27 @@ static void l4lx_thread_ku_alloc_free_v(void *k)
 	return l4lx_thread_ku_alloc_free(k, &ku_free_small.head);
 }
 
-/*
+
 #ifdef ARCH_arm
 void __thread_launch(void);
 asm(
 "__thread_launch:\n"
+"	ldmia sp!, {r0}\n" // arg1
 "	ldmia sp!, {r1}\n" // func
 "	ldmia sp!, {lr}\n" // ret
-"	ldmia sp!, {r0}\n" // arg1
 "	bic sp, sp, #7\n"
 "	mov pc, r1\n"
 );
 #endif
-*/
+#ifdef ARCH_amd64
+void __thread_launch(void);
+asm(
+"__thread_launch:\n"
+"	popq %rdi\n" // arg1
+"	ret\n"
+);
+#endif
+
 
 l4lx_thread_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
                                  unsigned vcpu,
@@ -163,7 +168,7 @@ l4lx_thread_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 	l4_msgtag_t res;
 	char l4lx_name[20] = "l4bsd.";
 	l4_utcb_t *utcb;
-	l4_umword_t *sp = stack_pointer;
+	l4_umword_t *sp, *sp_data;
 
 	/* Prefix name with 'l4lx.' */
 	strncpy(l4lx_name + strlen(l4lx_name), name,
@@ -186,16 +191,24 @@ l4lx_thread_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 		}
 	}
 
+	sp_data = (l4_umword_t *)((char *)stack_pointer - stack_data_size);
+	memcpy(sp_data, stack_data, stack_data_size);
 
-	sp = (l4_umword_t *)((char *)stack_pointer - 8 - stack_data_size);
-	memcpy(sp, stack_data, stack_data_size);
-
-
-	--sp;
-	*sp = (l4_umword_t)(sp + 1);
+	sp = sp_data;
+#ifdef ARCH_amd64
+	sp = (l4_umword_t *)((l4_umword_t)sp & ~0xf);
 	*(--sp) = 0;
-#ifdef ARCH_arm
 	*(--sp) = (l4_umword_t)thread_func;
+	*(--sp) = (l4_umword_t)sp_data;
+#elif defined(ARCH_arm)
+	*(--sp) = 0;
+	*(--sp) = (l4_umword_t)thread_func;
+	*(--sp) = (l4_umword_t)sp_data;
+#elif defined(ARCH_x86)
+	*(--sp) = (l4_umword_t)sp_data;
+	*(--sp) = 0;
+#else
+#error Unknown architecture!
 #endif
 
 	l4_debugger_set_object_name(l4cap, l4lx_name);
@@ -242,7 +255,7 @@ l4lx_thread_t l4lx_thread_create(L4_CV void (*thread_func)(void *data),
 		   vcpu_state ? (l4_addr_t)(*vcpu_state) : 0, (l4_umword_t)sp);
 
 
-#ifdef ARCH_arm
+#if defined(ARCH_arm) || defined(ARCH_amd64)
 	res = l4_thread_ex_regs(l4cap, (l4_umword_t)__thread_launch,
 	                        (l4_umword_t)sp, 0);
 #else

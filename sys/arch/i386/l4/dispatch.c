@@ -393,8 +393,9 @@ l4x_vcpu_iret(struct proc *p, struct user *u, struct trapframe *regs,
 		if (l4_ipc_error(tag, utcb) == L4_IPC_SEMAPFAILED)
 			l4x_evict_mem(fp2);
 		else {
-			LOG_printf("l4x: resume returned: %d\n",
-					l4_ipc_error(tag, utcb));
+			LOG_printf("l4x: resume returned: %ld [%x, %lx]\n",
+					l4_error(tag), vcpu->saved_state,
+					vcpu->user_task);
 			enter_kdebug("IRET returned");
 			while( /* CONSTCOND */ 1 ) ;
 			/* NOTREACHED */

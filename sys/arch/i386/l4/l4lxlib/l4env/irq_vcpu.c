@@ -84,25 +84,25 @@ int l4lx_irq_set_type(unsigned int irq, unsigned int type)
 		case IRQF_TRIGGER_RISING:
 			p->trigger = L4_IRQ_F_POS_EDGE;
 #ifdef ARCH_x86
-			set_irq_chip_and_handler_name(irq, &l4x_irq_dev_chip, handle_edge_irq, "edge");
+			irq_set_chip_and_handler_name(irq, &l4x_irq_dev_chip, handle_edge_irq, "edge");
 #endif
 			break;
 		case IRQF_TRIGGER_FALLING:
 			p->trigger = L4_IRQ_F_NEG_EDGE;
 #ifdef ARCH_x86
-			set_irq_chip_and_handler_name(irq, &l4x_irq_dev_chip, handle_edge_irq, "edge");
+			irq_set_chip_and_handler_name(irq, &l4x_irq_dev_chip, handle_edge_irq, "edge");
 #endif
 			break;
 		case IRQF_TRIGGER_HIGH:
 			p->trigger = L4_IRQ_F_LEVEL_HIGH;
 #ifdef ARCH_x86
-			set_irq_chip_and_handler_name(irq, &l4x_irq_dev_chip, handle_fasteoi_irq, "fasteoi");
+			irq_set_chip_and_handler_name(irq, &l4x_irq_dev_chip, handle_fasteoi_irq, "fasteoi");
 #endif
 			break;
 		case IRQF_TRIGGER_LOW:
 			p->trigger = L4_IRQ_F_LEVEL_LOW;
 #ifdef ARCH_x86
-			set_irq_chip_and_handler_name(irq, &l4x_irq_dev_chip, handle_fasteoi_irq, "fasteoi");
+			irq_set_chip_and_handler_name(irq, &l4x_irq_dev_chip, handle_fasteoi_irq, "fasteoi");
 #endif
 			break;
 		default:

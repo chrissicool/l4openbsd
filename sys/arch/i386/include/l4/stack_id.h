@@ -81,7 +81,7 @@ L4_INLINE int l4lx_thread_equal(l4_cap_idx_t t1, l4_cap_idx_t t2)
 
 L4_INLINE int l4lx_thread_is_valid(l4lx_thread_t t)
 {
-	return (int)t;
+	return (int)(unsigned long)t;
 }
 
 L4_INLINE l4_cap_idx_t l4lx_thread_get_cap(l4lx_thread_t t)
