@@ -8,6 +8,8 @@
  * the hope that it will be useful, but WITHOUT ANY WARRANTY; without even
  * the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
+ *
+ * Parts of this file is Copyright (c) 2011 Hans-Jörg Höxer <hshoexer@genua.de>
  */
 
 /*
@@ -283,7 +285,7 @@ l4x_register_irq(l4_cap_idx_t irqcap)
 	rw_enter_write(&irq_lock);
 	s = splhigh();
 
-	/* Reserve ICU_LEN IRQs for fixed interrupts, eg. ISA */
+	/* Reserve lower IRQs for fixed interrupts, eg. ISA */
 	for (i = FIRST_REQUESTABLE; i < NR_REQUESTABLE; ++i) {
 		if (l4_is_invalid_cap(caps[i])) {
 			caps[i] = irqcap;
@@ -349,7 +351,6 @@ l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
 	ih->ih_arg = ih_arg;
 	ih->ih_next = NULL;
 	ih->ih_level = level;
-	ih->ih_irq = irq;	/* XXX CEH: Probably bogus, don't use! */
 	ih->ih_vec = irq;
 	if (!l4lx_irq_dev_startup(ih)) {
 		panic("l4x_intr_establish: l4lx_irq_dev_startup() "
