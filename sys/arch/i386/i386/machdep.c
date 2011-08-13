@@ -165,6 +165,8 @@ extern struct proc *npxproc;
 
 #ifdef L4
 #include <machine/l4/setup.h>
+#include <l4/io/io.h>
+#include <l4/re/c/rm.h>
 #endif
 
 /* the following is used externally (sysctl_hw) */
@@ -291,6 +293,10 @@ void	(*cpuresetfn)(void);
 
 int	bus_mem_add_mapping(bus_addr_t, bus_size_t,
 	    int, bus_space_handle_t *);
+
+#ifdef L4
+void	_bus_phys_to_virt(bus_addr_t, bus_size_t, bus_addr_t *);
+#endif
 
 #ifdef KGDB
 #ifndef KGDB_DEVNAME
@@ -2913,9 +2919,11 @@ init386(paddr_t first_avail)
 	bios_memmap_t *im;
 
 #ifdef L4
+	/* XXX hshoexer */
 	bootapiver = BOOTARG_APIVER;
 	boothowto = 0;
 
+	/* XXX hshoexer */
 	kb = (int) im;		/* keep gcc -Wall -Werror happy */
 
 	/* set the idle function */
@@ -2945,6 +2953,7 @@ init386(paddr_t first_avail)
 	    EX_NOCOALESCE|EX_NOWAIT);
 
 	/* make bootstrap gdt gates and memory segments */
+	/* XXX hshoexer: needed at all? */
 	setsegment(&gdt[GCODE_SEL].sd, 0, 0xfffff, SDT_MEMERA, SEL_KPL, 1, 1);
 	setsegment(&gdt[GICODE_SEL].sd, 0, 0xfffff, SDT_MEMERA, SEL_KPL, 1, 1);
 	setsegment(&gdt[GDATA_SEL].sd, 0, 0xfffff, SDT_MEMRWA, SEL_KPL, 1, 1);
@@ -2958,6 +2967,7 @@ init386(paddr_t first_avail)
 	    sizeof(struct cpu_info)-1, SDT_MEMRWA, SEL_KPL, 0, 0);
 
 	/* exceptions */
+	/* XXX hshoexer: needed at all? */
 	setgate(&idt[  0], &IDTVEC(div),     0, SDT_SYS386TGT, SEL_KPL, GCODE_SEL);
 	setgate(&idt[  1], &IDTVEC(dbg),     0, SDT_SYS386TGT, SEL_KPL, GCODE_SEL);
 	setgate(&idt[  2], &IDTVEC(nmi),     0, SDT_SYS386TGT, SEL_KPL, GCODE_SEL);
@@ -2985,9 +2995,9 @@ init386(paddr_t first_avail)
 	setgate(&idt[128], &IDTVEC(syscall), 0, SDT_SYS386TGT, SEL_UPL, GCODE_SEL);
 
 	setregion(&region, gdt, NGDT * sizeof(union descriptor) - 1);
-	lgdt(&region);
+	lgdt(&region);	/* XXX hshoexer: NOP */
 	setregion(&region, idt, sizeof(idt_region) - 1);
-	lidt(&region);
+	lidt(&region);	/* XXX hshoexer: NOP */
 
 #if NISA > 0
 	isa_defaultirq();
@@ -3204,6 +3214,7 @@ init386(paddr_t first_avail)
 
 #endif /* !L4 */
 
+#ifndef L4
 #if defined(MULTIPROCESSOR) || \
     (NACPI > 0 && !defined(SMALL_KERNEL))
 	/* install the lowmem ptp after boot args for 1:1 mappings */
@@ -3221,6 +3232,7 @@ init386(paddr_t first_avail)
 	    (paddr_t)ACPI_TRAMPOLINE,           /* physical */
 	    VM_PROT_ALL);                       /* protection */
 #endif
+#endif	/* !L4 */
 
 	tlbflush();
 #if 0
@@ -3480,6 +3492,11 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 	int error;
 	struct extent *ex;
 
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx bpa 0x%08lx size 0x%08lx flags 0x%08lx\n",
+	    __func__, (unsigned long)t, (unsigned long)bpa,
+	    (unsigned long)size, (unsigned long)flags);
+#endif
 	/*
 	 * Pick the appropriate extent map.
 	 */
@@ -3498,6 +3515,11 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 		panic("bus_space_map: bad bus space tag");
 	}
 
+#ifdef L4
+	if (t == I386_BUS_SPACE_MEM)
+		_bus_phys_to_virt(bpa, size, &bpa);
+#endif
+
 	/*
 	 * Before we go any further, let's make sure that this
 	 * region is available.
@@ -3515,10 +3537,12 @@ bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size, int flags,
 		return (0);
 	}
 
-	if (IOM_BEGIN <= bpa && bpa <= IOM_END) {
+#ifndef L4	/* XXX hshoexer */
+	if (IOM_BEGIN <= bpa && bpa < IOM_END) {
 		*bshp = (bus_space_handle_t)ISA_HOLE_VADDR(bpa);
 		return (0);
 	}
+#endif
 
 	/*
 	 * For memory space, map the bus physical address to
@@ -3548,6 +3572,11 @@ _bus_space_map(bus_space_tag_t t, bus_addr_t bpa, bus_size_t size,
 		*bshp = bpa;
 		return (0);
 	}
+
+#ifdef L4
+	if (t == I386_BUS_SPACE_MEM)
+		_bus_phys_to_virt(bpa, size, &bpa);
+#endif
 
 	/*
 	 * For memory space, map the bus physical address to
@@ -3580,6 +3609,13 @@ bus_space_alloc(bus_space_tag_t t, bus_addr_t rstart, bus_addr_t rend,
 	default:
 		panic("bus_space_alloc: bad bus space tag");
 	}
+
+#ifdef L4
+	if (t == I386_BUS_SPACE_MEM) {
+		_bus_phys_to_virt(rstart, size, &rstart);
+		rend = rstart + size;
+	}
+#endif	/* L4 */
 
 	/*
 	 * Sanity check the allocation against the extent's boundaries.
@@ -3669,6 +3705,14 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 	struct extent *ex;
 	u_long va, endva;
 	bus_addr_t bpa;
+#ifdef L4
+	L4XV_V(f);
+#endif
+
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx bsh 0x%08lx size %zu\n", __func__,
+	    (unsigned long)t, (unsigned long)bsh, size);
+#endif
 
 	/*
 	 * Find the correct extent and bus physical address.
@@ -3679,7 +3723,7 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 	} else if (t == I386_BUS_SPACE_MEM) {
 		ex = iomem_ex;
 		bpa = (bus_addr_t)ISA_PHYSADDR(bsh);
-		if (IOM_BEGIN <= bpa && bpa <= IOM_END)
+		if (IOM_BEGIN <= bpa && bpa < IOM_END)
 			goto ok;
 
 		va = trunc_page(bsh);
@@ -3700,6 +3744,18 @@ bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size)
 		 * Free the kernel virtual mapping.
 		 */
 		uvm_km_free(kernel_map, va, endva - va);
+#ifdef L4
+		/*
+		 * Release I/O memory space.
+		 */
+		L4XV_L(f);
+
+		if (l4io_release_iomem((l4_addr_t)bpa, (endva - va)))
+			panic("bus_space_unmap: could not unmap 0x%08lx/%zx",
+			    (unsigned long)bpa, (endva - va));
+
+		L4XV_U(f);
+#endif	/* L4 */
 	} else
 		panic("bus_space_unmap: bad bus space tag");
 
@@ -3718,6 +3774,14 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 {
 	u_long va, endva;
 	bus_addr_t bpa;
+#ifdef L4
+	L4XV_V(f);
+#endif
+
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: t 0x%08lx bsh 0x%08lx size %zu\n", __func__,
+	    (unsigned long)t, (unsigned long)bsh, size);
+#endif
 
 	/*
 	 * Find the correct bus physical address.
@@ -3726,7 +3790,7 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 		bpa = bsh;
 	} else if (t == I386_BUS_SPACE_MEM) {
 		bpa = (bus_addr_t)ISA_PHYSADDR(bsh);
-		if (IOM_BEGIN <= bpa && bpa <= IOM_END)
+		if (IOM_BEGIN <= bpa && bpa < IOM_END)
 			goto ok;
 
 		va = trunc_page(bsh);
@@ -3747,6 +3811,18 @@ _bus_space_unmap(bus_space_tag_t t, bus_space_handle_t bsh, bus_size_t size,
 		 * Free the kernel virtual mapping.
 		 */
 		uvm_km_free(kernel_map, va, endva - va);
+#ifdef L4
+		/*
+		 * Release I/O memory space.
+		 */
+		L4XV_L(f);
+
+		if (l4io_release_iomem((l4_addr_t)bpa, (endva - va)))
+			panic("bus_space_unmap: could not unmap 0x%08lx/%zx",
+			    (unsigned long)bpa, (endva - va));
+
+		L4XV_U(f);
+#endif	/* L4 */
 	} else
 		panic("bus_space_unmap: bad bus space tag");
 
@@ -3770,6 +3846,46 @@ bus_space_subregion(bus_space_tag_t t, bus_space_handle_t bsh,
 	*nbshp = bsh + offset;
 	return (0);
 }
+
+#ifdef L4
+/*
+ * Request I/O memory space and translate the provided physical address
+ * to the virtual address actually used.
+ */
+void
+_bus_phys_to_virt(bus_addr_t bpa, bus_size_t size, bus_addr_t *newbpa)
+{
+	l4_addr_t reg, regln;
+	bus_addr_t tmpbpa;
+	int error;
+	L4XV_V(f);
+
+	L4XV_L(f);
+
+	if (!l4io_has_resource(L4IO_RESOURCE_MEM, bpa, bpa + size - 1))
+		panic("_bus_phys_to_virt: no I/O memory at 0x%08lx/%zx",
+		    (unsigned long)bpa, (size_t)size - 1);
+
+	if ((error = l4io_search_iomem_region(bpa, size, &reg, &regln)) != 0) {
+		panic("_bus_phys_to_virt: no region found for 0x%08lx: %d",
+		    (unsigned long)bpa, error);
+	}
+
+	if ((error = l4io_request_iomem(reg, regln, 0, &tmpbpa)) != 0) {
+		panic("_bus_phys_to_virt: could not request 0x%08lx: %d",
+		    (unsigned long)reg, error);
+	}
+
+	L4XV_U(f);
+
+#ifdef BUS_SPACE_DEBUG
+	printf("%s: bpa 0x%08lx -> 0x%08lx\n", __func__,
+	    (unsigned long)bpa, (unsigned long)tmpbpa);
+#endif
+
+	*newbpa = tmpbpa;
+}
+#endif
 
 #ifdef DIAGNOSTIC
 void

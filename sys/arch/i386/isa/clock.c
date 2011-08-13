@@ -117,6 +117,7 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <l4/sys/types.h>
 #include <l4/sys/utcb.h>
 #include <l4/util/util.h>
+#include <i386/l4/dev/l4_machdep.h>
 #endif
 
 #ifdef L4_EXTERNAL_RTC
@@ -218,12 +219,7 @@ rtcdrain(void *v)
 int
 clockintr(void *arg)
 {
-#ifdef L4
-	/* This is the clock interrupt routine for the first CPU. */
-	struct clockframe *frame = curproc->p_md.md_regs;
-#else
 	struct clockframe *frame = arg;		/* not strictly necessary */
-#endif
 
 	if (timecounter->tc_get_timecount == i8254_get_timecount) {
 		if (i8254_ticked) {
@@ -252,6 +248,10 @@ rtcintr(void *arg)
 		psratio = profhz / stathz;
 	}
 
+#ifdef L4
+	statclock(frame);
+	stat = 1;
+#else
 	/* 
 	 * If rtcintr is 'late', next intr may happen immediately. 
 	 * Get them all. (Also, see comment in cpu_initclocks().)
@@ -260,6 +260,7 @@ rtcintr(void *arg)
 		statclock(frame);
 		stat = 1;
 	}
+#endif
 	return (stat);
 }
 
@@ -472,16 +473,8 @@ l4x_inittimecounter(void)
 void
 l4x_initclocks(void)
 {
-	/*
-	 * XXX
-	 * Since we do not have any other timesource, we reset stathz
-	 * to make hardclock(9) call statclock(9), too.
-	 */
-	stathz = 0;
-
-	/* Initialize callback to run hardclock(9) on every interrupt. */
-	(void)isa_intr_establish(NULL, 0, IST_EDGE, IPL_CLOCK,
-			clockintr, 0, "clock");
+	(void)l4_intr_establish(0, IST_EDGE, IPL_CLOCK, clockintr, 0, "clock");
+	(void)l4_intr_establish(8, IST_EDGE, IPL_CLOCK, rtcintr, 0, "rtc");
 
 	/* Initialize timecounter. */
 #ifdef L4_TIMECOUNTER

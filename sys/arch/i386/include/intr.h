@@ -93,11 +93,19 @@ void splassert_check(int, const char *);
 	if (ncpl > ocpl)		\
 		lapic_tpr = ncpl
 
+#ifdef L4	/* XXX hshoexer */
+
+#define _SPLX(ncpl) 			\
+	lapic_tpr = ncpl;		\
+	Xspllower()
+#else
 
 #define _SPLX(ncpl) 			\
 	lapic_tpr = ncpl;		\
 	if (curcpu()->ci_ipending & IUNMASK(ncpl))	\
 		Xspllower()
+
+#endif
 
 /*
  * Hardware interrupt masks

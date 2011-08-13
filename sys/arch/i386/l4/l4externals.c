@@ -16,6 +16,8 @@
 
 #include <machine/l4/l4lib.h>
 
+#include "pci.h"
+
 /*
  * Define all externally used L4re library functions.
  * They will be declared as weak symbols in the final image.
@@ -36,6 +38,16 @@ L4_EXTERNAL_FUNC(l4util_kip_kernel_abi_version);
 L4_EXTERNAL_FUNC(l4util_micros2l4to);
 
 L4_EXTERNAL_FUNC(l4io_request_irq);
+L4_EXTERNAL_FUNC(l4io_release_irq);
+L4_EXTERNAL_FUNC(l4io_iterate_devices);
+L4_EXTERNAL_FUNC(l4io_lookup_resource);
+L4_EXTERNAL_FUNC(l4io_request_ioport);
+L4_EXTERNAL_FUNC(l4io_request_iomem);
+L4_EXTERNAL_FUNC(l4io_request_iomem_region);
+L4_EXTERNAL_FUNC(l4re_ds_map_region);
+L4_EXTERNAL_FUNC(l4io_has_resource);
+L4_EXTERNAL_FUNC(l4io_search_iomem_region);
+L4_EXTERNAL_FUNC(l4io_release_iomem);
 
 #ifdef L4_EXTERNAL_RTC
 L4_EXTERNAL_FUNC(l4rtc_get_seconds_since_1970);
@@ -46,6 +58,13 @@ L4_EXTERNAL_FUNC(l4_sleep);
 L4_EXTERNAL_FUNC(l4re_ds_info);
 L4_EXTERNAL_FUNC(l4re_ds_copy_in);
 L4_EXTERNAL_FUNC(l4re_ma_free_srv);
+#endif
+
+#if NPCI > 0
+L4_EXTERNAL_FUNC(l4vbus_pci_cfg_read);
+L4_EXTERNAL_FUNC(l4vbus_pci_cfg_write);
+L4_EXTERNAL_FUNC(l4vbus_get_device_by_hid);
+L4_EXTERNAL_FUNC(l4vbus_pci_irq_enable);
 #endif
 
 L4_EXTERNAL_FUNC(l4re_debug_obj_debug);

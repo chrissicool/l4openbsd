@@ -73,6 +73,8 @@
 #define DEBUG_FUNCS	0x08
 #define DEBUG_PROBE	0x10
 
+//#define WDCDEBUG 1
+//#define WDCDEBUG_PCIIDE_MASK 0xff
 #ifdef WDCDEBUG
 #ifndef WDCDEBUG_PCIIDE_MASK
 #define WDCDEBUG_PCIIDE_MASK 0x00
@@ -2532,6 +2534,7 @@ piix_chip_map(struct pciide_softc *sc, struct pci_attach_args *pa)
 	int channel;
 	u_int32_t idetim;
 	bus_size_t cmdsize, ctlsize;
+	int s;
 
 	pcireg_t interface = PCI_INTERFACE(pa->pa_class);
 
@@ -2619,11 +2622,33 @@ piix_chip_map(struct pciide_softc *sc, struct pci_attach_args *pa)
 			    sc->sc_wdcdev.sc_dev.dv_xname, cp->name);
 			continue;
 		}
+#ifdef L4
+		/* 
+		 * XXX hshoexer:  We are getting interrupts as
+		 * soon as the device gets enabled deep down in
+		 * pciide_map_compat_intr().  However, the device's
+		 * registers seem to be not fully mapped, yet.  Thus
+		 * wdcintr() touches invalied register as the "base"
+		 * is still 0.  This seems to be fixed deep down in
+		 * pciide_mapchan().
+		 *
+		 * As a workaround, splbio() before establishing the
+		 * interrupt.
+		 */
+		s = splbio();
+#endif
 		/* PIIX are compat-only pciide devices */
 		pciide_map_compat_intr(pa, cp, channel, 0);
-		if (cp->hw_ok == 0)
+		if (cp->hw_ok == 0) {
+#ifdef L4	/* XXX hshoexer */
+			splx(s);
+#endif
 			continue;
+		}
 		pciide_mapchan(pa, cp, 0, &cmdsize, &ctlsize, pciide_pci_intr);
+#ifdef L4	/* XXX hshoexer */
+		splx(s);
+#endif
 		if (cp->hw_ok == 0)
 			goto next;
 		if (pciide_chan_candisable(cp)) {

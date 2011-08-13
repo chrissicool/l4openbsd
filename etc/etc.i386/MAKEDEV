@@ -103,6 +103,7 @@
 #	nnpfs*	NNPFS filesystem node
 #	vscsi*	Virtual SCSI controller
 #	diskmap	Disk mapper
+#	l4ser	L4 serial console
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 T=$0
 
@@ -530,6 +531,10 @@ tty[0-7][0-9a-f])
 	o=$(h2d $U)
 	M tty$U c 8 $o 660 dialer uucp
 	M cua$U c 8 $(($o+128)) 660 dialer uucp
+	;;
+
+l4ser)
+	M l4ser c 92 0 600
 	;;
 
 st*)

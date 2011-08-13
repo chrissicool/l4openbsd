@@ -412,10 +412,17 @@ extern int pmap_pg_g;			/* do we support PG_G? */
 
 #ifdef L4
 
+/*
+ * XXX hshoexer:  These functions assume that PTD[pdei(va)] is always
+ * valid, ie. != NULL!
+ */
 static __inline pt_entry_t *
 vtopte(vaddr_t va)
 {
 	pt_entry_t *ptes = (pt_entry_t *)(PTD[pdei(va)] & PG_FRAME);
+	/* XXX hshoexer: ptes might be NULL */
+	if (ptes == NULL)
+		panic("vtopte: no valid page table page for va 0x%08lx\n", va);
 	return ((pt_entry_t *)&ptes[ptei(va)]);
 }
 
@@ -424,6 +431,10 @@ kvtopte(vaddr_t kva)
 {
 	pd_entry_t *kptd = pmap_kernel()->pm_pdir;
 	pt_entry_t *ptes = (pt_entry_t *)(kptd[pdei(kva)] & PG_FRAME);
+	/* XXX hshoexer: kptd might be NULL */
+	if (ptes == NULL)
+		panic("kvtopte: no valid page table page for kva 0x%08lx\n",
+		    kva);
 	return ((pt_entry_t *)&ptes[ptei(kva)]);
 }
 
@@ -433,7 +444,7 @@ kvtopte(vaddr_t kva)
 
 pd_entry_t	*pmap_map_pdes(struct pmap *);
 void		pmap_unmap_pdes(struct pmap *);
-paddr_t		*l4x_pmap_walk_pd(struct proc *, vaddr_t, vm_prot_t);
+paddr_t		l4x_pmap_walk_pd(struct proc *, vaddr_t, vm_prot_t);
 
 #endif /* L4 */
 

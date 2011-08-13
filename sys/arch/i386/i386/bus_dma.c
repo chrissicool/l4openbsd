@@ -78,6 +78,10 @@
 
 #include <uvm/uvm_extern.h>
 
+#ifdef L4
+#include <machine/l4/setup.h>
+#endif
+
 extern paddr_t avail_end;
 
 int	_bus_dmamap_load_buffer(bus_dma_tag_t, bus_dmamap_t, void *,
@@ -145,7 +149,7 @@ int
 _bus_dmamap_load(bus_dma_tag_t t, bus_dmamap_t map, void *buf,
     bus_size_t buflen, struct proc *p, int flags)
 {
-	bus_addr_t lastaddr = 0;
+	bus_addr_t lastaddr = 0;	/* XXX hshoexer */
 	int seg, error;
 
 	/*
@@ -174,7 +178,7 @@ int
 _bus_dmamap_load_mbuf(bus_dma_tag_t t, bus_dmamap_t map, struct mbuf *m0,
     int flags)
 {
-	paddr_t lastaddr = 0;
+	paddr_t lastaddr = 0;		/* XXX hshoexer */
 	int seg, error, first;
 	struct mbuf *m;
 
@@ -216,7 +220,7 @@ int
 _bus_dmamap_load_uio(bus_dma_tag_t t, bus_dmamap_t map, struct uio *uio,
     int flags)
 {
-	paddr_t lastaddr = 0;
+	paddr_t lastaddr = 0;		/* XXX hshoexer */
 	int seg, i, error, first;
 	bus_size_t minlen, resid;
 	struct proc *p = NULL;
@@ -279,6 +283,10 @@ _bus_dmamap_load_raw(bus_dma_tag_t t, bus_dmamap_t map, bus_dma_segment_t *segs,
 	bus_size_t plen, sgsize, mapsize;
 	int first = 1;
 	int i, seg = 0;
+
+#if L4
+	panic("%s: not implemented", __func__);
+#endif
 
 	/*
 	 * Make sure that on error condition we return "no valid mappings".
@@ -389,6 +397,9 @@ _bus_dmamem_free(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs)
 {
 	struct vm_page *m;
 	bus_addr_t addr;
+#ifdef L4
+	bus_addr_t tmpaddr;
+#endif
 	struct pglist mlist;
 	int curseg;
 
@@ -400,7 +411,17 @@ _bus_dmamem_free(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs)
 		for (addr = segs[curseg].ds_addr;
 		    addr < (segs[curseg].ds_addr + segs[curseg].ds_len);
 		    addr += PAGE_SIZE) {
+#ifdef L4
+			/*
+			 * DMA map uses host physical address.
+			 */
+			if ((tmpaddr = l4x_phys_to_virt(addr)) == NULL)
+				panic("%s: could not convert address",
+				    __func__);
+			m = PHYS_TO_VM_PAGE(tmpaddr);
+#else
 			m = PHYS_TO_VM_PAGE(addr);
+#endif
 			TAILQ_INSERT_TAIL(&mlist, m, pageq);
 		}
 	}
@@ -419,6 +440,9 @@ _bus_dmamem_map(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 	vaddr_t va, sva;
 	size_t ssize;
 	bus_addr_t addr;
+#ifdef L4
+	bus_addr_t origaddr;
+#endif
 	int curseg, pmapflags = 0, ret;
 
 	if (flags & BUS_DMA_NOCACHE)
@@ -439,6 +463,16 @@ _bus_dmamem_map(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 		    addr += PAGE_SIZE, va += PAGE_SIZE, size -= PAGE_SIZE) {
 			if (size == 0)
 				panic("_bus_dmamem_map: size botch");
+#ifdef L4
+			/*
+			 * DMA map uses the host physical address.
+			 */
+			origaddr = addr;
+			if ((addr = l4x_phys_to_virt(addr)) == NULL)
+				panic("%s: could not get guest physical "
+				    "address for 0x%08lx", __func__,
+				    (unsigned long)origaddr);
+#endif
 			/*
 			 * we don't want pmap to panic here if it can't
 			 * alloc
@@ -458,6 +492,13 @@ _bus_dmamem_map(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 				return (ret);
 			}
 
+#ifdef L4
+			/*
+			 * Put back original host physical address,
+			 * to make the for-loop work correctly.
+			 */
+			addr = origaddr;
+#endif
 		}
 	}
 	pmap_update(pmap_kernel());
@@ -539,14 +580,25 @@ _bus_dmamap_load_buffer(bus_dma_tag_t t, bus_dmamap_t map, void *buf,
 	else
 		pmap = pmap_kernel();
 
-	lastaddr = *lastaddrp;
+	lastaddr = *lastaddrp;			/* XXX hshoexer */
 	bmask  = ~(map->_dm_boundary - 1);
 
 	for (seg = *segp; buflen > 0 ; ) {
 		/*
 		 * Get the physical address for this segment.
 		 */
-		pmap_extract(pmap, vaddr, (paddr_t *)&curaddr);
+		if (pmap_extract(pmap, vaddr, (paddr_t *)&curaddr) == 0)
+			panic("%s: could not extract vaddr 0x%08lx pmap %p\n",
+			    __func__, (unsigned long)vaddr, pmap);
+#ifdef L4
+		/*
+		 * Convert to host physical address.  This one will be
+		 * put into the DMA map's ds_addr.  All calculations below
+		 * dealing with coalescing and boundary checking will use
+		 * the host physical addresses.
+		 */
+		curaddr = (bus_addr_t)l4x_virt_to_phys(curaddr);
+#endif
 
 		/*
 		 * Compute the segment size, and adjust counts.
@@ -648,11 +700,28 @@ _bus_dmamem_alloc_range(bus_dma_tag_t t, bus_size_t size, bus_size_t alignment,
 	 */
 	m = TAILQ_FIRST(&mlist);
 	curseg = 0;
+#ifdef L4
+	/*
+	 * We use the host physical address throughout for the map.
+	 */
+	lastaddr = segs[curseg].ds_addr =
+	    (bus_addr_t)l4x_virt_to_phys(VM_PAGE_TO_PHYS(m));
+	if (segs[curseg].ds_addr == NULL)
+		panic("%s: could not get host physical address for 0x%08lx",
+		    __func__, (unsigned long)VM_PAGE_TO_PHYS(m));
+#else
 	lastaddr = segs[curseg].ds_addr = VM_PAGE_TO_PHYS(m);
+#endif
 	segs[curseg].ds_len = PAGE_SIZE;
 
 	for (m = TAILQ_NEXT(m, pageq); m != NULL; m = TAILQ_NEXT(m, pageq)) {
 		curaddr = VM_PAGE_TO_PHYS(m);
+#ifdef L4
+		/* Use host physical address throughout. */
+		if ((curaddr = l4x_virt_to_phys(curaddr)) == NULL)
+			panic("%s: could not get host physical address "
+			    "for 0x%08lx", __func__, VM_PAGE_TO_PHYS(m));
+#endif
 #ifdef DIAGNOSTIC
 		if (curseg == nsegs) {
 			printf("uvm_pglistalloc returned too many\n");

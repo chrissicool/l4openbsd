@@ -53,7 +53,7 @@ int
 l4x_copyout(void *src, void *dst, size_t len)
 {
 	struct proc *p = curproc;
-	paddr_t *dst_p, upper_bound;
+	paddr_t dst_p, upper_bound;
 	size_t copy_len;
 	L4XV_V(n);
 
@@ -66,16 +66,17 @@ l4x_copyout(void *src, void *dst, size_t len)
 		if (dst_p == NULL)
 			return EFAULT;
 
-		upper_bound = round_page((paddr_t)dst_p + 1);
+		upper_bound = round_page(dst_p + 1);
 
-		if ((unsigned)dst_p+len < upper_bound)
+		if (dst_p + len < upper_bound)
 			copy_len = len;
 		else
-			copy_len = (unsigned)upper_bound - (unsigned)dst_p;
+			copy_len = upper_bound - dst_p;
 
-		debug_printf("bcopy(%p, %p, %d)\n", src, dst_p, copy_len);
+		debug_printf("bcopy(0x%08lx, 0x%08lx, %d)\n", src, dst_p,
+		    copy_len);
 		L4XV_L(n);
-		bcopy(src, dst_p, copy_len);
+		bcopy(src, (void *)dst_p, copy_len);
 		L4XV_U(n);
 
 		src += copy_len;
@@ -90,7 +91,7 @@ int
 l4x_copyin(void *src, void *dst, size_t len)
 {
 	struct proc *p = curproc;
-	paddr_t *src_p, upper_bound;
+	paddr_t src_p, upper_bound;
 	size_t copy_len;
 	L4XV_V(n);
 
@@ -102,16 +103,17 @@ l4x_copyin(void *src, void *dst, size_t len)
 		if (src_p == NULL)
 			return EFAULT;
 
-		upper_bound = round_page((paddr_t)src_p + 1);
+		upper_bound = round_page(src_p + 1);
 
-		if ((unsigned)src_p+len < upper_bound)
+		if (src_p+len < upper_bound)
 			copy_len = len;
 		else
-			copy_len = (unsigned)upper_bound - (unsigned)src_p;
+			copy_len = upper_bound - src_p;
 
-		debug_printf("bcopy(%p, %p, %d)\n", src_p, dst, copy_len);
+		debug_printf("bcopy(0x%08lx, 0x%08lx, %d)\n", src_p, dst,
+		    copy_len);
 		L4XV_L(n);
-		bcopy(src_p, dst, copy_len);
+		bcopy((void *)src_p, dst, copy_len);
 		L4XV_U(n);
 
 		src += copy_len;

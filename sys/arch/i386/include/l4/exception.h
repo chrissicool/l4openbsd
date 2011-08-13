@@ -74,13 +74,12 @@ static inline void vcpu_to_ptregs(l4_vcpu_state_t *v,
 //	V2P(regs, tf_gs,    &v->r, gs);
 	V2P(regs, tf_trapno,    &v->r, trapno);
 	V2P(regs, tf_err,    &v->r, err);
-	if (v->saved_state & L4_VCPU_F_IRQ) {
+	if (v->saved_state & L4_VCPU_F_IRQ)
 	        regs->tf_eflags |= PSL_I;
-		regs->tf_cs |= (GICODE_SEL << 3);
-	} else {
+	else
 	        regs->tf_eflags &= ~PSL_I;
-	}
 
+	/* XXX hshoexer: upper 30 bits of cs are undefined */
 	regs->tf_cs = (regs->tf_cs & ~3) | ((v->saved_state & L4_VCPU_F_USER_MODE) ? SEL_UPL : SEL_KPL);
 }
 #undef V2P

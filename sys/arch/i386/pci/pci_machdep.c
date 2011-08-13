@@ -112,6 +112,19 @@ extern bios_pciinfo_t *bios_pciinfo;
 #include <i386/pci/pcibiosvar.h>
 #endif
 
+#ifdef L4
+#include <l4/vbus/vbus.h>
+#include <l4/vbus/vbus_pci.h>
+#include <l4/re/c/namespace.h>
+#include <machine/l4/l4lib.h>
+#include <i386/l4/dev/l4_machdep.h>
+
+int l4pci_probe(void);
+
+l4_cap_idx_t vbus;
+l4vbus_device_handle_t root_bridge;
+#endif	/* L4 */
+
 int pci_mode = -1;
 
 struct mutex pci_conf_lock = MUTEX_INITIALIZER(IPL_HIGH);
@@ -174,6 +187,29 @@ struct bus_dma_tag pci_bus_dma_tag = {
 	_bus_dmamem_unmap,
 	_bus_dmamem_mmap,
 };
+
+#ifdef L4
+int
+l4pci_probe(void) 
+{
+        L4XV_V(f);
+
+        vbus = l4re_get_env_cap("vbus");
+        if (l4_is_invalid_cap(vbus))
+                return 0;
+
+        L4XV_L(f);
+        if (l4vbus_get_device_by_hid(vbus, 0, &root_bridge, "PNP0A03", 0, 0)
+	    < 0) {
+                L4XV_U(f);
+                printf("no root bridge found, no PCI");
+                return 0;
+        } 
+        L4XV_U(f);
+
+	return 1;
+}
+#endif	/* L4 */
 
 void
 pci_attach_hook(struct device *parent, struct device *self,
@@ -260,6 +296,31 @@ pci_decompose_tag(pci_chipset_tag_t pc, pcitag_t tag, int *bp, int *dp, int *fp)
 	}
 }
 
+#ifdef L4
+pcireg_t
+pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
+{
+	L4XV_V(f);
+	pcireg_t data;
+	int ret;
+	int bus, slot, function;
+	l4_uint32_t df;
+
+	PCI_CONF_LOCK();
+
+	pci_decompose_tag(pc, tag, &bus, &slot, &function);
+	df = ((slot & 0xffff) << 16) | (function & 0xffff);
+
+	L4XV_L(f);
+	ret = l4vbus_pci_cfg_read(vbus, root_bridge, bus, df, reg, &data,
+	    sizeof(data) * 8);	/* XXX hshoexer */
+	L4XV_U(f);
+
+	PCI_CONF_UNLOCK();
+
+	return data;
+}
+#else	/* L4 */
 pcireg_t
 pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
 {
@@ -285,7 +346,30 @@ pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
 
 	return data;
 }
+#endif	/* L4 */
 
+#ifdef L4
+void
+pci_conf_write(pci_chipset_tag_t pc, pcitag_t tag, int reg, pcireg_t data)
+{
+	L4XV_V(f);
+	int ret;
+	int bus, slot, function;
+	l4_uint32_t df;
+
+	PCI_CONF_LOCK();
+
+	pci_decompose_tag(pc, tag, &bus, &slot, &function);
+	df = ((slot & 0xffff) << 16) | (function & 0xffff);
+
+	L4XV_L(f);
+	ret = l4vbus_pci_cfg_write(vbus, root_bridge, bus, df, reg, data,
+	    sizeof(data) * 8);	/* XXX hshoexer */
+	L4XV_U(f);
+
+	PCI_CONF_UNLOCK();
+}
+#else	/* L4 */
 void
 pci_conf_write(pci_chipset_tag_t pc, pcitag_t tag, int reg, pcireg_t data)
 {
@@ -308,6 +392,7 @@ pci_conf_write(pci_chipset_tag_t pc, pcitag_t tag, int reg, pcireg_t data)
 	}
 	PCI_CONF_UNLOCK();
 }
+#endif	/* L4 */
 
 int
 pci_mode_detect(void)
@@ -534,6 +619,11 @@ pci_intr_map(struct pci_attach_args *pa, pci_intr_handle_t *ihp)
 	}
 #endif
 
+#ifdef L4
+	if ((ihp->line = l4pci_device_enable(pa, 0)) < 0)
+		goto bad;
+#endif
+
 	return 0;
 
 bad:
@@ -546,6 +636,14 @@ pci_intr_string(pci_chipset_tag_t pc, pci_intr_handle_t ih)
 {
 	static char irqstr[64];
 	int line = ih.line & APIC_INT_LINE_MASK;
+
+#ifdef L4
+	if (line >= 0) {
+		snprintf(irqstr, sizeof(irqstr), "irq %d", line);
+		return (irqstr);
+	} else
+		panic("%s: line %d", __func__, line);
+#endif
 
 #if NIOAPIC > 0
 	if (ih.line & APIC_INT_VIA_APIC) {
@@ -585,6 +683,10 @@ pci_intr_establish(pci_chipset_tag_t pc, pci_intr_handle_t ih, int level,
 		return (apic_intr_establish(ih.line, IST_LEVEL, level, func, 
 		    arg, what));
 #endif
+
+#ifdef L4
+	return (l4_intr_establish(ih.line, IST_LEVEL, level, func, arg, what));
+#endif
 	if (l == 0 || l >= ICU_LEN || l == 2)
 		panic("pci_intr_establish: bogus handle 0x%x", l);
 
@@ -609,8 +711,10 @@ struct extent *pcimem_ex;
 void
 pci_init_extents(void)
 {
+#ifndef L4	/* XXX hshoexer */
 	bios_memmap_t *bmp;
 	u_int64_t size;
+#endif
 
 	if (pciio_ex == NULL) {
 		/*
@@ -632,6 +736,7 @@ pci_init_extents(void)
 		if (pcimem_ex == NULL)
 			return;
 
+#ifndef L4
 		for (bmp = bios_memmap; bmp->type != BIOS_MAP_END; bmp++) {
 			/*
 			 * Ignore address space beyond 4G.
@@ -651,6 +756,7 @@ pci_init_extents(void)
 				printf("memory map conflict 0x%llx/0x%llx\n",
 				    bmp->addr, bmp->size);
 		}
+#endif	/* !L4 */
 
 		/* Take out the video buffer area and BIOS areas. */
 		extent_alloc_region(pcimem_ex, IOM_BEGIN, IOM_SIZE,
@@ -670,3 +776,34 @@ pci_dev_postattach(struct device *dev, struct pci_attach_args *pa)
 	acpi_pci_match(dev, pa);
 #endif
 }
+
+#ifdef L4
+int
+l4pci_device_enable(struct pci_attach_args *pa, int altirq)
+{
+	int pin = pa->pa_rawintrpin;
+	int line = pa->pa_intrline;
+	l4_uint32_t df;
+	unsigned char trigger, polarity;
+	int irq, bus, dev, func;
+	L4XV_V(f);
+
+	/* XXX hshoexer */
+	if (altirq != 0)
+		line = altirq;
+
+	L4XV_L(f);
+
+	pci_decompose_tag(pa->pa_pc, pa->pa_tag, &bus, &dev, &func);
+	df = ((dev & 0xffff) << 16) | (func & 0xffff);
+
+	irq = l4vbus_pci_irq_enable(vbus, root_bridge, bus, df, pin, &trigger,
+	    &polarity);
+	if (irq < 0)
+		panic("Failed to enable PCI INT %c: no GSI\n", 'A' + pin);
+
+	L4XV_U(f);
+
+	return irq;
+}
+#endif	/* L4 */

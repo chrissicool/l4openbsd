@@ -70,7 +70,7 @@
 #include <l4/io/io.h>
 
 /*
- * sanety check
+ * sanity check
  */
 #ifdef MULTIPROCESSOR
 #error We are not ready for option MULTIPROCESSOR yet!
@@ -102,7 +102,8 @@ l4_cap_idx_t l4x_user_gate[MAXCPUS];
 unsigned l4x_fiasco_gdt_entry_offset;
 
 struct simplelock l4x_cap_lock;
-static char init_stack[2*PAGE_SIZE];	/* XXX cl: this is wrong, but sufficient */
+/* XXX cl: this is wrong, but sufficient */
+char init_stack[2*PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
 enum {
 	L4X_SERVER_EXIT = 1,
 };
@@ -158,13 +159,13 @@ int L4_CV l4start(int argc, char **argv);
 
 L4_CV l4_utcb_t *l4_utcb_wrap(void);
 
-static void l4x_configuration_sanity_check(void);
+void l4x_configuration_sanity_check(void);
 
-static int l4x_cpu_virt_phys_map_init(void);
-static inline void l4x_x86_utcb_save_orig_segment(void);
+int l4x_cpu_virt_phys_map_init(void);
+inline void l4x_x86_utcb_save_orig_segment(void);
 //unsigned l4x_x86_utcb_get_orig_segment(void);
 
-static void get_initial_cpu_capabilities(void);
+void get_initial_cpu_capabilities(void);
 
 void l4x_load_gdt_register(struct region_descriptor *gdt);
 void l4x_register_pointer_section(void *p_in_addr,
@@ -172,20 +173,22 @@ void l4x_register_pointer_section(void *p_in_addr,
 void l4x_register_region(const l4re_ds_t ds, void *start,
 		int allow_noncontig, const char *tag);
 
-static void l4x_setup_upage(void);
+void l4x_setup_upage(void);
+void l4x_x86_register_ports(l4io_resource_t *);
+void l4x_scan_hw_resources(void);
 
-static L4_CV void l4x_bsd_startup(void *data);
-static void l4x_server_loop(void) __attribute__((__noreturn__));
+L4_CV void l4x_bsd_startup(void *data);
+void l4x_server_loop(void) __attribute__((__noreturn__));
 void l4x_linux_main_exit(void);
 void l4x_setup_curproc(void);
-static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag);
-static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc);
-static inline int l4x_handle_pagefault(unsigned long pfa,
+int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag);
+inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc);
+inline int l4x_handle_pagefault(unsigned long pfa,
 					unsigned long ip, int wr);
-static void l4x_setup_die_utcb(l4_exc_regs_t *exc);
-static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write);
+void l4x_setup_die_utcb(l4_exc_regs_t *exc);
+int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write);
 
-static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu);
+void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu);
 
 void exit(int code);
 
@@ -198,9 +201,7 @@ extern char *rd_root_image;		/* from dev/rd.c */
 static char l4x_rd_path[L4X_MAX_RD_PATH];
 
 void l4x_load_initrd(char **command_line);
-static int fprov_load_initrd(const char *filename,
-                             void  *rd_start,
-                             size_t size);
+int fprov_load_initrd(const char *filename, size_t size);
 int l4x_query_and_get_ds(const char *name, const char *logprefix,
 		l4_cap_idx_t *dscap, void **addr,
 		l4re_ds_stats_t *dsstat);
@@ -236,6 +237,64 @@ void l4x_cpu_thread_set(int cpu, l4lx_thread_t tid)
        l4x_cpu_threads[cpu] = tid;
 }
 
+static u_int32_t l4x_x86_kernel_ioports[65536 / sizeof(u_int32_t)];
+
+void l4x_x86_register_ports(l4io_resource_t *res)
+{
+	unsigned i;
+
+	if (res->type != L4IO_RESOURCE_PORT)
+		return;
+
+	if (res->start > res->end)
+		return;
+
+	for (i = res->start; i <= res->end; ++i)
+		if (i < 65536)
+			setbit((volatile u_int32_t *)l4x_x86_kernel_ioports, i);
+
+}
+
+void l4x_scan_hw_resources(void)
+{
+	l4io_device_handle_t dh = l4io_get_root_device();
+	l4io_device_t dev;
+	l4io_resource_handle_t reshandle;
+
+	LOG_printf("Device scan:\n");
+        while (1) {
+                l4io_resource_t res;
+
+                if (l4io_iterate_devices(&dh, &dev, &reshandle))
+                        break;
+
+                if (dev.num_resources == 0)
+                        continue;
+
+                LOG_printf("  Device: %s\n", dev.name);
+
+                while (!l4io_lookup_resource(dh, L4IO_RESOURCE_ANY,
+		    &reshandle, &res)) {
+                        char *t = "undef";
+
+                        switch (res.type) {
+                                case L4IO_RESOURCE_IRQ:  t = "IRQ";  break;
+                                case L4IO_RESOURCE_MEM:  t = "MEM";  break;
+                                case L4IO_RESOURCE_PORT: t = "PORT"; break;
+                        };
+
+                        LOG_printf("    %s: %08lx - %08lx\n", t, res.start,
+			    res.end);
+
+#ifdef ARCH_x86
+                        l4x_x86_register_ports(&res);
+                        l4io_request_ioport(res.start, res.end - res.start + 1);
+#endif
+                }
+        }
+}
+
+
 /*
  * The starting point.
  */
@@ -248,6 +307,8 @@ int L4_CV l4start(int argc, char **argv)
 	extern char __rodata_start[], _erodata[];
 	extern char __data_start[], _edata[];
 	extern char __bss_start[], _end[];
+
+	extern char *ssym, *esym;
 
 	/* locore.s */
 	extern int bootargc;
@@ -292,19 +353,23 @@ int L4_CV l4start(int argc, char **argv)
 			(unsigned long)&_edata - (unsigned long)&__data_start);
 	l4_touch_rw(&__bss_start,
 			(unsigned long)&_end - (unsigned long)&__bss_start);
+	l4_touch_ro(ssym, esym - ssym);
 
-	LOG_printf("Image:   Text:  %08lx - %08lx [%ldkB]\n",
+	LOG_printf("Image:   Text:  0x%08lx - 0x%08lx [%ldkB]\n",
 			(unsigned long)&__text_start, (unsigned long)&_etext,
 			((unsigned long)&_etext - (unsigned long)&__text_start) >> 10);
-	LOG_printf("       ROData:  %08lx - %08lx [%ldkB]\n",
+	LOG_printf("       ROData:  0x%08lx - 0x%08lx [%ldkB]\n",
 			(unsigned long)&__rodata_start, (unsigned long)&_erodata,
 			((unsigned long)&_erodata - (unsigned long)&__rodata_start) >> 10);
-	LOG_printf("         Data:  %08lx - %08lx [%ldkB]\n",
+	LOG_printf("         Data:  0x%08lx - 0x%08lx [%ldkB]\n",
 			(unsigned long)&__data_start, (unsigned long)&_edata,
 			((unsigned long)&_edata - (unsigned long)&__data_start) >> 10);
-	LOG_printf("          BSS:  %08lx - %08lx [%ldkB]\n",
+	LOG_printf("          BSS:  0x%08lx - 0x%08lx [%ldkB]\n",
 			(unsigned long)&__bss_start, (unsigned long)&_end,
 			((unsigned long)&_end - (unsigned long)&__bss_start) >> 10);
+	LOG_printf("      Symbols:  %08p - %08p [%ldkB]\n",
+			ssym, esym, (esym - ssym) >> 10);
+			
 
 	/* some things from head.S */
 	get_initial_cpu_capabilities();
@@ -313,6 +378,34 @@ int L4_CV l4start(int argc, char **argv)
 	 * but l4lx_thread_create needs some initial data for the return
 	 * value... */
 	linux_server_thread_id = l4re_env()->main_thread;
+
+#if defined(ARCH_x86) && defined(CONFIG_VGA_CONSOLE)
+	/* map VGA range */
+        if (l4io_request_iomem_region(0xa0000, 0xa0000, 0xc0000 - 0xa0000, 0)) {
+		LOG_printf("Failed to map VGA area.\n");
+                return 0;
+        }
+        if (l4x_pagein(0xa0000, 0xc0000 - 0xa0000, 1))
+		LOG_printf("Page-in of VGA failed.\n");
+#endif
+
+#ifdef ARCH_x86
+	/* map EBDA range */
+        if (l4io_request_iomem_region(0x9f000, 0x9f000, 0x0a0000 - 0x9f000, 0)) {
+		LOG_printf("Failed to map EBDA area.\n");
+                return 0;
+        }
+        if (l4x_pagein(0x9f000, 0xa0000 - 0x9f000, 1))
+		LOG_printf("Page-in of EBDA failed.\n");
+
+	/* map BIOS range */
+        if (l4io_request_iomem_region(0xc0000, 0xc0000, 0x100000 - 0xc0000, 0)) {
+		LOG_printf("Failed to map BIOS area.\n");
+                return 0;
+        }
+        if (l4x_pagein(0xc0000, 0x100000 - 0xc0000, 1))
+		LOG_printf("Page-in of BIOS failed.\n");
+#endif
 
 #ifdef ARCH_x86
 	{
@@ -342,6 +435,8 @@ int L4_CV l4start(int argc, char **argv)
 
 	l4x_iodb_init();
 
+	l4x_scan_hw_resources();
+
 	/* Initialize GDT entry offset */
 	l4x_fiasco_gdt_entry_offset 
 		= fiasco_gdt_get_entry_offset(l4re_env()->main_thread, l4_utcb());
@@ -352,8 +447,17 @@ int L4_CV l4start(int argc, char **argv)
 	l4x_register_pointer_section(&__rodata_start, 0, "sec-rodata");
 	l4x_register_pointer_section(&__data_start, 0, "sec-data");
 
-	/* VGA BIOS memory hole */
-	l4x_v2p_add_item(0xa0000, 0xa0000, 0xfffff - 0xa0000);
+#if defined(ARCH_x86) && defined(CONFIG_VGA_CONSOLE)
+	/* VGA memory hole */
+	l4x_v2p_add_item(0xa0000, 0xa0000, 0xbffff - 0xa0000);
+#endif
+#ifdef ARCH_x86
+	/* EBDA */
+	l4x_v2p_add_item(0x9f000, 0x9f000, 0x9ffff - 0x9f000);
+
+	/* BIOS memory hole */
+	l4x_v2p_add_item(0xc0000, 0xc0000, 0xfffff - 0xc0000);
+#endif
 
 #ifdef L4_EXTERNAL_RTC
 	l4_uint32_t seconds;
@@ -369,7 +473,7 @@ int L4_CV l4start(int argc, char **argv)
 	/* create simple_lock for l4x_bsd_startup thread */
 	simple_lock_init(&l4x_cap_lock);
 
-	/* fire up Linux server, will wait until start message */
+	/* fire up OpenBSD server, will wait until start message */
 	main_id = l4lx_thread_create(l4x_bsd_startup, 0,
 			(char *)init_stack + sizeof(init_stack),
 			&l4x_start_thread_id, sizeof(l4x_start_thread_id),
@@ -381,6 +485,9 @@ int L4_CV l4start(int argc, char **argv)
 		LOG_printf("No caps to create main thread\n");
 		return 1;
 	}
+
+	/* Register stack */
+	l4x_register_pointer_section(&init_stack, 0, "init_stack");
 
 	LOG_printf("main thread will be " PRINTF_L4TASK_FORM "\n",
 			PRINTF_L4TASK_ARG(l4lx_thread_get_cap(main_id)));
@@ -422,7 +529,8 @@ L4_CV l4_utcb_t *l4_utcb_wrap(void)
 #endif
 }
 
-static void l4x_configuration_sanity_check(void) {
+void l4x_configuration_sanity_check(void)
+{
 	char *required_kernel_features[] = {
 		"io_prot", "segments",
 	};
@@ -452,7 +560,8 @@ static void l4x_configuration_sanity_check(void) {
 }
 
 
-static int l4x_cpu_virt_phys_map_init(void) {
+int l4x_cpu_virt_phys_map_init(void)
+{
 	l4_umword_t max_cpus;
 	l4_sched_cpu_set_t cs = l4_sched_cpu_set(0, 0, 0);
 	unsigned i;
@@ -475,7 +584,7 @@ static int l4x_cpu_virt_phys_map_init(void) {
 
 #ifdef ARCH_x86
 static unsigned l4x_x86_orig_utcb_segment;
-static inline void l4x_x86_utcb_save_orig_segment(void)
+inline void l4x_x86_utcb_save_orig_segment(void)
 {
 	asm volatile ("mov %%fs, %0": "=r" (l4x_x86_orig_utcb_segment));
 }
@@ -488,7 +597,7 @@ unsigned l4x_x86_utcb_get_orig_segment(void)
 static inline void l4x_x86_utcb_save_orig_segment(void) {}
 #endif
 
-static void get_initial_cpu_capabilities(void)
+void get_initial_cpu_capabilities(void)
 {
 	/* XXX cl: we should set a l4util_cpu_capabilities() here */
 }
@@ -546,7 +655,7 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 
 	ds_size = l4re_ds_size(ds);
 
-	LOG_printf("%15s: virt: %08p to %08p [%u KiB]\n",
+	LOG_printf("%15s: Virt: %08p to %08p [%u KiB]\n",
 			tag, start, start + ds_size - 1, ds_size >> 10);
 
 	while (offset < ds_size) {
@@ -561,14 +670,14 @@ void l4x_register_region(const l4re_ds_t ds, void *start,
 
 		l4x_v2p_add_item(phys_addr, (vaddr_t)(start + offset), phys_size);
 
-		LOG_printf("%15s: Phys: 0x%08lx to 0x%08lx, Size: %8u\n",
-				tag, phys_addr, phys_addr + phys_size - 1, phys_size);
+		LOG_printf("%15s: Phys: 0x%08lx to 0x%08lx [%u KiB]\n",
+		    tag, phys_addr, phys_addr + phys_size - 1, phys_size >> 10);
 
 		offset += phys_size;
 	}
 }
 
-static void l4x_setup_upage(void)
+void l4x_setup_upage(void)
 {
 	l4re_ds_t ds;
 
@@ -584,7 +693,7 @@ static void l4x_setup_upage(void)
 
 	upage_addr = UPAGE_USER_ADDRESS;
 	if (l4re_rm_attach((void **)&upage_addr, USPACE,
-			L4RE_RM_SEARCH_ADDR,
+			L4RE_RM_SEARCH_ADDR | L4RE_RM_EAGER_MAP,
 			ds, 0, L4_PAGESHIFT)) {
 		LOG_printf("Cannot attach upage properly\n");
 		l4x_linux_main_exit();
@@ -598,11 +707,13 @@ static void l4x_setup_upage(void)
 	LOG_printf("Attached upage to 0x%08x\n", proc0paddr);
 }
 
-static L4_CV void l4x_bsd_startup(void *data)
+L4_CV void l4x_bsd_startup(void *data)
 {
 	l4_cap_idx_t caller_id = *(l4_cap_idx_t *)data;
+	paddr_t first_avail;
 	extern int main(void *framep);		/* see: sys/kern/init_main.c */
 	extern char **bootargv;
+	extern void init386(paddr_t); 		/* machdep.c */
 
 	/* Wait for start signal */
 	l4_ipc_receive(caller_id, l4_utcb(), L4_IPC_NEVER);
@@ -626,7 +737,8 @@ static L4_CV void l4x_bsd_startup(void *data)
 	 * which we will skip here.
 	 */
 	l4x_memory_setup(bootargv);
-	paddr_t first_avail = l4x_setup_kernel_ptd();
+	first_avail = l4x_setup_kernel_ptd((l4_addr_t)&init_stack,
+	    sizeof(init_stack));
 
 	/*
 	 * At this point we have a halfway usable proc0 structure.
@@ -645,9 +757,7 @@ static L4_CV void l4x_bsd_startup(void *data)
 	 */
 	enable_intr();
 
-	extern void init386(paddr_t first_avail); 	/* machdep.c */
 	init386(first_avail);
-
 
 	/* Finally, fasten your seatbelts... */
 	main(data);
@@ -656,7 +766,7 @@ static L4_CV void l4x_bsd_startup(void *data)
 	l4x_linux_main_exit();
 }
 
-static void l4x_server_loop(void)
+void l4x_server_loop(void)
 {
 	int do_wait = 1;
 	l4_msgtag_t tag = (l4_msgtag_t){0};
@@ -741,7 +851,7 @@ l4x_setup_curproc(void)
 #define RN(n) r##n
 #endif
 
-static int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
+int l4x_default(l4_cap_idx_t *src_id, l4_msgtag_t *tag)
 {
 	l4_exc_regs_t exc;
 	l4_umword_t pfa;
@@ -892,7 +1002,7 @@ int l4x_vcpu_handle_kernel_exc(l4_vcpu_regs_t *vr)
 	return i != l4x_exception_funcs;
 }
 
-static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc)
+inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc)
 {
 	LOG_printf("Exception: "l4util_idfmt": pc = "l4_addr_fmt
 			" trapno = 0x%lx err/pfa = 0x%lx%s\n",
@@ -918,7 +1028,7 @@ static inline void l4x_print_exception(l4_cap_idx_t t, l4_exc_regs_t *exc)
 	}
 }
 
-static inline int l4x_handle_pagefault(unsigned long pfa, unsigned long ip,
+inline int l4x_handle_pagefault(unsigned long pfa, unsigned long ip,
 		int wr)
 {
 	l4_addr_t addr;
@@ -945,7 +1055,7 @@ static inline int l4x_handle_pagefault(unsigned long pfa, unsigned long ip,
 	return l4x_forward_pf(pfa, ip, wr);
 }
 
-static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
+void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 {
 	struct trapframe regs;
 	unsigned long regs_addr;
@@ -983,7 +1093,7 @@ static void l4x_setup_die_utcb(l4_exc_regs_t *exc)
 	outstring("\n");
 }
 
-static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
+int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
 {
 	l4_msgtag_t tag;
 	l4_umword_t err;
@@ -1014,7 +1124,7 @@ static int l4x_forward_pf(l4_umword_t addr, l4_umword_t pc, int extra_write)
 	return 1;
 }
 
-static void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu)
+void l4x_create_ugate(l4_cap_idx_t forthread, unsigned cpu)
 {
 	l4_msgtag_t r;
 	L4XV_V(flags);
@@ -1098,7 +1208,7 @@ int l4x_re_resolve_name(const char *name, l4_cap_idx_t *cap)
  * BEGIN Functions for l4x_exception_func_list[]
  */
 
-static int l4x_handle_msr(l4_exc_regs_t *exc)
+int l4x_handle_msr(l4_exc_regs_t *exc)
 {
 	void *pc = (void *)l4_utcb_exc_pc(exc);
 	unsigned long reg = exc->RN(cx);
@@ -1130,7 +1240,7 @@ static int l4x_handle_msr(l4_exc_regs_t *exc)
 	return 1; // not for us
 }
 
-static int l4x_handle_clisti(l4_exc_regs_t *exc)
+int l4x_handle_clisti(l4_exc_regs_t *exc)
 {
 	unsigned char opcode = *(unsigned char *)l4_utcb_exc_pc(exc);
 	extern void exit(int);
@@ -1185,9 +1295,7 @@ void l4x_load_initrd(char **command_line)
 	if (*l4x_rd_path) {
 		LOG_printf("Loading ramdisk: %s... ", l4x_rd_path);
 
-		if (fprov_load_initrd(l4x_rd_path,
-		                      rd_root_image,
-		                      rd_root_size)) {
+		if (fprov_load_initrd(l4x_rd_path, rd_root_size)) {
 			LOG_printf("failed\n");
 			LOG_flush();
 			l4x_exit_l4linux();
@@ -1195,15 +1303,14 @@ void l4x_load_initrd(char **command_line)
 		}
 
 		LOG_printf("from 0x%08lx to 0x%08lx [%ldKiB]\n",
-		           &rd_root_image[0],
-			   &rd_root_image[0] + rd_root_size - 1,
+		           (unsigned long)rd_root_image,
+			   (unsigned long)rd_root_image + rd_root_size - 1,
 		           rd_root_size >> 10);
 	}
+	l4_touch_rw(rd_root_image, rd_root_size - 1);
 }
 
-static int fprov_load_initrd(const char *filename,
-                             void *rd_start,
-                             size_t size)
+int fprov_load_initrd(const char *filename, size_t size)
 {
 	int ret;
 	l4re_ds_stats_t dsstat;

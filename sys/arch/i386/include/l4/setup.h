@@ -27,12 +27,13 @@ extern unsigned int l4x_kernel_taskno;
 extern l4_cap_idx_t linux_server_thread_id;
 
 /* main memory parameters from setupmem.c */
-extern char _end[];				/* end of kernel image */
-#define KVA_START	(round_page((unsigned long)_end))
-#define PA_START	(L4LX_USER_KERN_AREA_END + round_page((unsigned long)_end) - KERNBASE)
+extern char *esym;	/* End of symbol table */
+#define KVA_START	(round_page((unsigned long)esym))
+#define PA_START	(L4LX_USER_KERN_AREA_END + round_page((unsigned long)esym) - KERNBASE)
 extern l4re_ds_t l4x_ds_mainmem;
 extern l4re_ds_t l4x_ds_isa_dma;
-extern void *l4x_main_memory_start;		/* paddr_t */
+extern paddr_t l4x_main_memory_start;
+extern vaddr_t l4x_kv_memory_start;
 extern unsigned long l4x_mainmem_size;
 
 void l4x_v2p_init(void);
@@ -40,7 +41,8 @@ void l4x_v2p_add_item(l4_addr_t phys, vaddr_t virt, l4_size_t size);
 paddr_t l4x_virt_to_phys(volatile vaddr_t address);
 vaddr_t l4x_phys_to_virt(volatile paddr_t address);
 void l4x_memory_setup(char **cmdl);
-paddr_t l4x_setup_kernel_ptd(void);
+paddr_t l4x_setup_kernel_ptd(l4_addr_t, size_t);
+int l4x_pagein(unsigned long, unsigned long, int);
 
 unsigned l4x_x86_utcb_get_orig_segment(void);
 

@@ -33,6 +33,12 @@ _start:
 	mov 12(%esi), %edi
 	mov %edi, l4lx_kinfo
 
+	mov 16(%esi), %edi
+	mov %edi, ssym
+
+	mov 20(%esi), %edi
+	mov %edi, esym
+
 	jmp l4start
 .previous
 #endif
@@ -54,6 +60,14 @@ _start:
 
 	ldr r4, [r2, #12]
 	ldr r5, __address_l4lx_kinfo
+	str r4, [r5]
+
+	ldr r4, [r2, #16]
+	ldr r5, ssym
+	str r4, [r5]
+
+	ldr r4, [r2, #20]
+	ldr r5, esym
 	str r4, [r5]
 
 	b start

@@ -23,6 +23,8 @@
 
 //#include <machine/l4/l4lxapi/generic/irq_gen.h>
 #include <l4/sys/types.h>
+#include <machine/psl.h>
+
 
 /**
  * \defgroup irq Interrupt handling functionality.
@@ -60,7 +62,7 @@ void l4lx_irq_init(void);
  * \param irq	IRQ.
  * \return 1 if successful, 0 on failure.
  */
-unsigned int l4lx_irq_dev_startup(int irq);
+unsigned int l4lx_irq_dev_startup(struct intrhand *irq);
 
 /**
  * \brief Shutdown of a device IRQ.
@@ -68,7 +70,7 @@ unsigned int l4lx_irq_dev_startup(int irq);
  *
  * \param irq	IRQ.
  */
-//void l4lx_irq_dev_shutdown(unsigned int irq);
+void l4lx_irq_dev_shutdown(struct intrhand *irq);
 
 /**
  * \brief Set IRQ type.
@@ -86,7 +88,7 @@ unsigned int l4lx_irq_dev_startup(int irq);
  *
  * \param irq	IRQ.
  */
-void l4lx_irq_dev_enable(int irq);
+void l4lx_irq_dev_enable(struct intrhand *irq);
 
 
 /**
@@ -95,7 +97,7 @@ void l4lx_irq_dev_enable(int irq);
  *
  * \param irq	IRQ.
  */
-//void l4lx_irq_dev_disable(unsigned int irq);
+void l4lx_irq_dev_disable(struct intrhand *irq);
 
 /**
  * \brief Acknowledge (and possibly mask) a device IRQ.
@@ -144,29 +146,12 @@ void l4lx_irq_dev_unmask(unsigned int irq);
  *
  * \param irq   IRQ.
  */
-void l4lx_irq_dev_eoi(int irq);
+void l4lx_irq_dev_eoi(struct intrhand *irq);
 
 /**
  * \defgroup irq_timer Timer interrupt functionality.
  * \ingroup  irq
  */
-
-/**
- * \brief Startup of the timer interrupt.
- * \ingroup irq_timer
- *
- * \param irq	IRQ.
- * \return 1 if successful, 0 on failure.
- */
-//unsigned int l4lx_irq_timer_startup(int irq);
-
-/**
- * \brief Shutdown of an IRQ.
- * \ingroup irq_timer
- *
- * \param irq	IRQ.
- */
-//void l4lx_irq_timer_shutdown(unsigned int irq);
 
 /**
  * \brief Enable an IRQ.

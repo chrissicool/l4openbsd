@@ -65,6 +65,10 @@
 
 #include <dev/acpi/acpivar.h>
 
+#ifdef L4
+#include <i386/l4/dev/l4busvar.h>
+#endif
+
 #if NIPMI > 0
 #include <dev/ipmivar.h>
 #endif
@@ -109,12 +113,14 @@ union mainbus_attach_args {
 #endif
 	struct cpu_attach_args mba_caa;
 	struct apic_attach_args	aaa_caa;
+#ifndef L4
 #if NIPMI > 0
 	struct ipmi_attach_args mba_iaa;
 #endif
 #if NESM > 0
 	struct esm_attach_args mba_eaa;
 #endif
+#endif	/* !L4 */
 };
 
 /*
@@ -139,8 +145,11 @@ void
 mainbus_attach(struct device *parent, struct device *self, void *aux)
 {
 	union mainbus_attach_args	mba;
+#ifndef L4
 	extern void			(*setperf_setup)(struct cpu_info *);
+#endif
 	extern void			(*cpusensors_setup)(struct cpu_info *);
+	extern int			l4pci_probe(void);
 
 	printf("\n");
 
@@ -153,6 +162,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 	}
 #endif
 
+#ifndef L4
 #if NIPMI > 0
 	{
 		memset(&mba.mba_iaa, 0, sizeof(mba.mba_iaa));
@@ -170,6 +180,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 		config_found(self, &mba.mba_busname, mainbus_print);
 	}
 #endif
+#endif	/* !L4 */
 
 	if ((cpu_info_primary.ci_flags & CPUF_PRESENT) == 0) {
 		struct cpu_attach_args caa;
@@ -184,6 +195,15 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 
 		config_found(self, &caa, mainbus_print);
 	}
+
+#ifdef L4
+	if (l4bus_probe()) {
+		mba.mba_busname = "l4bus";
+		config_found(self, &mba.mba_busname, mainbus_print);
+	}
+#endif
+
+#ifndef L4
 #if NAMDMSR > 0
 	if (amdmsr_probe()) {
 		mba.mba_busname = "amdmsr";
@@ -202,6 +222,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 #ifdef MULTIPROCESSOR
 	mp_setperf_init();
 #endif
+#endif	/* ! L4 */
 
 	if (cpusensors_setup != NULL)
 		cpusensors_setup(&cpu_info_primary);
@@ -213,6 +234,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 	}
 #endif
 
+#ifndef L4
 #if NESM > 0
 	{
 		memset(&mba.mba_eaa, 0, sizeof(mba.mba_eaa));
@@ -223,6 +245,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 			config_found(self, &mba.mba_eaa, mainbus_print);
 	}
 #endif
+#endif
 
 	/*
 	 * XXX Note also that the presence of a PCI bus should
@@ -231,7 +254,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 	 * XXX that's not currently possible.
 	 */
 #if NPCI > 0
-	if (pci_mode_detect() != 0) {
+	if ((l4pci_probe() != 0) && (pci_mode_detect() != 0)) {
 		pci_init_extents();
 		
 		bzero(&mba.mba_pba, sizeof(mba.mba_pba));
@@ -257,7 +280,7 @@ mainbus_attach(struct device *parent, struct device *self, void *aux)
 #endif
 		config_found(self, &mba.mba_eba, mainbus_print);
 	}
-#endif /* !L4 */
+#endif	/* !L4 */
 
 	if (isa_has_been_seen == 0) {
 		mba.mba_iba.iba_busname = "isa";

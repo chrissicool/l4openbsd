@@ -77,6 +77,10 @@
 
 #include <sys/evcount.h>
 
+#ifdef L4
+#include <l4/re/c/util/cap.h>
+#endif
+
 /*
  * Interrupt handler chains.  isa_intr_establish() inserts a handler into
  * the list.  The handler is called with its (single) argument.
@@ -85,10 +89,15 @@
 struct intrhand {
 	int		(*ih_fun)(void *);
 	void		*ih_arg;
-	struct intrhand	*ih_next;
 	int		ih_level;
+	struct intrhand	*ih_next;
+	unsigned long	ih_pin;
 	int		ih_irq;
 	struct evcount	ih_count;
+	int		ih_vec;
+#ifdef L4
+	l4_cap_idx_t	ih_cap;
+#endif
 };
 
 #endif /* _LOCORE */

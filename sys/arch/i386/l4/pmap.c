@@ -84,6 +84,7 @@
 #include <machine/l4/stack_id.h>
 #include <machine/l4/l4lxapi/memory.h>
 #include <machine/l4/l4lxapi/task.h>
+#include <machine/l4/setup.h>
 
 #include <l4/sys/types.h>
 #include <l4/sys/task.h>
@@ -402,7 +403,7 @@ void	setcslimit(struct pmap *, struct trapframe *, struct pcb *, vaddr_t);
  * bits (PG_M|PG_U), if requested.
  * Return the equivalent physical RAM address.
  */
-paddr_t *
+paddr_t
 l4x_pmap_walk_pd(struct proc *p, vaddr_t uva, vm_prot_t access_type)
 {
 	struct vm_map *map = &p->p_vmspace->vm_map;
@@ -412,7 +413,7 @@ l4x_pmap_walk_pd(struct proc *p, vaddr_t uva, vm_prot_t access_type)
 	u_int32_t md_prot;
 
 	if (pmap == NULL)
-		return NULL;
+		return 0;
 
 	KERNEL_PROC_LOCK(p);				/* lock proc */
 
@@ -427,7 +428,7 @@ start_walk:
 		if (uvm_fault(map, uva, 0, access_type)) {
 			pmap_unmap_pdes(pmap);		/* unlock pmap */
 			KERNEL_PROC_UNLOCK(p);		/* unlock proc */
-			return NULL;
+			return 0;
 		}
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
@@ -444,7 +445,7 @@ start_walk:
 		if (uvm_fault(map, uva, 0, access_type)) {
 			pmap_unmap_pdes(pmap);		/* unlock pmap */
 			KERNEL_PROC_UNLOCK(p);		/* unlock proc */
-			return NULL;
+			return 0;
 		}
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
@@ -461,7 +462,7 @@ start_walk:
 		if (uvm_fault(map, uva, 0, access_type)) {
 			pmap_unmap_pdes(pmap);		/* unlock pmap */
 			KERNEL_PROC_UNLOCK(p);		/* unlock proc */
-			return NULL;
+			return 0;
 		}
 
 		pdb_printf("%s: Finally uvm_fault()==0\n", __func__);
@@ -482,7 +483,7 @@ start_walk:
 	pmap_unmap_pdes(pmap);				/* unlock pmap */
 	KERNEL_PROC_UNLOCK(p);				/* unlock proc */
 
-	return ((paddr_t *)((*pte & PG_FRAME) | (uva & ~PG_FRAME)));
+	return ((paddr_t)((*pte & PG_FRAME) | (uva & ~PG_FRAME)));
 }
 
 /*
@@ -526,7 +527,7 @@ l4x_remove_pte(struct pmap *pmap, vaddr_t va, int flush_rights)
 				L4_FP_ALL_SPACES);
 		L4XV_U(n);
 		if (l4_error(tag))
-			l4x_printf("Unmap error %ld\n",	l4_error(tag));
+			panic("%s: Unmap error %ld", l4_error(tag));
 	}
 }
 
@@ -847,7 +848,7 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot)
 		/* ... but just in case ... */
 		l4lx_memory_unmap_virtual_page(va);
 	}
-	l4lx_memory_map_virtual_page(va, pa, prot);
+	l4lx_memory_map_virtual_page(va, pa & PMAP_PA_MASK, prot);
 }
 
 /*
@@ -2996,7 +2997,7 @@ pmap_growkernel(vaddr_t maxkvaddr)
 	pd = kpm->pm_pdir;
 	for (/*null*/ ; nkpde < needed_kpde ; nkpde++) {
 
-		ind = pdei(maxkvaddr) - nkpde + needed_kpde;
+		ind = pdei(l4x_kv_memory_start) + nkpde;
 		if (uvm.page_init_done == FALSE) {
 
 			/*
@@ -3008,11 +3009,7 @@ pmap_growkernel(vaddr_t maxkvaddr)
 			if (uvm_page_physget(&ptaddr) == FALSE)
 				panic("pmap_growkernel: out of memory");
 			pmap_zero_phys(ptaddr);
-#if 0
-			kpm->pm_pdir[PDSLOT_KERN + nkpde] =
-				ptaddr | PG_RW | PG_V | PG_U | PG_M;
-#endif
-			pd[ind] = (pd_entry_t)ptaddr;
+			pd[ind] = ptaddr | PG_RW | PG_V | PG_U | PG_M;
 
 			/* count PTP as resident */
 			kpm->pm_stats.resident_count++;

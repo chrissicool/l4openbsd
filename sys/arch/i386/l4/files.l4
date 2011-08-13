@@ -2,6 +2,7 @@
 # rewritten i386-specific files
 
 file	arch/i386/l4/pmap.c				l4
+file	arch/i386/l4/dev/l4_machdep.c			l4
 
 ##
 # specify all L4 components here
@@ -26,7 +27,12 @@ file	arch/i386/l4/l4lxlib/l4env/memory.c		l4
 file	arch/i386/l4/l4lxlib/l4env/irq_vcpu.c		l4
 
 # drivers
+define	l4bus {}
+device	l4bus
+attach	l4bus at mainbus
+file	arch/i386/l4/dev/l4bus.c			l4bus
+
 define	l4ser {[apid = -1]}
 device	l4ser
-attach	l4ser at isa
+attach	l4ser at l4bus
 file	arch/i386/l4/dev/l4ser.c			l4ser needs-flag

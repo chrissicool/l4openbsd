@@ -98,7 +98,7 @@
 #include "isadma.h"
 
 #ifdef L4
-#include <machine/l4/l4lxapi/irq.h>
+#include <i386/l4/dev/l4_machdep.h>
 #endif
 
 extern	paddr_t avail_end;
@@ -247,9 +247,6 @@ isa_strayintr(int irq)
 
 int intrtype[ICU_LEN], intrmask[ICU_LEN], intrlevel[ICU_LEN];
 int iminlevel[ICU_LEN], imaxlevel[ICU_LEN];
-#ifdef L4
-struct intrhand intrhand_internal[ICU_LEN];
-#endif
 struct intrhand *intrhand[ICU_LEN];
 
 int imask[NIPL];	/* Bitmask telling what interrupts are blocked. */
@@ -470,6 +467,10 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 	struct intrhand **p, *q, *ih;
 	static struct intrhand fakehand = {fakeintr};
 
+#if L4
+	return (l4_intr_establish(irq, type, level, ih_fun, ih_arg, ih_what));
+#endif
+
 #if NIOAPIC > 0
 	struct mp_intr_map *mip;
 
@@ -537,16 +538,6 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 		break;
 	}
 
-#ifdef L4
-	/*  Register with IO server when establishing first handler. */
-	if (intrhand[irq] == NULL) {
-		if (!l4lx_irq_dev_startup(irq)) {
-			free(ih, M_DEVBUF);
-			return (NULL);
-		}
-	}
-#endif
-
 	/*
 	 * Figure out where to put the handler.
 	 * This is O(N^2), but we want to preserve the order, and N is
@@ -590,6 +581,10 @@ isa_intr_disestablish(isa_chipset_tag_t ic, void *arg)
 	int irq = ih->ih_irq;
 	struct intrhand **p, *q;
 
+#ifdef L4
+	return l4_intr_disestablish(ih);
+#endif
+
 #if NIOAPIC > 0
 	if (irq & APIC_INT_VIA_APIC) {
 		apic_intr_disestablish(arg);
@@ -598,7 +593,7 @@ isa_intr_disestablish(isa_chipset_tag_t ic, void *arg)
 #endif
 
 	if (!LEGAL_IRQ(irq))
-		panic("intr_disestablish: bogus irq %d", irq);
+		panic("isa_intr_disestablish: bogus irq %d", irq);
 
 	/*
 	 * Remove the handler from the chain.
@@ -609,7 +604,7 @@ isa_intr_disestablish(isa_chipset_tag_t ic, void *arg)
 	if (q)
 		*p = q->ih_next;
 	else
-		panic("intr_disestablish: handler not registered");
+		panic("isa_intr_disestablish: handler not registered");
 	evcount_detach(&ih->ih_count);
 	free(ih, M_DEVBUF);
 
@@ -632,15 +627,6 @@ isa_attach_hook(struct device *parent, struct device *self,
 	if (isa_has_been_seen)
 		panic("isaattach: ISA bus already seen!");
 	isa_has_been_seen = 1;
-
-#ifdef L4
-	int irq;
-
-	/* Initialize the interrupt handler array. */
-	intrhand[0] = &intrhand_internal[0];
-	for (irq = 0; irq < ICU_LEN; irq++)
-		intrhand[irq] = NULL;
-#endif
 }
 
 #if NISADMA > 0

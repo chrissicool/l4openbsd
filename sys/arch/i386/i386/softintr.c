@@ -42,8 +42,9 @@
 #include <uvm/uvm_extern.h>
 
 #ifdef L4
+#include <l4/log/log.h>
 #include <net/netisr.h>
-#define NETISR_MAX		sizeof(netisr)
+#define NETISR_MAX		(sizeof(netisr) * 8)	/* XXX hshoexer */
 #define BIT(n)			(1 << n)
 #define CPL			lapic_tpr
 
@@ -89,7 +90,6 @@ softintr_init(void)
 }
 
 #ifdef L4
-
 /*
  * Run all network related soft interrupts. Do not run masked
  * service routines.
@@ -97,15 +97,20 @@ softintr_init(void)
 void
 l4x_run_netisrs(void)
 {
-	int i;
+	int i, tmpnetisr;
 	void (*f)(void);
+
+	/* Read and clear netisr atomically. */
+	tmpnetisr = 0;
+	__asm__ volatile ("xchgl netisr, %0" : "+r" (tmpnetisr));
 
 	/* Execute all unmasked network service routines. */
 	for (i = 0; i < NETISR_MAX; i++) {
-		if ((netisr & BIT(i))) {
-			f = i386_softintr_netisrs[BIT(i)];
-			if (f)
-				(*f)();
+		if ((tmpnetisr & BIT(i)) == 0)
+			continue;
+		f = i386_softintr_netisrs[i];
+		if (f) {
+			(*f)();
 		}
 	}
 }
@@ -117,11 +122,11 @@ l4x_run_netisrs(void)
 void
 l4x_exec_softintr(int ipl)
 {
-	int spl;
 	int which;
+	int s;
 
-	spl = CPL;
-	CPL = which;
+	s = CPL;
+	CPL = ipl;
 
 	switch (ipl) {
 	case IPL_SOFTCLOCK:
@@ -151,14 +156,14 @@ l4x_exec_softintr(int ipl)
 	 */
 	if (ipl == IPL_SOFTNET)
 		l4x_run_netisrs();
-
-	softintr_dispatch(which);
+	else
+		softintr_dispatch(which);
 
 #ifdef MULTIPROCESSOR
 	i386_softintunlock();
 #endif
 
-	CPL = spl;
+	CPL = s;
 }
 
 /*

@@ -160,26 +160,19 @@ biosattach(struct device *parent, struct device *self, void *aux)
 #endif
 	struct smbios_struct_bios *sb;
 	struct smbtable bios;
-#ifdef L4
-	volatile u_int8_t static_va[15] = {
-		0, 0, 0, 0, 0, '1', '0', 0, '2', '6', 0, '1', '0',
-		0, 0xff };
-	volatile u_int8_t *va = &static_va[0];
-#else
 	volatile u_int8_t *va;
-#endif
 	char scratch[64], *str;
 	int flags, smbiosrev = 0, ncpu = 0;
 
 	/* remember flags */
-#ifdef L4
-	sc->sc_dev.dv_cfdata->cf_flags = 0xffff;
-#endif
 	flags = sc->sc_dev.dv_cfdata->cf_flags;
 
-#ifndef L4
-	va = ISA_HOLE_VADDR(0xffff0);
+#ifdef L4
+	/* XXX hshoexer */
+	flags |= (BIOSF_BIOS32 | BIOSF_SMBIOS);
 #endif
+
+	va = ISA_HOLE_VADDR(0xffff0);
 	switch (va[14]) {
 	default:
 	case 0xff: str = "PC";		break;
@@ -456,7 +449,8 @@ biosattach(struct device *parent, struct device *self, void *aux)
 
 			va += len - 512;
 		}
-	}
+	} else
+		str = NULL;
 
 	if (str)
 		printf("\n");

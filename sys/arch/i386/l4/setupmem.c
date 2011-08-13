@@ -22,6 +22,8 @@
 
 #include <uvm/uvm_extern.h>
 
+#include <dev/isa/isareg.h>
+
 #include <machine/vmparam.h>
 #include <machine/pmap.h>
 
@@ -47,6 +49,8 @@
  * P H Y S I C A L - T O - V I R T U A L
  * M E M O R Y   M A P P I N G
  */
+
+void l4x_virt_to_phys_show(void);
 
 struct l4x_phys_virt_mem {
 	l4_addr_t phys; /* physical address */
@@ -74,6 +78,16 @@ void l4x_v2p_add_item(l4_addr_t phys, vaddr_t virt, l4_size_t size)
 							.size = size };
 }
 
+void l4x_virt_to_phys_show(void)
+{
+        int i;
+        for (i = 0; i < l4x_phys_virt_addr_items; i++) {
+                LOG_printf("v = %08lx  p = %08lx   sz = %zx\n",
+                       (unsigned long)l4x_phys_virt_addrs[i].virt,
+                       l4x_phys_virt_addrs[i].phys,
+                       l4x_phys_virt_addrs[i].size);
+        }
+}
 
 paddr_t
 l4x_virt_to_phys(volatile vaddr_t address)
@@ -93,12 +107,12 @@ l4x_virt_to_phys(volatile vaddr_t address)
 		}
 	}
 
-	//l4x_virt_to_phys_show();
+	l4x_virt_to_phys_show();
 	/* Whitelist: */
 
 	/* Debugging check: don't miss a translation, can give nasty
 	 *                  DMA problems */
-	LOG_printf("%s: Could not translate VA %p\n", __func__, address);
+	panic("%s: Could not translate VA %p\n", __func__, address);
 
 	return NULL;
 }
@@ -121,20 +135,65 @@ l4x_phys_to_virt(volatile paddr_t address)
 		}
 	}
 
-	//l4x_virt_to_phys_show();
+	l4x_virt_to_phys_show();
 	/* Whitelist */
 	if ((address < 0x1000) ||		/* first pte, direct mapped */
-	    (address >= 0xa000 &&		/* VGA and ROM space...     */
-	     address <= 0xffff)) {		/*   ... direct mapped      */
+	    (address >= IOM_BEGIN &&		/* VGA and ROM space...     */
+	     address < IOM_END)) {		/*   ... direct mapped      */
 		return address;
 	}
 
 	/* Debugging check: don't miss a translation, can give nasty
 	 *                  DMA problems */
-	LOG_printf("%s: Could not translate PA %p\n", __func__, address);
+	panic("%s: Could not translate PA %p\n", __func__, address);
 
 	return NULL;
 }
+
+#ifdef CONFIG_VGA_CONSOLE
+// we may want to make this function available for a broader usage
+int l4x_pagein(unsigned long addr, unsigned long size, int rw)
+{
+        int err;
+        l4_addr_t a;
+        unsigned long sz;
+        l4_addr_t off;
+        unsigned fl;
+        l4re_ds_t ds;
+        unsigned long map_flags = rw ? L4RE_DS_MAP_FLAG_RW
+                                     : L4RE_DS_MAP_FLAG_RO;
+
+        if (size == 0)
+                return 0;
+
+        size += addr & ~L4_PAGEMASK;
+        size  = l4_round_page(size);
+        addr &= L4_PAGEMASK;
+
+        do {   
+                a = addr;
+                sz = 1;
+
+                err = l4re_rm_find(&a, &sz, &off, &fl, &ds);
+                if (err < 0)
+                        break; 
+
+                if (sz > size)
+                        sz = size;
+
+                err = l4re_ds_map_region(ds, off + (addr - a), map_flags,
+                                         addr, addr + sz);
+                if (err < 0)
+                        break;
+
+                size -= sz;
+                addr += sz;
+        } while (size);
+
+        return err;
+}
+#endif
+
 
 /*
  * M E M O R Y   S E T U P
@@ -148,14 +207,14 @@ unsigned long l4x_mainmem_size = L4_MEMSIZE << 20;
 #endif
 
 l4re_ds_t l4x_ds_mainmem;
-void *l4x_main_memory_start;	/* paddr_t */
+paddr_t l4x_main_memory_start;
 l4re_ds_t l4x_ds_isa_dma;
 static void *l4x_isa_dma_memory_start;
 static unsigned long l4x_isa_dma_size   = 0;
 
 unsigned long l4x_kvmem_size;
 l4re_ds_t l4x_ds_kvmem;
-void *l4x_kv_memory_start;	/* vaddr_t */
+vaddr_t l4x_kv_memory_start;
 
 static void l4x_setup_memory(char **cmdl,
                              vaddr_t *main_mem_startv,
@@ -182,7 +241,9 @@ void l4x_memory_setup(char **cmdl)
 	 */
 	extern paddr_t avail_end;
 
-	avail_end = mem_endp;
+	avail_end = round_page(mem_endp);
+
+	l4re_rm_show_lists();
 }
 
 static void l4x_setup_memory(char **cmdl,
@@ -329,10 +390,10 @@ static void l4x_setup_memory(char **cmdl,
 		}
 	} else
 #endif
-	l4x_main_memory_start = (void *)memory_area_addr;
+		l4x_main_memory_start = memory_area_addr;
 
 	/** Second: the main memory */
-	if (l4re_rm_attach(&l4x_main_memory_start, l4x_mainmem_size,
+	if (l4re_rm_attach((void **)&l4x_main_memory_start, l4x_mainmem_size,
 	                   L4RE_RM_IN_AREA | L4RE_RM_EAGER_MAP,
 	                   l4x_ds_mainmem, 0, L4_PAGESHIFT)) {
 		LOG_printf("Error attaching to L4Linux main memory\n");
@@ -345,8 +406,8 @@ static void l4x_setup_memory(char **cmdl,
 //		l4x_exit_l4linux();
 //	}
 
-	*main_mem_startp = (paddr_t)l4x_main_memory_start;
-	*main_mem_endp   = (paddr_t)(l4x_main_memory_start + l4x_mainmem_size - 1);
+	*main_mem_startp = l4x_main_memory_start;
+	*main_mem_endp   = (l4x_main_memory_start + l4x_mainmem_size - 1);
 
 	if (l4_is_invalid_cap(l4x_ds_isa_dma))
 		*isa_dma_mem_startp = *isa_dma_mem_endp = 0;
@@ -359,7 +420,7 @@ static void l4x_setup_memory(char **cmdl,
 	if (!l4_is_invalid_cap(l4x_ds_isa_dma))
 		l4x_register_region(l4x_ds_isa_dma, l4x_isa_dma_memory_start,
 		                      0, "ISA DMA memory");
-	l4x_register_region(l4x_ds_mainmem, l4x_main_memory_start,
+	l4x_register_region(l4x_ds_mainmem, (void *)l4x_main_memory_start,
 	                    0, "Main memory");
 
 	/*
@@ -374,7 +435,7 @@ static void l4x_setup_memory(char **cmdl,
 		LOG_printf("%s: Error reserving kernel virtual memory!\n", __func__);
 		l4x_exit_l4linux();
 	}
-	l4x_kv_memory_start = (void *)kvm_area_id;
+	l4x_kv_memory_start = kvm_area_id;
 	LOG_printf("Registered kernel virtual memory at: VA=0x%08lx, size=0x%08lx\n",
 			kvm_area_id, l4x_kvmem_size);
 
@@ -392,10 +453,10 @@ static void l4x_setup_memory(char **cmdl,
 #endif
 
 	// that happened with some version of ld...
-	if ((unsigned long)&_end < 0x100000)
-		LOG_printf("_end == %p, unreasonable small\n", &_end);
+	if ((unsigned long)esym < 0x100000)
+		LOG_printf("esym == %p, unreasonable small\n", esym);
 
-	l4x_register_pointer_section((void *)((unsigned long)&_end - 1), 0, "end");
+	l4x_register_pointer_section((void *)((unsigned long)&esym - 1), 0, "esym");
 
 	return;
 }
@@ -412,10 +473,11 @@ extern struct user *proc0paddr;
  * KVA starts at: l4x_kv_memory_start
  */
 paddr_t
-l4x_setup_kernel_ptd(void)
+l4x_setup_kernel_ptd(l4_addr_t stack, size_t stacklen)
 {
-	pd_entry_t *pd;
-	int kva_off = 0, pa_off = 0;
+	pd_entry_t *pd, *ptes, *pte;
+	l4_addr_t addr;
+	int kva_off = 0, pa_off = 0, iom_off = 0;
 	int i;
 
 	/*
@@ -429,26 +491,51 @@ l4x_setup_kernel_ptd(void)
 		nkpde = NKPTP_MAX;
 
 	/* Clear physical memory for a page directory and bootstrap tables. */
-	bzero((void *)(PA_START+pa_off), (nkpde+1) * NBPG);
+	bzero((void *)(l4x_main_memory_start + pa_off), (nkpde + 1) * NBPG);
 
 	/* Map our PTD  */
-	l4lx_memory_map_virtual_page((vaddr_t)(KVA_START+kva_off),
-			(paddr_t)(PA_START+pa_off), PG_V | PG_KW);
-	proc0paddr->u_pcb.pcb_cr3 = PA_START + pa_off;
-	pd = PTD = (pd_entry_t *)(KVA_START + kva_off);
+	l4lx_memory_map_virtual_page(l4x_kv_memory_start + kva_off,
+	    l4x_main_memory_start + pa_off, PG_V | PG_KW);
+	proc0paddr->u_pcb.pcb_cr3 = l4x_main_memory_start + pa_off;
+	pd = PTD = (pd_entry_t *)(l4x_kv_memory_start + kva_off);
 	kva_off += PAGE_SIZE;
 	pa_off += PAGE_SIZE;
 
-
 	/* Reserve nkpde page tables. */
-	for (i = pdei(KVA_START); i < pdei(KVA_START) + nkpde; i++) {
-		pd[i] = (pd_entry_t)((PA_START + pa_off) |
-				     (PG_V | PG_KW | PG_M | PG_U));
+	for (i = pdei(l4x_kv_memory_start); i < pdei(l4x_kv_memory_start) +
+	    nkpde; i++) {
+		pd[i] = (pd_entry_t)((l4x_main_memory_start + pa_off) |
+		    (PG_V | PG_KW | PG_M | PG_U));
 		pa_off += PAGE_SIZE;
 	}
 
-	/* The following implicitly sets KVA_START for pmap(9). */
-	atdevbase = KVA_START + kva_off;
+	/*
+	 * The following implicitly sets KVA_START (aka
+	 * l4x_kv_memory_start) for pmap(9).
+	 */
+	atdevbase = l4x_kv_memory_start + kva_off;
 
-	return(PA_START + pa_off);
+	/* XXX hshoexer: map kernel text, data, bss? */
+
+	/*
+	 * Enter mapping for init_stack[].
+	 *
+	 * XXX Assumes page alignment of stack.
+	 */
+	for (addr = stack; addr < stack + stacklen; addr += PAGE_SIZE) {
+		ptes = (pt_entry_t *)(pd[pdei(addr)] & PG_FRAME);
+		pte = &ptes[ptei(addr)];
+		*pte = (addr & PG_FRAME) | (PG_V|PG_KW);
+	}
+
+	/* XXX hshoexer:  Put ISA I/O memory into pagetabels? */
+
+	/* Map ISA I/O memory. */
+	for (i = 0; i < (IOM_SIZE >> PGSHIFT); i++) {
+		l4lx_memory_map_virtual_page((vaddr_t)(atdevbase + iom_off),
+		    (paddr_t)(IOM_BEGIN + iom_off), (PG_V | PG_KW));
+		iom_off += PAGE_SIZE;
+	}
+
+	return (l4x_main_memory_start + pa_off);
 }

@@ -180,6 +180,9 @@ _C_LABEL(APTD):
 	.globl	_C_LABEL(cpu_cache_eax), _C_LABEL(cpu_cache_ebx)
 	.globl	_C_LABEL(cpu_cache_ecx), _C_LABEL(cpu_cache_edx)
 	.globl	_C_LABEL(cold), _C_LABEL(cnvmem), _C_LABEL(extmem)
+#ifdef L4
+	.globl	_C_LABEL(ssym)
+#endif
 	.globl	_C_LABEL(esym)
 	.globl	_C_LABEL(boothowto), _C_LABEL(bootdev), _C_LABEL(atdevbase)
 	.globl	_C_LABEL(proc0paddr), _C_LABEL(PTDpaddr), _C_LABEL(PTDsize)
@@ -223,6 +226,9 @@ _C_LABEL(cpu_cache_edx):.long	0
 _C_LABEL(cpu_vendor): .space 16	# vendor string returned by 'cpuid' instruction
 _C_LABEL(cpu_brandstr):	.space 48 # brand string returned by 'cpuid'
 _C_LABEL(cold):		.long	1	# cold till we are not
+#ifdef L4
+_C_LABEL(ssym):		.long	0	# ptr to ELF header
+#endif
 _C_LABEL(esym):		.long	0	# ptr to end of syms
 _C_LABEL(cnvmem):	.long	0	# conventional memory size
 _C_LABEL(extmem):	.long	0	# extended memory size
@@ -487,7 +493,7 @@ try586:	/* Use the `cpuid' instruction. */
  * Virtual address space of kernel:
  *
  * text | data | bss | [syms] | proc0 stack | page dir     | Sysmap
- *			      0             1       2      3
+ *			      0      1      2              3
  */
 #define	PROC0STACK	((0)		* NBPG)
 #define	PROC0PDIR	((  UPAGES)	* NBPG)
@@ -666,7 +672,8 @@ NENTRY(proc_trampoline)
 	call	*%esi
 	addl	$4,%esp
 #ifdef L4
-	call	l4x_ret_from_fork
+	pushl	%esp
+	call	_C_LABEL(l4x_ret_from_fork)
 	/* NOTREACHED */
 #else
 	INTRFASTEXIT
@@ -930,7 +937,7 @@ ENTRY(copyout)
 	pushl	%eax
 	pushl	%edi
 	pushl	%esi
-	call	l4x_copyout
+	call	_C_LABEL(l4x_copyout)
 	addl	$12, %esp
 	cmpl	$0, %eax
 	jne	copy_fault
@@ -993,7 +1000,7 @@ ENTRY(copyin)
 	pushl	%eax
 	pushl	%edi
 	pushl	%esi
-	call	l4x_copyin
+	call	_C_LABEL(l4x_copyin)
 	addl	$12, %esp
 	cmpl	$0, %eax
 	jne	copy_fault
@@ -1069,7 +1076,7 @@ ENTRY(copyoutstr)
 	pushl	%edx
 	pushl	%edi
 	pushl	%esi
-	call	l4x_copyoutstr
+	call	_C_LABEL(l4x_copyoutstr)
 	addl	$16, %esp
 	movl	24+FPADD(%esp),%ecx		# %ecx = *lencopied
 	testl	%ecx, %ecx
@@ -1140,7 +1147,7 @@ ENTRY(copyinstr)
 	pushl	%edx
 	pushl	%edi
 	pushl	%esi
-	call	l4x_copyinstr
+	call	_C_LABEL(l4x_copyinstr)
 	addl	$16, %esp
 	movl	24+FPADD(%esp),%ecx		# %ecx = *lencopied
 	testl	%ecx, %ecx
@@ -1360,7 +1367,7 @@ switch_exited:
 
 	/* No interrupts while loading new state. */
 #ifdef L4
-	call	l4x_global_cli
+	call	_C_LABEL(l4x_global_cli)
 #else
 	cli
 #endif
@@ -1416,7 +1423,7 @@ switch_exited:
 
 	/* Interrupts are okay again. */
 #ifdef L4
-	call	l4x_global_sti
+	call	_C_LABEL(l4x_global_sti)
 #else
 	sti
 #endif
@@ -1660,7 +1667,11 @@ calltrap:
 	call	_C_LABEL(printf)
 	addl	$4,%esp
 #if defined(DDB) && 0
+#ifdef L4
+	call	_C_LABEL(l4x_fake_int3)
+#else
 	int	$3
+#endif /* L4 */
 #endif /* DDB */
 	movl	%ebx,CPL
 	jmp	2b
@@ -1880,50 +1891,109 @@ ENTRY(acpi_release_global_lock)
 #include <i386/i386/mutex.S>
 
 #ifdef L4
-/*
- * On L4 we can not use int3 to trap into the ddb, thus fake a stackframe
- * as if an int3 has happened. This emulates IDTVEC(bpt) and traps as T_BPTFLT.
- *
- * XXX hshoexer: INTRENTRY and INTRFASTEXIT play with ring0 elements, which
- * are not needed on L4. For now, write out the entry/exit sequences instead.
- */
-/* void l4x_fake_int3(void) */
+	/*
+	 * Build trap frame (without ring transition)
+	 *
+	 * XXX hshoexer: We can not use INTRENTRY as it resets segments
+	 * which is not needed on L4.  Moreover, we have to fake a
+	 * kernel CS.  We can not use INTRFASTEXIT as it uses sti.
+	 */
+#define L4_INTRENTRY(s,r,t)	\
+	pushfl						; \
+	pushl	s	/* segment */			; \
+	pushl	r	/* fake return address */	; \
+	pushl	$0	/* error code */		; \
+	pushl	t	/* trapno */			; \
+	pushl	%eax					; \
+	pushl	%ecx					; \
+	pushl	%edx					; \
+	pushl	%ebx					; \
+	pushl	%ebp					; \
+	pushl	%esi					; \
+	pushl	%edi					; \
+	pushl	%ds					; \
+	pushl	%es					; \
+	pushl	%gs					; \
+	pushl	%fs
+#define L4_INTREXIT		\
+	popl	%fs					; \
+	popl	%gs					; \
+	popl	%es					; \
+	popl	%ds					; \
+	popl	%edi					; \
+	popl	%esi					; \
+	popl	%ebp					; \
+	popl	%ebx					; \
+	popl	%edx					; \
+	popl	%ecx					; \
+	popl	%eax					; \
+	addl	$16,%esp	/* error code, trapno, eip, cs */ ; \
+	popfl
+
+	/*
+	 * On L4 we can not use int3 to trap into the ddb, thus fake a
+	 * stackframe as if an int3 had happened.
+	 */
 ENTRY(l4x_fake_int3)
-	pushfl
-	pushl   $GSEL(GCODE_SEL, SEL_KPL)	/* fake kernel mode */
-	pushl   $1f				/* fake return address */
-	pushl   $0				/* error code */
-	pushl   $T_BPTFLT			/* trapno */
-	/* INTRENTRY */
-	pushl   %eax
-	pushl   %ecx
-	pushl   %edx
-	pushl   %ebx
-	pushl   %ebp
-	pushl   %esi
-	pushl   %edi
-	pushl   %ds
-	pushl   %es
-	pushl   %gs
-	pushl   %fs
-
-	pushl   %esp
-	call    _C_LABEL(trap)
-	addl    $4,%esp
-
-	/* INTRFASTEXIT */
-	popl    %fs
-	popl    %gs
-	popl    %es
-	popl    %ds
-	popl    %edi
-	popl    %esi
-	popl    %ebp
-	popl    %ebx
-	popl    %edx
-	popl    %ecx
-	popl    %eax
-
-	addl    $20,%esp        /* error code, trapno, eip, cs, eflags */
-1:	ret
+#ifdef DDB
+	pushl	%ebp
+	movl	%esp,%ebp
 #endif
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1f, $T_BPTFLT)
+	pushl	%esp
+	call	_C_LABEL(trap)
+	addl	$4,%esp
+	L4_INTREXIT
+1:
+#ifdef DDB
+	leave
+#endif
+	ret
+
+	/*
+	 * Setup trap frame for in-kernel interrupts.
+	 * XXX hshoexer: Should be interrupt frame, but we're not
+	 * there yet
+	 */
+ENTRY(l4x_do_vcpu_irq)
+#ifdef DDB
+	pushl	%ebp
+	movl	%esp,%ebp
+#endif
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1f, $T_ASTFLT)
+	pushl	%esp	/* trape frame */
+	movl	72+FPADD(%esp),%esi
+	pushl	%esi	/* pointer to vcpu state */
+	call	_C_LABEL(l4x_vcpu_handle_irq)
+	addl	$8,%esp
+	L4_INTREXIT
+1:
+#ifdef DDB
+	leave
+#endif
+	ret
+
+	/*
+	 * Setup trap frame for recursing interrupts after spllower().
+	 * XXX hshoexer: Should be interrupt frame, but we're not
+	 * there yet
+	 */
+ENTRY(l4x_recurse_irq_handlers)
+#ifdef DDB
+	pushl	%ebp
+	movl	%esp,%ebp
+#endif
+	L4_INTRENTRY($GSEL(GCODE_SEL, SEL_KPL), $1f, $T_ASTFLT)
+	pushl	%esp	/* trape frame */
+	movl	72+FPADD(%esp),%esi
+	pushl	%esi	/* interrupt number */
+	call	_C_LABEL(l4x_run_irq_handlers)
+	addl	$8,%esp
+	L4_INTREXIT
+1:
+#ifdef DDB
+	leave
+#endif
+	ret
+
+#endif	/* L4 */
