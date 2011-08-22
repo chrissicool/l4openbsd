@@ -42,13 +42,8 @@
 #include <uvm/uvm_extern.h>
 
 #ifdef L4
-#include <l4/log/log.h>
-#include <net/netisr.h>
-#define NETISR_MAX		(sizeof(netisr) * 8)	/* XXX hshoexer */
 #define BIT(n)			(1 << n)
 #define CPL			lapic_tpr
-
-void	*i386_softintr_netisrs[NETISR_MAX];
 #endif	/* L4 */
 
 struct i386_soft_intr i386_soft_intrs[I386_NSOFTINTR];
@@ -76,45 +71,9 @@ softintr_init(void)
 		mtx_init(&si->softintr_lock, IPL_HIGH);
 		si->softintr_ssir = i386_soft_intr_to_ssir[i];
 	}
-
-#ifdef L4
-	/*
-	 * Establish handlers for legacy network interrupts.
-	 * This code is inspired by NetBSD's generic softint framework.
-	 */
-#define DONETISR(n, f)							\
-	i386_softintr_netisrs[(n)] = &(f)
-#include <net/netisr_dispatch.h>
-
-#endif
 }
 
 #ifdef L4
-/*
- * Run all network related soft interrupts. Do not run masked
- * service routines.
- */
-void
-l4x_run_netisrs(void)
-{
-	int i, tmpnetisr;
-	void (*f)(void);
-
-	/* Read and clear netisr atomically. */
-	tmpnetisr = 0;
-	__asm__ volatile ("xchgl netisr, %0" : "+r" (tmpnetisr));
-
-	/* Execute all unmasked network service routines. */
-	for (i = 0; i < NETISR_MAX; i++) {
-		if ((tmpnetisr & BIT(i)) == 0)
-			continue;
-		f = i386_softintr_netisrs[i];
-		if (f) {
-			(*f)();
-		}
-	}
-}
-
 /*
  * Run all softintrs on a given CPL. This is basically a wrapper
  * around softintr_dispatch() to prepare it like icu.s does.
@@ -150,14 +109,7 @@ l4x_exec_softintr(int ipl)
 	i386_softintlock();
 #endif
 
-	/*
-	 * SOFTNET needs special treatment. Run netisrs!
-	 * As seen in icu.s.
-	 */
-	if (ipl == IPL_SOFTNET)
-		l4x_run_netisrs();
-	else
-		softintr_dispatch(which);
+	softintr_dispatch(which);
 
 #ifdef MULTIPROCESSOR
 	i386_softintunlock();

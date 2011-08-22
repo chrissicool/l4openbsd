@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_bridge.c,v 1.182 2010/07/09 16:58:06 reyk Exp $	*/
+/*	$OpenBSD: if_bridge.c,v 1.188 2010/11/04 23:07:15 weerd Exp $	*/
 
 /*
  * Copyright (c) 1999, 2000 Jason L. Wright (jason@thought.net)
@@ -186,7 +186,6 @@ bridgeattach(int n)
 {
 	LIST_INIT(&bridge_list);
 	if_clone_attach(&bridge_cloner);
-	bstp_attach(n);
 }
 
 int
@@ -403,11 +402,10 @@ bridge_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 			if (strncmp(p->ifp->if_xname, req->ifbr_ifsname,
 			    sizeof(p->ifp->if_xname)) == 0) {
 				error = bridge_delete(sc, p);
-				p = NULL;
 				break;
 			}
 		}
-		if (p != NULL && p == LIST_END(&sc->sc_iflist)) {
+		if (p == LIST_END(&sc->sc_iflist)) {
 			error = ENOENT;
 			break;
 		}
@@ -741,11 +739,7 @@ bridge_ifdetach(struct ifnet *ifp)
 
 	LIST_FOREACH(bif, &sc->sc_iflist, next)
 		if (bif->ifp == ifp) {
-			LIST_REMOVE(bif, next);
-			bridge_rtdelete(sc, ifp, 0);
-			bridge_flushrule(bif);
-			free(bif, M_DEVBUF);
-			ifp->if_bridge = NULL;
+			bridge_delete(sc, bif);
 			break;
 		}
 }
@@ -1421,11 +1415,23 @@ bridge_input(struct ifnet *ifp, struct ether_header *eh, struct mbuf *m)
 	bridge_span(sc, eh, m);
 
 	if (m->m_flags & (M_BCAST | M_MCAST)) {
-		/* Tap off 802.1D packets, they do not get forwarded */
-		if (bcmp(eh->ether_dhost, bstp_etheraddr, ETHER_ADDR_LEN) == 0) {
-			m = bstp_input(sc->sc_stp, ifl->bif_stp, eh, m);
-			if (m == NULL)
+		/*
+	 	 * Reserved destination MAC addresses (01:80:C2:00:00:0x)
+		 * should not be forwarded to bridge members according to
+		 * section 7.12.6 of the 802.1D-2004 specification.  The
+		 * STP destination address (as stored in bstp_etheraddr)
+		 * is the first of these.
+	 	 */
+		if (bcmp(eh->ether_dhost, bstp_etheraddr, ETHER_ADDR_LEN - 1)
+		    == 0) {
+			if (eh->ether_dhost[ETHER_ADDR_LEN - 1] == 0) {
+				/* STP traffic */
+				bstp_input(sc->sc_stp, ifl->bif_stp, eh, m);
 				return (NULL);
+			} else if (eh->ether_dhost[ETHER_ADDR_LEN - 1] <= 0xf) {
+				m_freem(m);
+				return (NULL);
+			}
 		}
 
 		/*
@@ -1947,10 +1953,10 @@ bridge_rttrim(struct bridge_softc *sc)
 				LIST_REMOVE(n, brt_next);
 				sc->sc_brtcnt--;
 				free(n, M_DEVBUF);
-				n = p;
 				if (sc->sc_brtcnt <= sc->sc_brtmax)
 					return;
 			}
+			n = p;
 		}
 	}
 }
@@ -2018,8 +2024,7 @@ bridge_rtagenode(struct ifnet *ifp, int age)
 		bridge_rtdelete(sc, ifp, 1);
 	else {
 		for (i = 0; i < BRIDGE_RTABLE_SIZE; i++) {
-			n = LIST_FIRST(&sc->sc_rts[i]);
-			while (n != LIST_END(&sc->sc_rts[i])) {
+			LIST_FOREACH(n, &sc->sc_rts[i], brt_next) {
 				/* Cap the expiry time to 'age' */
 				if (n->brt_if == ifp &&
 				    n->brt_age > time_uptime + age &&

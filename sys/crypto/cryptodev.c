@@ -1,4 +1,4 @@
-/*	$OpenBSD: cryptodev.c,v 1.73 2010/07/21 18:44:01 deraadt Exp $	*/
+/*	$OpenBSD: cryptodev.c,v 1.77 2011/01/11 16:06:40 deraadt Exp $	*/
 
 /*
  * Copyright (c) 2001 Theo de Raadt
@@ -44,7 +44,6 @@
 #include <crypto/sha1.h>
 #include <crypto/rmd160.h>
 #include <crypto/cast.h>
-#include <crypto/skipjack.h>
 #include <crypto/blf.h>
 #include <crypto/cryptodev.h>
 #include <crypto/xform.h>
@@ -115,8 +114,8 @@ int	cryptodev_dokey(struct crypt_kop *kop, struct crparam kvp[]);
 int	cryptodev_cb(struct cryptop *);
 int	cryptodevkey_cb(struct cryptkop *);
 
-int	usercrypto = 1;		/* userland may do crypto requests */
-int	userasymcrypto = 1;	/* userland may do asymmetric crypto reqs */
+int	usercrypto = 0;		/* userland may do crypto requests */
+int	userasymcrypto = 0;	/* userland may do asymmetric crypto reqs */
 int	cryptodevallowsoft = 0;	/* only use hardware crypto */
 
 /* ARGSUSED */
@@ -165,9 +164,6 @@ cryptof_ioctl(struct file *fp, u_long cmd, caddr_t data, struct proc *p)
 			break;
 		case CRYPTO_CAST_CBC:
 			txform = &enc_xform_cast5;
-			break;
-		case CRYPTO_SKIPJACK_CBC:
-			txform = &enc_xform_skipjack;
 			break;
 		case CRYPTO_AES_CBC:
 			txform = &enc_xform_rijndael128;
@@ -269,10 +265,14 @@ cryptof_ioctl(struct file *fp, u_long cmd, caddr_t data, struct proc *p)
 
 bail:
 		if (error) {
-			if (crie.cri_key)
+			if (crie.cri_key) {
+				explicit_bzero(crie.cri_key, crie.cri_klen / 8);
 				free(crie.cri_key, M_XDATA);
-			if (cria.cri_key)
+			}
+			if (cria.cri_key) {
+				explicit_bzero(cria.cri_key, cria.cri_klen / 8);
 				free(cria.cri_key, M_XDATA);
+			}
 		}
 		break;
 	case CIOCFSESSION:
@@ -582,8 +582,11 @@ fail:
 	if (krp) {
 		kop->crk_status = krp->krp_status;
 		for (i = 0; i < CRK_MAXPARAM; i++) {
-			if (krp->krp_param[i].crp_p)
+			if (krp->krp_param[i].crp_p) {
+				explicit_bzero(krp->krp_param[i].crp_p,
+				    (krp->krp_param[i].crp_nbits + 7) / 8);
 				free(krp->krp_param[i].crp_p, M_XDATA);
+			}
 		}
 		free(krp, M_XDATA);
 	}

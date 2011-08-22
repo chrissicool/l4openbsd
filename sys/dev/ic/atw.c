@@ -1,4 +1,4 @@
-/*	$OpenBSD: atw.c,v 1.69 2009/08/16 18:03:48 jsg Exp $	*/
+/*	$OpenBSD: atw.c,v 1.75 2010/11/11 17:47:00 miod Exp $	*/
 /*	$NetBSD: atw.c,v 1.69 2004/07/23 07:07:55 dyoung Exp $	*/
 
 /*-
@@ -397,15 +397,15 @@ atw_read_srom(struct atw_softc *sc)
 		return -1;
 	}
 
-	sc->sc_srom = malloc(sc->sc_sromsz, M_DEVBUF, M_NOWAIT);
+	sc->sc_srom = malloc(sc->sc_sromsz, M_DEVBUF, M_NOWAIT | M_ZERO);
 	if (sc->sc_srom == NULL) {
 		printf("%s: unable to allocate SROM buffer\n",
 		    sc->sc_dev.dv_xname);
 		return -1;
 	}
 
-	(void)memset(sc->sc_srom, 0, sc->sc_sromsz);
-	/* ADM8211 has a single 32-bit register for controlling the
+	/*
+	 * ADM8211 has a single 32-bit register for controlling the
 	 * 93cx6 SROM.  Bit SRS enables the serial port. There is no
 	 * "ready" bit. The ADM8211 input/output sense is the reverse
 	 * of read_seeprom's.
@@ -841,15 +841,6 @@ atw_attach(struct atw_softc *sc)
 	bpfattach(&sc->sc_radiobpf, ifp, DLT_IEEE802_11_RADIO,
 	    sizeof(struct ieee80211_frame) + 64);
 #endif
-
-	/*
-	 * Add a suspend hook to make sure we come back up after a
-	 * resume.
-	 */
-	sc->sc_powerhook = powerhook_establish(atw_power, sc);
-	if (sc->sc_powerhook == NULL)
-		printf("%s: WARNING: unable to establish power hook\n",
-		    sc->sc_dev.dv_xname);
 
 	memset(&sc->sc_rxtapu, 0, sizeof(sc->sc_rxtapu));
 	sc->sc_rxtap.ar_ihdr.it_len = sizeof(sc->sc_rxtapu);
@@ -2301,15 +2292,20 @@ void
 atw_write_sup_rates(struct atw_softc *sc)
 {
 	struct ieee80211com *ic = &sc->sc_ic;
-	/* 14 bytes are probably (XXX) reserved in the ADM8211 SRAM for
-	 * supported rates
+	/*
+	 * There is not enough space in the ADM8211 SRAM for the
+	 * full IEEE80211_RATE_MAXSIZE
 	 */
-	u_int8_t buf[roundup(1 /* length */ + IEEE80211_RATE_SIZE, 2)];
+	u_int8_t buf[12];
+	u_int8_t nrates;
 
 	memset(buf, 0, sizeof(buf));
-	buf[0] = ic->ic_bss->ni_rates.rs_nrates;
-	memcpy(&buf[1], ic->ic_bss->ni_rates.rs_rates,
-	    ic->ic_bss->ni_rates.rs_nrates);
+	if (ic->ic_bss->ni_rates.rs_nrates > sizeof(buf) - 1)
+		nrates = sizeof(buf) - 1;
+	else
+		nrates = ic->ic_bss->ni_rates.rs_nrates;
+	buf[0] = nrates;
+	memcpy(&buf[1], ic->ic_bss->ni_rates.rs_rates, nrates);
 
 	/* XXX deal with rev BA bug linux driver talks of? */
 
@@ -2748,9 +2744,6 @@ atw_detach(struct atw_softc *sc)
 	bus_dmamem_unmap(sc->sc_dmat, (caddr_t)sc->sc_control_data,
 	    sizeof(struct atw_control_data));
 	bus_dmamem_free(sc->sc_dmat, &sc->sc_cdseg, sc->sc_cdnseg);
-
-	if (sc->sc_powerhook != NULL)
-		powerhook_disestablish(sc->sc_powerhook);
 
 	if (sc->sc_srom)
 		free(sc->sc_srom, M_DEVBUF);
@@ -3978,39 +3971,37 @@ atw_start(struct ifnet *ifp)
 	}
 }
 
-/*
- * atw_power:
- *
- *	Power management (suspend/resume) hook.
- */
-void
-atw_power(int why, void *arg)
+int
+atw_activate(struct device *self, int act)
 {
-	struct atw_softc *sc = arg;
+	struct atw_softc *sc = (struct atw_softc *)self;
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
-	int s;
 
-	DPRINTF(sc, ("%s: atw_power(%d,)\n", sc->sc_dev.dv_xname, why));
-
-	s = splnet();
-	switch (why) {
-	case PWR_STANDBY:
-		/* XXX do nothing. */
-		break;
-	case PWR_SUSPEND:
-		atw_stop(ifp, 1);
+	switch (act) {
+	case DVACT_SUSPEND:
+		if (ifp->if_flags & IFF_RUNNING)
+			atw_stop(ifp, 1);
 		if (sc->sc_power != NULL)
-			(*sc->sc_power)(sc, why);
+			(*sc->sc_power)(sc, act);
 		break;
-	case PWR_RESUME:
-		if (ifp->if_flags & IFF_UP) {
-			if (sc->sc_power != NULL)
-				(*sc->sc_power)(sc, why);
-			atw_init(ifp);
-		}
+	case DVACT_RESUME:
+		workq_queue_task(NULL, &sc->sc_resume_wqt, 0,
+		    atw_resume, sc, NULL);
 		break;
 	}
-	splx(s);
+	return 0;
+}
+
+void
+atw_resume(void *arg1, void *arg2)
+{
+	struct atw_softc *sc = (struct atw_softc *)arg1;
+	struct ifnet *ifp = &sc->sc_ic.ic_if;
+
+	if (sc->sc_power != NULL)
+		(*sc->sc_power)(sc, DVACT_RESUME);
+	if (ifp->if_flags & IFF_UP)
+		atw_init(ifp);
 }
 
 /*

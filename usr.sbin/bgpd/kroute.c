@@ -1,4 +1,4 @@
-/*	$OpenBSD: kroute.c,v 1.183 2010/07/12 14:35:13 bluhm Exp $ */
+/*	$OpenBSD: kroute.c,v 1.186 2010/10/11 11:45:57 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -193,6 +193,7 @@ int
 kr_init(void)
 {
 	int		opt = 0, rcvbuf, default_rcvbuf;
+	unsigned int	tid = RTABLE_ANY;
 	socklen_t	optlen;
 
 	if ((kr_state.fd = socket(AF_ROUTE, SOCK_RAW, 0)) == -1) {
@@ -217,6 +218,12 @@ kr_init(void)
 		    &rcvbuf, sizeof(rcvbuf)) == -1 && errno == ENOBUFS;
 		    rcvbuf /= 2)
 			;	/* nothing */
+
+	if (setsockopt(kr_state.fd, AF_ROUTE, ROUTE_TABLEFILTER, &tid,
+	    sizeof(tid)) == -1) {
+		log_warn("kr_init: setsockopt AF_ROUTE ROUTE_TABLEFILTER");
+		return (-1);
+	}
 
 	kr_state.pid = getpid();
 	kr_state.rtseq = 1;
@@ -421,7 +428,7 @@ ktable_exists(u_int rtableid, u_int *rdomid)
 {
 	size_t			 len;
 	struct rt_tableinfo	 info;
-	int			 mib[7];
+	int			 mib[6];
 
 	mib[0] = CTL_NET;
 	mib[1] = AF_ROUTE;
@@ -1152,7 +1159,7 @@ kr_net_reload(u_int rtableid, struct network_head *nh)
 		} else
 			TAILQ_INSERT_TAIL(&kt->krn, n, entry);
 	}
-	
+
 	for (n = TAILQ_FIRST(&kt->krn); n != NULL; n = xn) {
 		xn = TAILQ_NEXT(n, entry);
 		if (n->net.old) {
@@ -1637,7 +1644,7 @@ kroute6_find(struct ktable *kt, const struct in6_addr *prefix,
 		while (tmp) {
 			if (kroute6_compare(&s, tmp) == 0)
 				kn6 = tmp;
-			else 
+			else
 				break;
 			tmp = RB_PREV(kroute6_tree, &kt->krt6, kn6);
 		}

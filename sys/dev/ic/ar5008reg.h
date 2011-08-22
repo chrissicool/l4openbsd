@@ -1,4 +1,4 @@
-/*	$OpenBSD: ar5008reg.h,v 1.1 2010/05/10 17:44:21 damien Exp $	*/
+/*	$OpenBSD: ar5008reg.h,v 1.3 2010/12/31 17:50:48 damien Exp $	*/
 
 /*-
  * Copyright (c) 2009 Damien Bergamini <damien.bergamini@free.fr>
@@ -181,6 +181,13 @@
 #define AR_PHY_XPA_CFG			0xa3d8
 #define AR_PHY_TX_PWRCTRL6_1		0xb270
 #define AR_PHY_CH1_TX_PWRCTRL11		0xb398
+
+/*
+ * AR7010 registers.
+ */
+#define AR7010_GPIO_OE			0x52000
+#define AR7010_GPIO_IN			0x52004
+#define AR7010_GPIO_OUT			0x52008
 
 
 /* Bits for AR_AN_RF2G1_CH0. */
@@ -685,7 +692,7 @@ struct ar_tx_desc {
 	 * not cross a 4KB boundary.
 	 */
 	uint32_t	pad[8];
-} __packed;
+} __packed __attribute__((aligned(4)));
 
 /* Bits for ds_ctl0. */
 #define AR_TXC0_FRAME_LEN_M		0x00000fff
@@ -858,7 +865,7 @@ struct ar_rx_desc {
 	 * not cross a 4KB boundary.
 	 */
 	uint32_t	pad[3];
-} __packed;
+} __packed  __attribute__((aligned(4)));
 
 /* Bits for ds_ctl1. */
 #define AR_RXC1_BUF_LEN_M		0x00000fff

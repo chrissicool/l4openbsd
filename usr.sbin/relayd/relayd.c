@@ -1,4 +1,4 @@
-/*	$OpenBSD: relayd.c,v 1.97 2010/05/14 11:13:36 reyk Exp $	*/
+/*	$OpenBSD: relayd.c,v 1.100 2011/02/13 13:28:38 okan Exp $	*/
 
 /*
  * Copyright (c) 2007, 2008 Reyk Floeter <reyk@openbsd.org>
@@ -21,6 +21,7 @@
 #include <sys/queue.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 
 #include <net/if.h>
 #include <netinet/in.h>
@@ -137,8 +138,6 @@ main(int argc, char *argv[])
 	debug = 0;
 	conffile = CONF_FILE;
 
-	log_init(1);	/* log to stderr until daemonized */
-
 	while ((c = getopt(argc, argv, "dD:nf:v")) != -1) {
 		switch (c) {
 		case 'd':
@@ -164,6 +163,8 @@ main(int argc, char *argv[])
 		}
 	}
 
+	log_init(debug ? debug : 1);	/* log to stderr until daemonized */
+
 	argc -= optind;
 	argv += optind;
 	if (argc > 0)
@@ -186,9 +187,8 @@ main(int argc, char *argv[])
 	if (getpwnam(RELAYD_USER) == NULL)
 		errx(1, "unknown user %s", RELAYD_USER);
 
-	log_init(debug);
-
 	if (!debug) {
+		log_init(debug);
 		if (daemon(1, 0) == -1)
 			err(1, "failed to daemonize");
 	}
@@ -1091,7 +1091,7 @@ canonicalize_host(const char *host, char *name, size_t len)
 	 * Canonicalize a hostname
 	 */
 
-	/* 1. remove repeated dots and convert upper case to lower case */	
+	/* 1. remove repeated dots and convert upper case to lower case */
 	plen = strlen(host);
 	bzero(name, len);
 	for (i = j = 0; i < plen; i++) {
@@ -1358,4 +1358,25 @@ map4to6(struct sockaddr_storage *in4, struct sockaddr_storage *map)
 	bcopy(&out6, in4, sizeof(*in4));
 
 	return (0);
+}
+
+void
+socket_rlimit(int maxfd)
+{
+	struct rlimit	 rl;
+
+	if (getrlimit(RLIMIT_NOFILE, &rl) == -1)
+		fatal("socket_rlimit: failed to get resource limit");
+	log_debug("socket_rlimit: max open files %d", rl.rlim_max);
+
+	/*
+	 * Allow the maximum number of open file descriptors for this
+	 * login class (which should be the class "daemon" by default).
+	 */
+	if (maxfd == -1)
+		rl.rlim_cur = rl.rlim_max;
+	else
+		rl.rlim_cur = MAX(rl.rlim_max, (rlim_t)maxfd);
+	if (setrlimit(RLIMIT_NOFILE, &rl) == -1)
+		fatal("socket_rlimit: failed to set resource limit");
 }

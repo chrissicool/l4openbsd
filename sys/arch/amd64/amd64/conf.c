@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.29 2010/07/03 03:59:16 krw Exp $	*/
+/*	$OpenBSD: conf.c,v 1.32 2011/01/14 19:04:08 jasper Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Charles M. Hannum.  All rights reserved.
@@ -81,7 +81,7 @@ struct bdevsw	bdevsw[] =
 	bdev_lkm_dummy(),		/* 18 */
 	bdev_disk_init(NRAID,raid),	/* 19: RAIDframe disk driver */
 };
-int	nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
+int	nblkdev = nitems(bdevsw);
 
 /* open, close, read, write, ioctl, tty, mmap */
 #define cdev_pc_init(c,n) { \
@@ -190,6 +190,7 @@ cdev_decl(pci);
 #include "hotplug.h"
 #include "gpio.h"
 #include "vscsi.h"
+#include "pppx.h"
 
 struct cdevsw	cdevsw[] =
 {
@@ -304,8 +305,9 @@ struct cdevsw	cdevsw[] =
 	cdev_gpio_init(NGPIO,gpio),	/* 88: gpio */
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 89: vscsi */
 	cdev_disk_init(1,diskmap),	/* 90: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),     /* 91: pppx */
 };
-int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+int	nchrdev = nitems(cdevsw);
 
 int	mem_no = 2; 	/* major device number of memory special file */
 
@@ -406,7 +408,7 @@ int chrtoblktbl[] = {
 	/* 54 */	19,		/* raid */
 };
 
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);
 
 /*
  * In order to map BSD bdev numbers of disks to their BIOS equivalents
@@ -439,12 +441,6 @@ dev_rawpart(struct device *dv)
 	return (NODEV);
 }
 
-/*
- * This entire table could be autoconfig()ed but that would mean that
- * the kernel's idea of the console would be out of sync with that of
- * the standalone boot.  I think it best that they both use the same
- * known algorithm unless we see a pressing need otherwise.
- */
 #include <dev/cons.h>
 
 cons_decl(com);

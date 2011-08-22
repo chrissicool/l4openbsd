@@ -1,6 +1,6 @@
 define(MACHINE,luna88k)dnl
 vers(__file__,
-	{-$OpenBSD: MAKEDEV.md,v 1.15 2010/07/03 03:59:15 krw Exp $-},
+	{-$OpenBSD: MAKEDEV.md,v 1.17 2010/09/30 15:27:54 claudio Exp $-},
 etc.MACHINE)dnl
 dnl
 dnl Copyright (c) 2001-2006 Todd T. Fries <todd@OpenBSD.org>
@@ -80,8 +80,8 @@ _DEV(ptm, 52)
 _DEV(pty, 5)
 _DEV(tty, 4)
 _TITLE(cons)
-_DEV(wscons)
 _DEV(wsdisp, 13)
+_DEV(wscons)
 _DEV(wskbd, 14)
 _DEV(wsmux, 16)
 _TITLE(point)
@@ -89,17 +89,18 @@ _DEV(wsmouse, 15)
 _TITLE(spec)
 _DEV(bio, 49)
 _DEV(bpf, 22)
+_DEV(diskmap, 54)
 _DEV(fdesc, 21)
 _DEV(lcd, 10)
 _DEV(lkm, 24)
+_DEV(nnpfs, 51)
 _DEV(pf, 39)
+_DEV(pppx, 55)
 _DEV(rnd, 40)
 _DEV(systrace, 50)
 _DEV(tun, 23)
 _DEV(uk, 41)
-_DEV(nnpfs, 51)
 _DEV(vscsi, 53)
-_DEV(diskmap, 54)
 dnl
 divert(__mddivert)dnl
 dnl

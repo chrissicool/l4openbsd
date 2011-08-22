@@ -1,4 +1,4 @@
-/*	$OpenBSD: dired.c,v 1.46 2010/06/26 16:18:43 kjell Exp $	*/
+/*	$OpenBSD: dired.c,v 1.48 2011/01/23 00:45:03 kjell Exp $	*/
 
 /* This file is in the public domain. */
 
@@ -36,6 +36,7 @@ static int	 d_rename(int, int);
 static int	 d_shell_command(int, int);
 static int	 d_create_directory(int, int);
 static int	 d_makename(struct line *, char *, size_t);
+static void	 reaper(int);
 
 extern struct keymap_s helpmap, cXmap, metamap;
 
@@ -334,7 +335,7 @@ int
 d_expunge(int f, int n)
 {
 	struct line	*lp, *nlp;
-	char		 fname[NFILEN];
+	char		 fname[NFILEN], sname[NFILEN];
 
 	for (lp = bfirstlp(curbp); lp != curbp->b_headp; lp = nlp) {
 		nlp = lforw(lp);
@@ -345,15 +346,16 @@ d_expunge(int f, int n)
 				return (FALSE);
 			case FALSE:
 				if (unlink(fname) < 0) {
-					ewprintf("Could not delete '%s'",
-					    basename(fname));
+					(void)xbasename(sname, fname, NFILEN);
+					ewprintf("Could not delete '%s'", sname);
 					return (FALSE);
 				}
 				break;
 			case TRUE:
 				if (rmdir(fname) < 0) {
-					ewprintf("Could not delete directory '%s'",
-					    basename(fname));
+					(void)xbasename(sname, fname, NFILEN);
+					ewprintf("Could not delete directory "
+					    "'%s'", sname);
 					return (FALSE);
 				}
 				break;
@@ -370,7 +372,7 @@ d_expunge(int f, int n)
 int
 d_copy(int f, int n)
 {
-	char	frname[NFILEN], toname[NFILEN], *bufp;
+	char	frname[NFILEN], toname[NFILEN], sname[NFILEN], *bufp;
 	int	ret;
 	size_t	off;
 	struct buffer *bp;
@@ -384,8 +386,10 @@ d_copy(int f, int n)
 		ewprintf("Directory name too long");
 		return (FALSE);
 	}
-	if ((bufp = eread("Copy %s to: ", toname, sizeof(toname),
-	    EFDEF | EFNEW | EFCR, basename(frname))) == NULL)
+	(void)xbasename(sname, frname, NFILEN);
+	bufp = eread("Copy %s to: ", toname, sizeof(toname),
+	    EFDEF | EFNEW | EFCR, sname);
+	if (bufp == NULL) 
 		return (ABORT);
 	else if (bufp[0] == '\0')
 		return (FALSE);
@@ -404,6 +408,7 @@ d_rename(int f, int n)
 	int		 ret;
 	size_t		 off;
 	struct buffer	*bp;
+	char		 sname[NFILEN];
 
 	if (d_makename(curwp->w_dotp, frname, sizeof(frname)) != FALSE) {
 		ewprintf("Not a file");
@@ -414,8 +419,10 @@ d_rename(int f, int n)
 		ewprintf("Directory name too long");
 		return (FALSE);
 	}
-	if ((bufp = eread("Rename %s to: ", toname,
-	    sizeof(toname), EFDEF | EFNEW | EFCR, basename(frname))) == NULL)
+	(void)xbasename(sname, frname, NFILEN);
+	bufp = eread("Rename %s to: ", toname,
+	    sizeof(toname), EFDEF | EFNEW | EFCR, sname);
+	if (bufp == NULL)
 		return (ABORT);
 	else if (bufp[0] == '\0')
 		return (FALSE);
@@ -451,6 +458,7 @@ d_shell_command(int f, int n)
 	struct buffer	*bp;
 	struct mgwin	*wp;
 	FILE	*fin;
+	char	 sname[NFILEN];
 
 	bp = bfind("*Shell Command Output*", TRUE);
 	if (bclear(bp) != TRUE)
@@ -462,8 +470,9 @@ d_shell_command(int f, int n)
 	}
 
 	command[0] = '\0';
-	if ((bufp = eread("! on %s: ", command, sizeof(command), EFNEW,
-	    basename(fname))) == NULL)
+	(void)xbasename(sname, fname, NFILEN);
+	bufp = eread("! on %s: ", command, sizeof(command), EFNEW, sname);
+	if (bufp == NULL)
 		return (ABORT);
 	infd = open(fname, O_RDONLY);
 	if (infd == -1) {

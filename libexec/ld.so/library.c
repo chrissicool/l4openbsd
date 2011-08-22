@@ -1,4 +1,4 @@
-/*	$OpenBSD: library.c,v 1.58 2008/10/02 20:12:08 kurt Exp $ */
+/*	$OpenBSD: library.c,v 1.60 2010/11/16 18:59:00 drahn Exp $ */
 
 /*
  * Copyright (c) 2002 Dale Rahn
@@ -38,6 +38,7 @@
 #include "syscall.h"
 #include "archdep.h"
 #include "resolve.h"
+#include "sod.h"
 
 #define PFLAGS(X) ((((X) & PF_R) ? PROT_READ : 0) | \
 		   (((X) & PF_W) ? PROT_WRITE : 0) | \
@@ -91,18 +92,6 @@ _dl_tryload_shlib(const char *libname, int type, int flags)
 
 #define ROUND_PG(x) (((x) + align) & ~(align))
 #define TRUNC_PG(x) ((x) & ~(align))
-
-	object = _dl_lookup_object(libname);
-	if (object) {
-		object->obj_flags |= flags & RTLD_GLOBAL;
-		if (_dl_loading_object == NULL)
-			_dl_loading_object = object;
-		if (object->load_object != _dl_objects &&
-		    object->load_object != _dl_loading_object) {
-			_dl_link_grpref(object->load_object, _dl_loading_object);
-		}
-		return(object);		/* Already loaded */
-	}
 
 	libfile = _dl_open(libname, O_RDONLY);
 	if (libfile < 0) {
@@ -254,6 +243,7 @@ _dl_tryload_shlib(const char *libname, int type, int flags)
 		object->dev = sb.st_dev;
 		object->inode = sb.st_ino;
 		object->obj_flags |= flags;
+		_dl_build_sod(object->load_name, &object->sod);
 	} else {
 		/* XXX not possible. object cannot come back NULL */
 		_dl_munmap((void *)libaddr, maxva - minva);

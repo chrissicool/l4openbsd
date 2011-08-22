@@ -1,4 +1,4 @@
-/*	$OpenBSD: if.h,v 1.117 2010/06/26 19:49:54 claudio Exp $	*/
+/*	$OpenBSD: if.h,v 1.121 2010/11/17 18:51:57 henning Exp $	*/
 /*	$NetBSD: if.h,v 1.23 1996/05/07 02:40:27 thorpej Exp $	*/
 
 /*
@@ -108,6 +108,7 @@ struct if_clonereq {
 #define MCLPOOLS	7		/* number of cluster pools */
 
 struct mclpool {
+	u_int	mcl_grown;
 	u_short	mcl_alive;
 	u_short mcl_hwm;
 	u_short mcl_cwm;
@@ -143,7 +144,6 @@ struct	if_data {
 	struct	timeval ifi_lastchange;	/* last operational state change */
 
 	struct mclpool	ifi_mclpool[MCLPOOLS];
-	u_int64_t	ifi_livelocks;		/* livelocks migitaged */
 };
 
 /*
@@ -274,8 +274,6 @@ struct ifnet {				/* and the entries */
 	void	(*if_start)(struct ifnet *);
 					/* ioctl routine */
 	int	(*if_ioctl)(struct ifnet *, u_long, caddr_t);
-					/* init routine */
-	int	(*if_init)(struct ifnet *);
 					/* stop routine */
 	int	(*if_stop)(struct ifnet *, int);
 					/* timer routine */
@@ -665,8 +663,8 @@ __BEGIN_DECLS
 unsigned int if_nametoindex(const char *);
 char	*if_indextoname(unsigned int, char *);
 struct	if_nameindex *if_nameindex(void);
+void	if_freenameindex(struct if_nameindex *);
 __END_DECLS
-#define if_freenameindex(x)	free(x)
 #endif
 
 #include <net/if_arp.h>
@@ -850,5 +848,7 @@ int	looutput(struct ifnet *,
 void	lortrequest(int, struct rtentry *, struct rt_addrinfo *);
 void	ifa_add(struct ifnet *, struct ifaddr *);
 void	ifa_del(struct ifnet *, struct ifaddr *);
+void	ifa_update_broadaddr(struct ifnet *, struct ifaddr *,
+	    struct sockaddr *);
 #endif /* _KERNEL */
 #endif /* _NET_IF_H_ */

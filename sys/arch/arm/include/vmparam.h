@@ -1,4 +1,4 @@
-/*	$OpenBSD: vmparam.h,v 1.4 2008/06/24 21:24:03 deraadt Exp $	*/
+/*	$OpenBSD: vmparam.h,v 1.7 2010/12/15 05:30:19 tedu Exp $	*/
 /*	$NetBSD: vmparam.h,v 1.18 2003/05/21 18:04:44 thorpej Exp $	*/
 
 /*
@@ -64,6 +64,9 @@
 #ifndef	MAXDSIZ
 #define	MAXDSIZ		(512*1024*1024)		/* max data size */
 #endif
+#ifndef BRKSIZ
+#define	BRKSIZ		MAXDSIZ			/* heap gap size */
+#endif
 #ifndef	DFLSSIZ
 #define	DFLSSIZ		(2*1024*1024)		/* initial stack size limit */
 #endif
@@ -99,15 +102,6 @@
 #define	VM_MAX_KERNEL_ADDRESS	((vaddr_t) 0xffffffff)
 
 #ifdef _KERNEL
-
-/* XXX max. amount of KVM to be used by buffers. */
-#ifndef VM_MAX_KERNEL_BUF
-extern vaddr_t virtual_avail;
-extern vaddr_t virtual_end;
-
-#define	VM_MAX_KERNEL_BUF	\
-	((virtual_end - virtual_avail) * 4 / 10)
-#endif
 
 /*
  * pmap-specific data store in the vm_page structure.

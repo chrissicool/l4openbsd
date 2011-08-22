@@ -1,4 +1,4 @@
-/*	$OpenBSD: print-pflog.c,v 1.21 2010/06/26 16:47:07 henning Exp $	*/
+/*	$OpenBSD: print-pflog.c,v 1.23 2010/10/09 08:22:26 canacar Exp $	*/
 
 /*
  * Copyright (c) 1990, 1991, 1993, 1994, 1995, 1996
@@ -21,6 +21,7 @@
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+#include <sys/types.h>
 #include <sys/param.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -42,6 +43,8 @@ struct rtentry;
 #include <netinet/ip.h>
 
 #include <net/pfvar.h>
+
+#include <arpa/inet.h>
 
 #include <ctype.h>
 #include <netdb.h>
@@ -82,7 +85,7 @@ pflog_if_print(u_char *user, const struct pcap_pkthdr *h,
 		printf("[pflog: invalid header length!]");
 		goto out;
 	}
-	hdrlen = BPF_WORDALIGN(hdr->length);
+	hdrlen = (hdr->length + 3) & 0xfc;
 
 	if (caplen < hdrlen) {
 		printf("[|pflog]");
@@ -152,6 +155,22 @@ pflog_if_print(u_char *user, const struct pcap_pkthdr *h,
 		if (vflag && hdr->pid != NO_PID)
 			printf("[uid %u, pid %u] ", (unsigned)hdr->uid,
 			    (unsigned)hdr->pid);
+		if (vflag && hdr->rewritten) {
+			char buf[48];
+
+			if (inet_ntop(hdr->af, &hdr->saddr.v4, buf,
+			    sizeof(buf)) == NULL)
+				printf("[orig src ?, ");
+			else
+				printf("[orig src %s:%u, ", buf,
+				    ntohs(hdr->sport));
+			if (inet_ntop(hdr->af, &hdr->daddr.v4, buf,
+			    sizeof(buf)) == NULL)
+				printf("dst ?] ");
+			else
+				printf("dst %s:%u] ", buf,
+				    ntohs(hdr->dport));
+		}
 	}
 	af = hdr->af;
 	length -= hdrlen;

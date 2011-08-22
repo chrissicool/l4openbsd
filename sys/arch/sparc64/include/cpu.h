@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpu.h,v 1.72 2009/03/26 17:24:33 oga Exp $	*/
+/*	$OpenBSD: cpu.h,v 1.75 2010/12/21 14:56:24 claudio Exp $	*/
 /*	$NetBSD: cpu.h,v 1.28 2001/06/14 22:56:58 thorpej Exp $ */
 
 /*
@@ -148,6 +148,10 @@ struct cpu_info {
 	paddr_t			ci_cpuset;
 	paddr_t			ci_mondo;
 #endif
+
+#ifdef DIAGNOSTIC
+	int	ci_mutex_level;
+#endif
 };
 
 #define CPUF_RUNNING	0x0001		/* CPU is running */
@@ -217,8 +221,6 @@ struct clockframe {
 
 extern void (*cpu_start_clock)(void);
 
-void setsoftnet(void);
-
 #define aston(p)	((p)->p_md.md_astpending = 1)
 
 /*
@@ -284,7 +286,6 @@ void	fb_unblank(void);
 /* tda.c */
 void	tda_full_blast(void);
 /* emul.c */
-int	fixalign(struct proc *, struct trapframe64 *);
 int	emulinstr(vaddr_t, struct trapframe64 *);
 int	emul_qf(int32_t, struct proc *, union sigval, struct trapframe64 *);
 int	emul_popc(int32_t, struct proc *, union sigval, struct trapframe64 *);

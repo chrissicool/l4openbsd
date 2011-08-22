@@ -1,4 +1,4 @@
-#	$OpenBSD: changelist,v 1.68 2010/06/29 17:17:53 nicm Exp $
+#	$OpenBSD: changelist,v 1.71 2011/01/19 18:34:58 david Exp $
 #
 # List of files which the security script backs up and checks
 # for modifications.
@@ -38,7 +38,6 @@
 /etc/gettytab
 /etc/group
 /etc/hostapd.conf
-/etc/relayd.conf
 /etc/hosts
 /etc/hosts.allow
 /etc/hosts.deny
@@ -48,9 +47,12 @@
 +/etc/iked.conf
 /etc/inetd.conf
 +/etc/ipsec.conf
-+/etc/isakmpd/private/local.key
++/etc/isakmpd/isakmpd.conf
++/etc/isakmpd/isakmpd.policy
 /etc/isakmpd/local.pub
++/etc/isakmpd/private/local.key
 /etc/ksh.kshrc
+/etc/ldapd.conf
 /etc/ldpd.conf
 /etc/locate.rc
 /etc/login.conf
@@ -91,12 +93,14 @@
 /etc/netstart
 /etc/networks
 /etc/newsyslog.conf
+/etc/nsd.conf
 /etc/ntpd.conf
-/etc/ospfd.conf
 /etc/ospf6d.conf
+/etc/ospfd.conf
 /etc/passwd
 /etc/pf.conf
 /etc/pf.os
+/etc/pkg.conf
 /etc/portal.conf
 /etc/printcap
 /etc/profile
@@ -106,15 +110,17 @@
 /etc/rc
 /etc/rc.conf
 /etc/rc.conf.local
+/etc/rc.d/rc.subr
 /etc/rc.local
 /etc/rc.securelevel
 /etc/rc.shutdown
+/etc/relayd.conf
 /etc/remote
 /etc/resolv.conf
 /etc/resolv.conf.tail
+/etc/ripd.conf
 +/etc/rndc.key
 /etc/rpc
-/etc/ripd.conf
 /etc/rtadvd.conf
 /etc/sasyncd.conf
 /etc/security
@@ -129,6 +135,8 @@
 /etc/ssh/ssh_config
 +/etc/ssh/ssh_host_dsa_key
 /etc/ssh/ssh_host_dsa_key.pub
++/etc/ssh/ssh_host_ecdsa_key
+/etc/ssh/ssh_host_ecdsa_key.pub
 +/etc/ssh/ssh_host_key
 /etc/ssh/ssh_host_key.pub
 +/etc/ssh/ssh_host_rsa_key
@@ -145,6 +153,8 @@
 /etc/weekly
 /etc/weekly.local
 /etc/wsconsctl.conf
+/etc/ypldap.conf
+/root/.Xdefaults
 /root/.cshrc
 /root/.klogin
 /root/.login

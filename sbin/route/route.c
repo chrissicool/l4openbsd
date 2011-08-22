@@ -1,4 +1,4 @@
-/*	$OpenBSD: route.c,v 1.147 2010/07/14 01:23:04 dlg Exp $	*/
+/*	$OpenBSD: route.c,v 1.152 2010/10/25 19:39:55 deraadt Exp $	*/
 /*	$NetBSD: route.c,v 1.16 1996/04/15 18:27:05 cgd Exp $	*/
 
 /*
@@ -63,19 +63,12 @@
 const struct if_status_description
 			if_status_descriptions[] = LINK_STATE_DESCRIPTIONS;
 
-union	sockunion {
-	struct sockaddr		sa;
-	struct sockaddr_in	sin;
-	struct sockaddr_in6	sin6;
-	struct sockaddr_dl	sdl;
-	struct sockaddr_rtlabel	rtlabel;
-	struct sockaddr_mpls	smpls;
-} so_dst, so_gate, so_mask, so_genmask, so_ifa, so_ifp, so_label, so_src;
+union sockunion so_dst, so_gate, so_mask, so_genmask, so_ifa, so_ifp, so_label, so_src;
 
 typedef union sockunion *sup;
 pid_t	pid;
 int	rtm_addrs, s;
-int	forcehost, forcenet, Fflag, nflag, af, qflag, tflag;
+int	forcehost, forcenet, Fflag, nflag, af, qflag, tflag, Tflag;
 int	iflag, verbose, aflen = sizeof(struct sockaddr_in);
 int	locking, lockrest, debugonly;
 u_long	mpls_flags = MPLS_OP_LOCAL;
@@ -141,6 +134,7 @@ main(int argc, char **argv)
 	if (argc < 2)
 		usage(NULL);
 
+	tableid = getrtable();
 	while ((ch = getopt(argc, argv, "dnqtT:v")) != -1)
 		switch (ch) {
 		case 'n':
@@ -157,6 +151,7 @@ main(int argc, char **argv)
 			break;
 		case 'T':
 			gettable(optarg);
+			Tflag = 1;
 			break;
 		case 'd':
 			debugonly = 1;
@@ -187,6 +182,10 @@ main(int argc, char **argv)
 			s = socket(PF_ROUTE, SOCK_RAW, 0);
 		if (s == -1)
 			err(1, "socket");
+		/* force socket onto table user requested */
+		if (Tflag && setsockopt(s, AF_ROUTE, ROUTE_TABLEFILTER,
+		    &tableid, sizeof(tableid)) == -1)
+			err(1, "setsockopt(ROUTE_TABLEFILTER)");
 		break;
 	}
 	switch (kw) {
@@ -429,7 +428,7 @@ newroute(int argc, char **argv)
 				if (!--argc)
 					usage(1+*argv);
 				if (af != AF_INET && af != AF_INET6)
-					errx(1, "-mplslabel requires " 
+					errx(1, "-mplslabel requires "
 					    "-inet or -inet6");
 				getmplslabel(*++argv, 0);
 				mpls_flags = MPLS_OP_PUSH;
@@ -682,6 +681,11 @@ show(int argc, char *argv[])
 			case K_GATEWAY:
 				Fflag = 1;
 				break;
+			case K_LABEL:
+				if (!--argc)
+					usage(1+*argv);
+				getlabel(*++argv);
+				break;
 			default:
 				usage(*argv);
 				/* NOTREACHED */
@@ -690,7 +694,7 @@ show(int argc, char *argv[])
 			usage(*argv);
 	}
 
-	p_rttables(af, tableid);
+	p_rttables(af, tableid, Tflag);
 }
 
 void
@@ -1048,7 +1052,10 @@ monitor(int argc, char *argv[])
 
 	if (setsockopt(s, AF_ROUTE, ROUTE_MSGFILTER, &filter,
 	    sizeof(filter)) == -1)
-		err(1, "setsockopt");
+		err(1, "setsockopt(ROUTE_MSGFILTER)");
+	if (Tflag && setsockopt(s, AF_ROUTE, ROUTE_TABLEFILTER, &tableid,
+	    sizeof(tableid)) == -1)
+		err(1, "setsockopt(ROUTE_TABLEFILTER)");
 
 	verbose = 1;
 	if (debugonly) {
@@ -1197,7 +1204,6 @@ char *msgtypes[] = {
 	"RTM_IFINFO: iface status change",
 	"RTM_IFANNOUNCE: iface arrival/departure",
 	"RTM_DESYNC: route socket overflow",
-	NULL
 };
 
 char metricnames[] =
@@ -1240,7 +1246,13 @@ print_rtmsg(struct rt_msghdr *rtm, int msglen)
 		    rtm->rtm_version);
 		return;
 	}
-	printf("%s: len %d", msgtypes[rtm->rtm_type], rtm->rtm_msglen);
+	if (rtm->rtm_type > 0 &&
+	    rtm->rtm_type < sizeof(msgtypes)/sizeof(msgtypes[0]))
+		printf("%s", msgtypes[rtm->rtm_type]);
+	else
+		printf("[rtm_type %d out of range]", rtm->rtm_type);
+
+	printf(": len %d", rtm->rtm_msglen);	
 	switch (rtm->rtm_type) {
 	case RTM_DESYNC:
 		printf("\n");
@@ -1405,7 +1417,7 @@ print_getmsg(struct rt_msghdr *rtm, int msglen)
 		    routename(mpls));
 	}
 	printf("   priority: %u (%s)\n", rtm->rtm_priority,
-	   priorityname(rtm->rtm_priority)); 
+	   priorityname(rtm->rtm_priority));
 	printf("      flags: ");
 	bprintf(stdout, rtm->rtm_flags, routeflags);
 	printf("\n");
@@ -1512,12 +1524,21 @@ bprintf(FILE *fp, int b, char *s)
 }
 
 int
+keycmp(const void *key, const void *kt)
+{
+	return (strcmp(key, ((struct keytab *)kt)->kt_cp));
+}
+
+int
 keyword(char *cp)
 {
-	struct keytab *kt = keywords;
+	struct keytab *kt;
 
-	while (kt->kt_cp && strcmp(kt->kt_cp, cp))
-		kt++;
+	kt = bsearch(cp, keywords, sizeof(keywords)/sizeof(keywords[0]),
+	    sizeof(keywords[0]), keycmp);
+	if (!kt)
+		return (0);
+
 	return (kt->kt_i);
 }
 
@@ -1610,11 +1631,25 @@ getlabel(char *name)
 void
 gettable(const char *s)
 {
-	const char	*errstr;
+	const char		*errstr;
+	struct rt_tableinfo      info;
+	int			 mib[6];
+	size_t			 len;
 
 	tableid = strtonum(s, 0, RT_TABLEID_MAX, &errstr);
 	if (errstr)
 		errx(1, "invalid table id: %s", errstr);
+
+	mib[0] = CTL_NET;
+	mib[1] = AF_ROUTE;
+	mib[2] = 0;
+	mib[3] = 0;
+	mib[4] = NET_RT_TABLE;
+	mib[5] = tableid;
+
+	len = sizeof(info);
+	if (sysctl(mib, 6, &info, &len, NULL, 0) == -1)
+		err(1, "routing table %i", tableid);
 }
 
 int

@@ -1,4 +1,4 @@
-/*	$OpenBSD: random.c,v 1.26 2008/09/15 16:13:35 kjell Exp $	*/
+/*	$OpenBSD: random.c,v 1.30 2011/01/21 19:10:13 kjell Exp $	*/
 
 /* This file is in the public domain. */
 
@@ -10,6 +10,7 @@
  */
 
 #include "def.h"
+
 #include <ctype.h>
 
 /*
@@ -119,7 +120,6 @@ twiddle(int f, int n)
 
 	dotp = curwp->w_dotp;
 	doto = curwp->w_doto;
-	undo_boundary_enable(FFRAND, 0);
 	if (doto == llength(dotp)) {
 		if (--doto <= 0)
 			return (FALSE);
@@ -129,6 +129,7 @@ twiddle(int f, int n)
 		if (doto == 0)
 			return (FALSE);
 	}
+	undo_boundary_enable(FFRAND, 0);
 	cr = lgetc(dotp, doto - 1);
 	(void)backdel(FFRAND, 1);
 	(void)forwchar(FFRAND, 1);
@@ -158,6 +159,7 @@ openline(int f, int n)
 		return (TRUE);
 
 	/* insert newlines */
+	undo_boundary_enable(FFRAND, 0);
 	i = n;
 	do {
 		s = lnewline();
@@ -166,6 +168,7 @@ openline(int f, int n)
 	/* then go back up overtop of them all */
 	if (s == TRUE)
 		s = backchar(f | FFRAND, n);
+	undo_boundary_enable(FFRAND, 1);
 	return (s);
 }
 
@@ -223,8 +226,11 @@ deblank(int f, int n)
 int
 justone(int f, int n)
 {
+	undo_boundary_enable(FFRAND, 0);
 	(void)delwhite(f, n);
-	return (linsert(1, ' '));
+	linsert(1, ' ');
+	undo_boundary_enable(FFRAND, 1);
+	return (TRUE);
 }
 
 /*
@@ -318,10 +324,12 @@ int
 lfindent(int f, int n)
 {
 	int	c, i, nicol;
+	int	s = TRUE;
 
 	if (n < 0)
 		return (FALSE);
 
+	undo_boundary_enable(FFRAND, 0);
 	while (n--) {
 		nicol = 0;
 		for (i = 0; i < llength(curwp->w_dotp); ++i) {
@@ -337,10 +345,13 @@ lfindent(int f, int n)
 		    curbp->b_flag & BFNOTAB) ? linsert(nicol, ' ') == FALSE : (
 #endif /* NOTAB */
 		    ((i = nicol / 8) != 0 && linsert(i, '\t') == FALSE) ||
-		    ((i = nicol % 8) != 0 && linsert(i, ' ') == FALSE))))
-			return (FALSE);
+		    ((i = nicol % 8) != 0 && linsert(i, ' ') == FALSE)))) {
+			s = FALSE;
+			break;
+		}
 	}
-	return (TRUE);
+	undo_boundary_enable(FFRAND, 1);
+	return (s);
 }
 
 /*
@@ -440,3 +451,46 @@ space_to_tabstop(int f, int n)
 	return (linsert((n << 3) - (curwp->w_doto & 7), ' '));
 }
 #endif /* NOTAB */
+
+/*
+ * Move the dot to the first non-whitespace character of the current line.
+ */
+int
+backtoindent(int f, int n)
+{
+	gotobol(FFRAND, 1);
+	while (curwp->w_doto < llength(curwp->w_dotp) &&
+	    (isspace(lgetc(curwp->w_dotp, curwp->w_doto))))
+		++curwp->w_doto;
+	return (TRUE);
+}
+
+/*
+ * Join the current line to the previous, or with arg, the next line
+ * to the current one.  If the former line is not empty, leave exactly
+ * one space at the joint.  Otherwise, leave no whitespace.
+ */
+int
+joinline(int f, int n)
+{
+	int doto;
+
+	undo_boundary_enable(FFRAND, 0);
+	if (f & FFARG) {
+		gotoeol(FFRAND, 1);
+		forwdel(FFRAND, 1);
+	} else {
+		gotobol(FFRAND, 1);
+		backdel(FFRAND, 1);
+	}
+
+	delwhite(FFRAND, 1);
+
+	if ((doto = curwp->w_doto) > 0) {
+		linsert(1, ' ');
+		curwp->w_doto = doto;
+	}
+	undo_boundary_enable(FFRAND, 1);
+
+	return (TRUE);
+}

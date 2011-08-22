@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_tun.c,v 1.107 2010/07/08 08:40:29 yasuoka Exp $	*/
+/*	$OpenBSD: if_tun.c,v 1.109 2010/09/23 04:47:02 matthew Exp $	*/
 /*	$NetBSD: if_tun.c,v 1.24 1996/05/07 02:40:48 thorpej Exp $	*/
 
 /*
@@ -342,9 +342,6 @@ tunopen(dev_t dev, int flag, int mode, struct proc *p)
 	struct tun_softc	*tp;
 	struct ifnet		*ifp;
 	int			 error, s;
-
-	if ((error = suser(p, 0)) != 0)
-		return (error);
 
 	if ((tp = tun_lookup(minor(dev))) == NULL) {	/* create on demand */
 		char	xname[IFNAMSIZ];
@@ -821,7 +818,7 @@ tunread(dev_t dev, struct uio *uio, int ioflag)
 		m_freem(m0);
 	}
 	if (error)
-		ifp->if_ierrors++;
+		ifp->if_oerrors++;
 
 	return (error);
 }

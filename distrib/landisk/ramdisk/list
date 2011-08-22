@@ -1,4 +1,4 @@
-#	$OpenBSD: list,v 1.18 2010/03/31 17:51:42 deraadt Exp $
+#	$OpenBSD: list,v 1.20 2010/10/18 04:07:50 deraadt Exp $
 
 SRCDIRS distrib/special
 SRCDIRS bin sbin usr.bin usr.sbin
@@ -64,6 +64,8 @@ COPY	${DESTDIR}/etc/firmware/kue		etc/firmware/kue
 COPY	${DESTDIR}/etc/firmware/zd1211		etc/firmware/zd1211
 COPY	${DESTDIR}/etc/firmware/zd1211b		etc/firmware/zd1211b
 COPY	${DESTDIR}/etc/firmware/rum-rt2573	etc/firmware/rum-rt2573
+COPY	${DESTDIR}/etc/firmware/run-rt2870	etc/firmware/run-rt2870
+COPY	${DESTDIR}/etc/firmware/run-rt3071	etc/firmware/run-rt3071
 COPY	${DESTDIR}/etc/firmware/atu-at76c503-i3863-ext etc/firmware/atu-at76c503-i3863-ext
 COPY	${DESTDIR}/etc/firmware/atu-at76c503-i3863-int etc/firmware/atu-at76c503-i3863-int
 COPY	${DESTDIR}/etc/firmware/atu-at76c503-rfmd-acc-ext etc/firmware/atu-at76c503-rfmd-acc-ext
@@ -92,7 +94,8 @@ LINK	usr/mdec/xxboot				usr/mdec/sdboot
 
 # various files that we need in /etc for the install
 COPY	${DESTDIR}/etc/group			etc/group
-COPY	${DESTDIR}/etc/spwd.db			etc/spwd.db
+COPY	${CURDIR}/../../miniroot/master.passwd	etc/master.passwd
+SPECIAL	pwd_mkdb -p -d etc master.passwd; rm etc/master.passwd
 COPY	${CURDIR}/../../miniroot/protocols	etc/protocols
 COPY	${CURDIR}/../../miniroot/services	etc/services
 SYMLINK	/tmp/fstab.shadow			etc/fstab

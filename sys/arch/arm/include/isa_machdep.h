@@ -1,4 +1,4 @@
-/*	$OpenBSD: isa_machdep.h,v 1.4 2008/06/26 05:42:09 ray Exp $	*/
+/*	$OpenBSD: isa_machdep.h,v 1.6 2010/11/22 21:07:40 miod Exp $	*/
 /*	$NetBSD: isa_machdep.h,v 1.3 2002/01/07 22:58:07 chris Exp $	*/
 
 /*-
@@ -160,14 +160,6 @@ extern struct bus_space isa_mem_bs_tag;
 /* ISA chipset */
 extern struct arm32_isa_chipset isa_chipset_tag;
 
-/* for pccons.c */
-#define MONO_BASE           0x3B4
-#define MONO_BUF            0x000B0000
-#define CGA_BASE            0x3D4
-#define CGA_BUF             0x000B8000
-#define VGA_BUF             0xA0000
-#define VGA_BUF_LEN         (0xBFFFF - 0xA0000)
-
 void	isa_init(vaddr_t, vaddr_t);
 void	isa_io_init(vaddr_t, vaddr_t);
 void	isa_dma_init(void);
@@ -177,7 +169,7 @@ int isa_intr_alloc(isa_chipset_tag_t ic, int mask, int type, int *irq);
 void	isa_intr_init(void);
 
 /*
- * Miscellanous functions.
+ * Miscellaneous functions.
  */
 void isa_fillw(u_int val, void *addr, size_t len);
 

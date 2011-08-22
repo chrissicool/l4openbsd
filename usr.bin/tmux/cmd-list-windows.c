@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-list-windows.c,v 1.9 2010/06/29 03:30:13 nicm Exp $ */
+/* $OpenBSD: cmd-list-windows.c,v 1.11 2011/01/04 00:42:46 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -30,31 +30,30 @@ int	cmd_list_windows_exec(struct cmd *, struct cmd_ctx *);
 
 const struct cmd_entry cmd_list_windows_entry = {
 	"list-windows", "lsw",
+	"t:", 0, 0,
 	CMD_TARGET_SESSION_USAGE,
-	0, "",
-	cmd_target_init,
-	cmd_target_parse,
-	cmd_list_windows_exec,
-	cmd_target_free,
-	cmd_target_print
+	0,
+	NULL,
+	NULL,
+	cmd_list_windows_exec
 };
 
 int
 cmd_list_windows_exec(struct cmd *self, struct cmd_ctx *ctx)
 {
-	struct cmd_target_data	*data = self->data;
-	struct session		*s;
-	struct winlink		*wl;
-	char			*layout;
+	struct args	*args = self->args;
+	struct session	*s;
+	struct winlink	*wl;
+	char		*layout;
 
-	if ((s = cmd_find_session(ctx, data->target)) == NULL)
+	if ((s = cmd_find_session(ctx, args_get(args, 't'))) == NULL)
 		return (-1);
 
 	RB_FOREACH(wl, winlinks, &s->windows) {
-		ctx->print(ctx, "%d: %s [%ux%u]",
-		    wl->idx, wl->window->name, wl->window->sx, wl->window->sy);
 		layout = layout_dump(wl->window);
-		ctx->print(ctx, "    layout: %s", layout);
+		ctx->print(ctx, "%d: %s [%ux%u] [layout %s]%s",
+		    wl->idx, wl->window->name, wl->window->sx, wl->window->sy,
+		    layout, wl == s->curw ? " (active)" : "");
 		xfree(layout);
 	}
 

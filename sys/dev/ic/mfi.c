@@ -1,4 +1,4 @@
-/* $OpenBSD: mfi.c,v 1.110 2010/07/22 04:40:41 matthew Exp $ */
+/* $OpenBSD: mfi.c,v 1.114 2010/12/30 08:53:50 dlg Exp $ */
 /*
  * Copyright (c) 2006 Marco Peereboom <marco@peereboom.us>
  *
@@ -63,8 +63,8 @@ struct scsi_adapter mfi_switch = {
 	mfi_scsi_cmd, mfiminphys, 0, 0, mfi_scsi_ioctl
 };
 
-struct mfi_ccb	*mfi_get_ccb(struct mfi_softc *);
-void		mfi_put_ccb(struct mfi_ccb *);
+void *		mfi_get_ccb(void *);
+void		mfi_put_ccb(void *, void *);
 int		mfi_init_ccb(struct mfi_softc *);
 
 struct mfi_mem	*mfi_allocmem(struct mfi_softc *, size_t);
@@ -85,6 +85,8 @@ int		mfi_scsi_io(struct mfi_ccb *, struct scsi_xfer *, uint64_t,
 void		mfi_scsi_xs_done(struct mfi_ccb *);
 int		mfi_mgmt(struct mfi_softc *, uint32_t, uint32_t, uint32_t,
 		    void *, uint8_t *);
+int		mfi_do_mgmt(struct mfi_softc *, struct mfi_ccb * , uint32_t,
+		    uint32_t, uint32_t, void *, uint8_t *);
 void		mfi_mgmt_done(struct mfi_ccb *);
 
 #if NBIO > 0
@@ -146,9 +148,10 @@ static const struct mfi_iop_ops mfi_iop_gen2 = {
 #define mfi_my_intr(_s)		((_s)->sc_iop->mio_intr(_s))
 #define mfi_post(_s, _c)	((_s)->sc_iop->mio_post((_s), (_c)))
 
-struct mfi_ccb *
-mfi_get_ccb(struct mfi_softc *sc)
+void *
+mfi_get_ccb(void *cookie)
 {
+	struct mfi_softc	*sc = cookie;
 	struct mfi_ccb		*ccb;
 
 	mtx_enter(&sc->sc_ccb_mtx);
@@ -165,9 +168,10 @@ mfi_get_ccb(struct mfi_softc *sc)
 }
 
 void
-mfi_put_ccb(struct mfi_ccb *ccb)
+mfi_put_ccb(void *cookie, void *io)
 {
-	struct mfi_softc	*sc = ccb->ccb_sc;
+	struct mfi_softc	*sc = cookie;
+	struct mfi_ccb 		*ccb = io;
 	struct mfi_frame_header	*hdr = &ccb->ccb_frame->mfr_header;
 
 	DNPRINTF(MFI_D_CCB, "%s: mfi_put_ccb: %p\n", DEVNAME(sc), ccb);
@@ -239,7 +243,7 @@ mfi_init_ccb(struct mfi_softc *sc)
 		    ccb->ccb_dmamap);
 
 		/* add ccb to queue */
-		mfi_put_ccb(ccb);
+		mfi_put_ccb(sc, ccb);
 	}
 
 	return (0);
@@ -436,7 +440,7 @@ mfi_initialize_firmware(struct mfi_softc *sc)
 		return (1);
 	}
 
-	mfi_put_ccb(ccb);
+	mfi_put_ccb(sc, ccb);
 
 	return (0);
 }
@@ -638,6 +642,7 @@ mfi_attach(struct mfi_softc *sc, enum mfi_iop iop)
 
 	SLIST_INIT(&sc->sc_ccb_freeq);
 	mtx_init(&sc->sc_ccb_mtx, IPL_BIO);
+	scsi_iopool_init(&sc->sc_iopool, sc, mfi_get_ccb, mfi_put_ccb);
 
 	rw_init(&sc->sc_lock, "mfi_lock");
 
@@ -718,6 +723,7 @@ mfi_attach(struct mfi_softc *sc, enum mfi_iop iop)
 	sc->sc_link.adapter = &mfi_switch;
 	sc->sc_link.adapter_target = MFI_MAX_LD;
 	sc->sc_link.adapter_buswidth = sc->sc_max_ld;
+	sc->sc_link.pool = &sc->sc_iopool;
 
 	bzero(&saa, sizeof(saa));
 	saa.saa_sc_link = &sc->sc_link;
@@ -901,9 +907,21 @@ mfi_scsi_xs_done(struct mfi_ccb *ccb)
 		bus_dmamap_unload(sc->sc_dmat, ccb->ccb_dmamap);
 	}
 
-	if (hdr->mfh_cmd_status != MFI_STAT_OK) {
+	switch (hdr->mfh_cmd_status) {
+	case MFI_STAT_OK:
+		xs->resid = 0;
+		break;
+
+	case MFI_STAT_SCSI_DONE_WITH_ERROR:
+		xs->error = XS_SENSE;
+		xs->resid = 0;
+		memset(&xs->sense, 0, sizeof(xs->sense));
+		memcpy(&xs->sense, ccb->ccb_sense, sizeof(xs->sense));
+		break;
+
+	default:
 		xs->error = XS_DRIVER_STUFFUP;
-		DNPRINTF(MFI_D_INTR, "%s: mfi_scsi_xs_done stuffup %#x\n",
+		printf("%s: mfi_scsi_xs_done stuffup %#x\n",
 		    DEVNAME(sc), hdr->mfh_cmd_status);
 
 		if (hdr->mfh_scsi_status != 0) {
@@ -916,11 +934,9 @@ mfi_scsi_xs_done(struct mfi_ccb *ccb)
 			    sizeof(struct scsi_sense_data));
 			xs->error = XS_SENSE;
 		}
+		break;
 	}
 
-	xs->resid = 0;
-
-	mfi_put_ccb(ccb);
 	scsi_done(xs);
 }
 
@@ -977,7 +993,7 @@ mfi_scsi_cmd(struct scsi_xfer *xs)
 	struct scsi_link	*link = xs->sc_link;
 	struct mfi_softc	*sc = link->adapter_softc;
 	struct device		*dev = link->device_softc;
-	struct mfi_ccb		*ccb;
+	struct mfi_ccb		*ccb = xs->io;
 	struct scsi_rw		*rw;
 	struct scsi_rw_big	*rwb;
 	struct scsi_rw_16	*rw16;
@@ -996,13 +1012,6 @@ mfi_scsi_cmd(struct scsi_xfer *xs)
 		goto stuffup;
 	}
 
-	if ((ccb = mfi_get_ccb(sc)) == NULL) {
-		DNPRINTF(MFI_D_CMD, "%s: mfi_scsi_cmd no ccb\n", DEVNAME(sc));
-		xs->error = XS_NO_CCB;
-		scsi_done(xs);
-		return;
-	}
-
 	xs->error = XS_NOERROR;
 
 	switch (xs->cmd->opcode) {
@@ -1012,10 +1021,8 @@ mfi_scsi_cmd(struct scsi_xfer *xs)
 		rwb = (struct scsi_rw_big *)xs->cmd;
 		blockno = (uint64_t)_4btol(rwb->addr);
 		blockcnt = _2btol(rwb->length);
-		if (mfi_scsi_io(ccb, xs, blockno, blockcnt)) {
-			mfi_put_ccb(ccb);
+		if (mfi_scsi_io(ccb, xs, blockno, blockcnt))
 			goto stuffup;
-		}
 		break;
 
 	case READ_COMMAND:
@@ -1024,10 +1031,8 @@ mfi_scsi_cmd(struct scsi_xfer *xs)
 		blockno =
 		    (uint64_t)(_3btol(rw->addr) & (SRW_TOPADDR << 16 | 0xffff));
 		blockcnt = rw->length ? rw->length : 0x100;
-		if (mfi_scsi_io(ccb, xs, blockno, blockcnt)) {
-			mfi_put_ccb(ccb);
+		if (mfi_scsi_io(ccb, xs, blockno, blockcnt))
 			goto stuffup;
-		}
 		break;
 
 	case READ_16:
@@ -1035,18 +1040,14 @@ mfi_scsi_cmd(struct scsi_xfer *xs)
 		rw16 = (struct scsi_rw_16 *)xs->cmd;
 		blockno = _8btol(rw16->addr);
 		blockcnt = _4btol(rw16->length);
-		if (mfi_scsi_io(ccb, xs, blockno, blockcnt)) {
-			mfi_put_ccb(ccb);
+		if (mfi_scsi_io(ccb, xs, blockno, blockcnt))
 			goto stuffup;
-		}
 		break;
 
 	case SYNCHRONIZE_CACHE:
-		mfi_put_ccb(ccb); /* we don't need this */
-
 		mbox[0] = MR_FLUSH_CTRL_CACHE | MR_FLUSH_DISK_CACHE;
-		if (mfi_mgmt(sc, MR_DCMD_CTRL_CACHE_FLUSH, MFI_DATA_NONE,
-		    0, NULL, mbox))
+		if (mfi_do_mgmt(sc, ccb, MR_DCMD_CTRL_CACHE_FLUSH,
+		    MFI_DATA_NONE, 0, NULL, mbox))
 			goto stuffup;
 
 		goto complete;
@@ -1061,10 +1062,8 @@ mfi_scsi_cmd(struct scsi_xfer *xs)
 		/* FALLTHROUGH */
 
 	default:
-		if (mfi_scsi_ld(ccb, xs)) {
-			mfi_put_ccb(ccb);
+		if (mfi_scsi_ld(ccb, xs))
 			goto stuffup;
-		}
 		break;
 	}
 
@@ -1076,13 +1075,13 @@ mfi_scsi_cmd(struct scsi_xfer *xs)
 			printf("%s: mfi_scsi_cmd poll failed\n",
 			    DEVNAME(sc));
 			bzero(&xs->sense, sizeof(xs->sense));
-			xs->sense.error_code = SSD_ERRCODE_VALID | 0x70;
+			xs->sense.error_code = SSD_ERRCODE_VALID |
+			    SSD_ERRCODE_CURRENT;
 			xs->sense.flags = SKEY_ILLEGAL_REQUEST;
 			xs->sense.add_sense_code = 0x20; /* invalid opcode */
 			xs->error = XS_SENSE;
 		}
 
-		mfi_put_ccb(ccb);
 		scsi_done(xs);
 		return;
 	}
@@ -1168,15 +1167,24 @@ int
 mfi_mgmt(struct mfi_softc *sc, uint32_t opc, uint32_t dir, uint32_t len,
     void *buf, uint8_t *mbox)
 {
-	struct mfi_ccb		*ccb;
+	struct mfi_ccb *ccb;
+	int rv;
+
+	ccb = scsi_io_get(&sc->sc_iopool, 0);
+	rv = mfi_do_mgmt(sc, ccb, opc, dir, len, buf, mbox);
+	scsi_io_put(&sc->sc_iopool, ccb);
+
+	return (rv);
+}
+
+int
+mfi_do_mgmt(struct mfi_softc *sc, struct mfi_ccb *ccb, uint32_t opc,
+    uint32_t dir, uint32_t len, void *buf, uint8_t *mbox)
+{
 	struct mfi_dcmd_frame	*dcmd;
-	int			rv = 1;
 	int			s;
 
 	DNPRINTF(MFI_D_MISC, "%s: mfi_mgmt %#x\n", DEVNAME(sc), opc);
-
-	if ((ccb = mfi_get_ccb(sc)) == NULL)
-		return (rv);
 
 	dcmd = &ccb->ccb_frame->mfr_dcmd;
 	memset(dcmd->mdf_mbox, 0, MFI_MBOX_SIZE);
@@ -1201,12 +1209,12 @@ mfi_mgmt(struct mfi_softc *sc, uint32_t opc, uint32_t dir, uint32_t len,
 		ccb->ccb_sgl = &dcmd->mdf_sgl;
 
 		if (mfi_create_sgl(ccb, BUS_DMA_WAITOK))
-			goto done;
+			return (EINVAL);
 	}
 
 	if (cold) {
 		if (mfi_poll(ccb))
-			goto done;
+			return (EIO);
 	} else {
 		s = splbio();
 		mfi_start(sc, ccb);
@@ -1217,14 +1225,10 @@ mfi_mgmt(struct mfi_softc *sc, uint32_t opc, uint32_t dir, uint32_t len,
 		splx(s);
 
 		if (ccb->ccb_flags & MFI_CCB_F_ERR)
-			goto done;
+			return (EIO);
 	}
 
-	rv = 0;
-
-done:
-	mfi_put_ccb(ccb);
-	return (rv);
+	return (0);
 }
 
 void
@@ -1339,7 +1343,8 @@ mfi_bio_getitall(struct mfi_softc *sc)
 	cfg = malloc(sizeof *cfg, M_DEVBUF, M_NOWAIT | M_ZERO);
 	if (cfg == NULL)
 		goto done;
-	if (mfi_mgmt(sc, MD_DCMD_CONF_GET, MFI_DATA_IN, sizeof *cfg, cfg, NULL))
+	if (mfi_mgmt(sc, MD_DCMD_CONF_GET, MFI_DATA_IN, sizeof *cfg, cfg,
+	    NULL))
 		goto done;
 
 	size = cfg->mfc_size;
@@ -1729,7 +1734,6 @@ mfi_ioctl_setstate(struct mfi_softc *sc, struct bioc_setstate *bs)
 	struct mfi_pd_list	*pd;
 	int			i, found, rv = EINVAL;
 	uint8_t			mbox[MFI_MBOX_SIZE];
-	uint32_t		cmd;
 
 	DNPRINTF(MFI_D_IOCTL, "%s: mfi_ioctl_setstate %x\n", DEVNAME(sc),
 	    bs->bs_status);
@@ -1757,21 +1761,17 @@ mfi_ioctl_setstate(struct mfi_softc *sc, struct bioc_setstate *bs)
 	switch (bs->bs_status) {
 	case BIOC_SSONLINE:
 		mbox[2] = MFI_PD_ONLINE;
-		cmd = MD_DCMD_PD_SET_STATE;
 		break;
 
 	case BIOC_SSOFFLINE:
 		mbox[2] = MFI_PD_OFFLINE;
-		cmd = MD_DCMD_PD_SET_STATE;
 		break;
 
 	case BIOC_SSHOTSPARE:
 		mbox[2] = MFI_PD_HOTSPARE;
-		cmd = MD_DCMD_PD_SET_STATE;
 		break;
 /*
 	case BIOC_SSREBUILD:
-		cmd = MD_DCMD_PD_REBUILD;
 		break;
 */
 	default:

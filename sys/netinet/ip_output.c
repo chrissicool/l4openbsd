@@ -1,4 +1,4 @@
-/*	$OpenBSD: ip_output.c,v 1.210 2010/07/09 16:58:06 reyk Exp $	*/
+/*	$OpenBSD: ip_output.c,v 1.214 2010/09/30 09:18:18 phessler Exp $	*/
 /*	$NetBSD: ip_output.c,v 1.28 1996/02/13 23:43:07 christos Exp $	*/
 
 /*
@@ -605,7 +605,7 @@ sendit:
 		if ((encif = enc_getif(tdb->tdb_rdomain,
 		    tdb->tdb_tap)) == NULL ||
 		    pf_test(PF_OUT, encif, &m, NULL) != PF_PASS) {
-			error = EHOSTUNREACH;
+			error = EACCES;
 			splx(s);
 			m_freem(m);
 			goto done;
@@ -842,7 +842,6 @@ ip_fragment(struct mbuf *m, struct ifnet *ifp, u_long mtu)
 	int mhlen, firstlen;
 	struct mbuf **mnext;
 	int fragments = 0;
-	int s;
 	int error = 0;
 
 	ip = mtod(m, struct ip *);
@@ -939,24 +938,6 @@ ip_fragment(struct mbuf *m, struct ifnet *ifp, u_long mtu)
 	} else
 		ip->ip_sum = in_cksum(m, hlen);
 sendorfree:
-	/*
-	 * If there is no room for all the fragments, don't queue
-	 * any of them.
-	 *
-	 * Queue them anyway on virtual interfaces
-	 * (vlan, etc) with queue length 1 and hope the
-	 * underlying interface can cope.
-	 */
-	if (ifp != NULL && ifp->if_snd.ifq_maxlen != 1) {
-		s = splnet();
-		if (ifp->if_snd.ifq_maxlen - ifp->if_snd.ifq_len < fragments &&
-		    error == 0) {
-			error = ENOBUFS;
-			ipstat.ips_odropped++;
-			IFQ_INC_DROPS(&ifp->if_snd);
-		}
-		splx(s);
-	}
 	if (error) {
 		for (m = m0; m; m = m0) {
 			m0 = m->m_nextpkt;
@@ -1436,18 +1417,26 @@ ip_ctloutput(op, so, level, optname, mp)
 				break;
 			}
 			rtid = *mtod(m, u_int *);
-			/* needs priviledges to switch when already set */
-			if (p->p_p->ps_rtableid != 0 && suser(p, 0) != 0) {
-				error = EACCES;
-				break;
-			}
 			/* table must exist */
 			if (!rtable_exists(rtid)) {
 				error = EINVAL;
 				break;
 			}
+			/* needs priviledges to switch when already set */
+			if (p->p_p->ps_rtableid != rtid &&
+			    p->p_p->ps_rtableid != 0 && suser(p, 0) != 0) {
+				error = EACCES;
+				break;
+			}
 			inp->inp_rtableid = rtid;
 			break;
+		case IP_PIPEX:
+			if (m != NULL && m->m_len == sizeof(int))
+				inp->inp_pipex = *mtod(m, int *);
+			else
+				error = EINVAL;
+			break;
+
 		default:
 			error = ENOPROTOOPT;
 			break;
@@ -1645,6 +1634,11 @@ ip_ctloutput(op, so, level, optname, mp)
 			*mp = m = m_get(M_WAIT, MT_SOOPTS);
 			m->m_len = sizeof(u_int);
 			*mtod(m, u_int *) = inp->inp_rtableid;
+			break;
+		case IP_PIPEX:
+			*mp = m = m_get(M_WAIT, MT_SOOPTS);
+			m->m_len = sizeof(int);
+			*mtod(m, int *) = inp->inp_pipex;
 			break;
 		default:
 			error = ENOPROTOOPT;

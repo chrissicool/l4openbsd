@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_cdce.c,v 1.45 2010/03/06 17:09:31 mk Exp $ */
+/*	$OpenBSD: if_cdce.c,v 1.49 2011/01/25 20:03:35 jakemsr Exp $ */
 
 /*
  * Copyright (c) 1997, 1998, 1999, 2000-2003 Bill Paul <wpaul@windriver.com>
@@ -224,12 +224,12 @@ cdce_attach(struct device *parent, struct device *self, void *aux)
 		DPRINTF(("cdce_attach: union interface: ctl=%d, data=%d\n",
 		    ctl_ifcno, data_ifcno));
 		for (i = 0; i < uaa->nifaces; i++) {
-			if (uaa->ifaces[i] == NULL)
+			if (usbd_iface_claimed(sc->cdce_udev, i))
 				continue;
 			id = usbd_get_interface_descriptor(uaa->ifaces[i]);
 			if (id != NULL && id->bInterfaceNumber == data_ifcno) {
 				sc->cdce_data_iface = uaa->ifaces[i];
-				uaa->ifaces[i] = NULL;
+				usbd_claim_iface(sc->cdce_udev, i);
 			}
 		}
 	}
@@ -360,9 +360,6 @@ found:
 
 	sc->cdce_attached = 1;
 	splx(s);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->cdce_udev,
-	    &sc->cdce_dev);
 }
 
 int
@@ -372,25 +369,21 @@ cdce_detach(struct device *self, int flags)
 	struct ifnet		*ifp = GET_IFP(sc);
 	int			 s;
 
-	s = splusb();
-
-	if (!sc->cdce_attached) {
-		splx(s);
+	if (!sc->cdce_attached)
 		return (0);
-	}
+
+	s = splusb();
 
 	if (ifp->if_flags & IFF_RUNNING)
 		cdce_stop(sc);
 
-	ether_ifdetach(ifp);
-
-	if_detach(ifp);
+	if (ifp->if_softc != NULL) {
+		ether_ifdetach(ifp);
+		if_detach(ifp);
+	}
 
 	sc->cdce_attached = 0;
 	splx(s);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->cdce_udev,
-	    &sc->cdce_dev);
 
 	return (0);
 }

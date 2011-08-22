@@ -359,8 +359,7 @@ l4x_intr_establish(int irq, int type, int level, int (*ih_fun)(void *),
 		return (NULL);
 	}
 
-	evcount_attach(&ih->ih_count, ih_what, (void *)&ih->ih_vec,
-	    &evcount_intr);
+	evcount_attach(&ih->ih_count, ih_what, &ih->ih_vec);
 	l4x_intrhand[irq] = ih;
 
 	/* calculate imask[] and iunmask[] for softinterrupts. */

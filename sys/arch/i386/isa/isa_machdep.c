@@ -1,4 +1,4 @@
-/*	$OpenBSD: isa_machdep.c,v 1.69 2010/03/25 22:44:57 oga Exp $	*/
+/*	$OpenBSD: isa_machdep.c,v 1.71 2010/11/20 20:58:51 miod Exp $	*/
 /*	$NetBSD: isa_machdep.c,v 1.22 1997/06/12 23:57:32 thorpej Exp $	*/
 
 /*-
@@ -564,8 +564,7 @@ isa_intr_establish(isa_chipset_tag_t ic, int irq, int type, int level,
 	ih->ih_next = NULL;
 	ih->ih_level = level;
 	ih->ih_irq = irq;
-	evcount_attach(&ih->ih_count, ih_what, (void *)&ih->ih_irq,
-	    &evcount_intr);
+	evcount_attach(&ih->ih_count, ih_what, &ih->ih_irq);
 	*p = ih;
 
 	return (ih);
@@ -681,7 +680,7 @@ _isa_bus_dmamap_create(bus_dma_tag_t t, bus_size_t size, int nsegments,
 	 * in memory below the 16M boundary.  On DMA reads,
 	 * DMA happens to the bounce buffers, and is copied into
 	 * the caller's buffer.  On writes, data is copied into
-	 * but bounce buffer, and the DMA happens from those
+	 * the bounce buffer, and the DMA happens from those
 	 * pages.  To software using the DMA mapping interface,
 	 * this looks simply like a data cache.
 	 *

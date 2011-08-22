@@ -1,4 +1,4 @@
-/*	$OpenBSD: pfkey.c,v 1.49 2008/12/22 17:00:37 hshoexer Exp $	*/
+/*	$OpenBSD: pfkey.c,v 1.51 2010/10/06 22:19:20 mikeb Exp $	*/
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
  * Copyright (c) 2003, 2004 Markus Friedl <markus@openbsd.org>
@@ -488,10 +488,23 @@ pfkey_sa(int sd, u_int8_t satype, u_int8_t action, u_int32_t spi,
 			sa.sadb_sa_encrypt = SADB_EALG_DESCBC;
 			break;
 		case ENCXF_AES:
+		case ENCXF_AES_128:
+		case ENCXF_AES_192:
+		case ENCXF_AES_256:
 			sa.sadb_sa_encrypt = SADB_X_EALG_AES;
 			break;
 		case ENCXF_AESCTR:
 			sa.sadb_sa_encrypt = SADB_X_EALG_AESCTR;
+			break;
+		case ENCXF_AES_128_GCM:
+		case ENCXF_AES_192_GCM:
+		case ENCXF_AES_256_GCM:
+			sa.sadb_sa_encrypt = SADB_X_EALG_AESGCM16;
+			break;
+		case ENCXF_AES_128_GMAC:
+		case ENCXF_AES_192_GMAC:
+		case ENCXF_AES_256_GMAC:
+			sa.sadb_sa_encrypt = SADB_X_EALG_AESGMAC;
 			break;
 		case ENCXF_BLOWFISH:
 			sa.sadb_sa_encrypt = SADB_X_EALG_BLF;
@@ -501,9 +514,6 @@ pfkey_sa(int sd, u_int8_t satype, u_int8_t action, u_int32_t spi,
 			break;
 		case ENCXF_NULL:
 			sa.sadb_sa_encrypt = SADB_EALG_NULL;
-			break;
-		case ENCXF_SKIPJACK:
-			sa.sadb_sa_encrypt = SADB_X_EALG_SKIPJACK;
 			break;
 		default:
 			warnx("unsupported encryption algorithm %d",

@@ -1,4 +1,4 @@
-/*	$OpenBSD: lde.h,v 1.15 2010/06/30 22:15:02 claudio Exp $ */
+/*	$OpenBSD: lde.h,v 1.18 2010/11/04 09:49:07 claudio Exp $ */
 
 /*
  * Copyright (c) 2004, 2005 Esben Norby <norby@openbsd.org>
@@ -82,6 +82,7 @@ struct rt_lsp {
 
 	struct in_addr		nexthop;
 	u_int32_t		remote_label;
+	u_int8_t		priority;
 };
 
 struct rt_node {
@@ -100,17 +101,20 @@ struct rt_node {
 pid_t		lde(struct ldpd_conf *, int [2], int [2], int [2]);
 int		lde_imsg_compose_ldpe(int, u_int32_t, pid_t, void *, u_int16_t);
 u_int32_t	lde_assign_label(void);
-void		lde_send_change_klabel(struct rt_node *, struct rt_lsp *);
-void		lde_send_delete_klabel(struct rt_node *, struct rt_lsp *);
-void		lde_send_labelmapping(u_int32_t, struct map *);
-void		lde_send_labelrequest(u_int32_t, struct map *);
-void		lde_send_labelrelease(u_int32_t, struct map *);
-void		lde_send_notification(u_int32_t, u_int32_t, u_int32_t,
-		   u_int32_t);
+
+void	lde_send_change_klabel(struct rt_node *, struct rt_lsp *);
+void	lde_send_delete_klabel(struct rt_node *, struct rt_lsp *);
+void	lde_send_labelmapping(struct lde_nbr *, struct rt_node *);
+void	lde_send_labelrequest(struct lde_nbr *, struct rt_node *);
+void	lde_send_labelrelease(struct lde_nbr *, struct rt_node *, u_int32_t);
+void	lde_send_notification(u_int32_t, u_int32_t, u_int32_t, u_int32_t);
 
 void		lde_nbr_del(struct lde_nbr *);
 void		lde_nbr_do_mappings(struct rt_node *);
 struct lde_map *lde_map_add(struct lde_nbr *, struct rt_node *, int);
+void		lde_map_del(struct lde_nbr *, struct lde_map *, int);
+struct lde_req *lde_req_add(struct lde_nbr *, struct fec *, int);
+void		lde_req_del(struct lde_nbr *, struct lde_req *, int);
 struct lde_nbr *lde_find_address(struct in_addr);
 
 
@@ -127,7 +131,7 @@ struct fec	*fec_find(struct fec_tree *, struct fec *);
 void		 fec_clear(struct fec_tree *, void (*)(void *));
 
 void		 rt_dump(pid_t);
-void		 rt_snap(u_int32_t);
+void		 rt_snap(struct lde_nbr *);
 void		 rt_clear(void);
 
 void		 lde_kernel_insert(struct kroute *);
@@ -135,6 +139,7 @@ void		 lde_kernel_remove(struct kroute *);
 void		 lde_check_mapping(struct map *, struct lde_nbr *);
 void		 lde_check_request(struct map *, struct lde_nbr *);
 void		 lde_check_release(struct map *, struct lde_nbr *);
+void		 lde_check_withdraw(struct map *, struct lde_nbr *);
 void		 lde_label_list_free(struct lde_nbr *);
 
 #endif	/* _LDE_H_ */

@@ -1,4 +1,4 @@
-/*	$OpenBSD: kern_sysctl.c,v 1.191 2010/07/26 01:56:27 guenther Exp $	*/
+/*	$OpenBSD: kern_sysctl.c,v 1.197 2011/02/16 10:37:45 mikeb Exp $	*/
 /*	$NetBSD: kern_sysctl.c,v 1.17 1996/05/20 17:49:05 mrg Exp $	*/
 
 /*-
@@ -77,6 +77,8 @@
 
 #include <sys/mount.h>
 #include <sys/syscallargs.h>
+
+#include <dev/cons.h>
 #include <dev/rndvar.h>
 #include <dev/systrace.h>
 
@@ -108,6 +110,7 @@ extern int nselcoll, fscale;
 extern struct disklist_head disklist;
 extern fixpt_t ccpu;
 extern  long numvnodes;
+extern u_int mcllivelocks;
 
 extern void nmbclust_update(void);
 
@@ -256,6 +259,7 @@ kern_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp,
     size_t newlen, struct proc *p)
 {
 	int error, level, inthostid, stackgap;
+	dev_t dev;
 	extern int somaxconn, sominconn;
 	extern int usermount, nosuidcoredump;
 	extern long cp_time[CPUSTATES];
@@ -465,6 +469,9 @@ kern_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp,
 				cp_time[i] += ci->ci_schedstate.spc_cp_time[i];
 		}
 
+		for (i = 0; i < CPUSTATES; i++)
+			cp_time[i] /= ncpus;
+
 		return (sysctl_rdstruct(oldp, oldlenp, newp, &cp_time,
 		    sizeof(cp_time)));
 	}
@@ -576,6 +583,14 @@ kern_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp,
 		}
 		return(0);
 	}
+	case KERN_CONSDEV:
+		if (cn_tab != NULL)
+			dev = cn_tab->cn_dev;
+		else
+			dev = NODEV;
+		return sysctl_rdstruct(oldp, oldlenp, newp, &dev, sizeof(dev));
+	case KERN_NETLIVELOCKS:
+		return (sysctl_rdint(oldp, oldlenp, newp, mcllivelocks));
 	default:
 		return (EOPNOTSUPP);
 	}
@@ -1784,8 +1799,11 @@ out:
 int
 sysctl_diskinit(int update, struct proc *p)
 {
+	struct disklabel *dl;
 	struct diskstats *sdk;
 	struct disk *dk;
+	char duid[17];
+	u_int64_t uid = 0;
 	int i, tlen, l;
 
 	if ((i = rw_enter(&sysctl_disklock, RW_WRITE|RW_INTR)) != 0)
@@ -1793,8 +1811,11 @@ sysctl_diskinit(int update, struct proc *p)
 
 	if (disk_change) {
 		for (dk = TAILQ_FIRST(&disklist), tlen = 0; dk;
-		    dk = TAILQ_NEXT(dk, dk_link))
-			tlen += strlen(dk->dk_name) + 1;
+		    dk = TAILQ_NEXT(dk, dk_link)) {
+			if (dk->dk_name)
+				tlen += strlen(dk->dk_name);
+			tlen += 18;	/* label uid + separators */
+		}
 		tlen++;
 
 		if (disknames)
@@ -1810,8 +1831,18 @@ sysctl_diskinit(int update, struct proc *p)
 
 		for (dk = TAILQ_FIRST(&disklist), i = 0, l = 0; dk;
 		    dk = TAILQ_NEXT(dk, dk_link), i++) {
-			snprintf(disknames + l, tlen - l, "%s,",
-			    dk->dk_name ? dk->dk_name : "");
+			dl = dk->dk_label;
+			bzero(duid, sizeof(duid));
+			if (dl && bcmp(dl->d_uid, &uid, sizeof(dl->d_uid))) {
+				snprintf(duid, sizeof(duid), 
+				    "%02hhx%02hhx%02hhx%02hhx"
+				    "%02hhx%02hhx%02hhx%02hhx",
+				    dl->d_uid[0], dl->d_uid[1], dl->d_uid[2],
+				    dl->d_uid[3], dl->d_uid[4], dl->d_uid[5],
+				    dl->d_uid[6], dl->d_uid[7]);
+			}
+			snprintf(disknames + l, tlen - l, "%s:%s,",
+			    dk->dk_name ? dk->dk_name : "", duid);
 			l += strlen(disknames + l);
 			sdk = diskstats + i;
 			strlcpy(sdk->ds_name, dk->dk_name,

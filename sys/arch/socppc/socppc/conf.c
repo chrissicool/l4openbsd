@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.10 2010/06/09 15:25:33 jsing Exp $ */
+/*	$OpenBSD: conf.c,v 1.14 2011/01/14 19:04:08 jasper Exp $ */
 
 /*
  * Copyright (c) 1997 Per Fogelstrom
@@ -74,7 +74,7 @@ struct bdevsw bdevsw[] = {
 	bdev_notdef(),			/* 18 unknown*/
 	bdev_disk_init(NRAID,raid),	/* 19 RAIDframe disk driver */
 };
-int nblkdev = sizeof bdevsw / sizeof bdevsw[0];
+int nblkdev = nitems(bdevsw);
 
 #include "pty.h"
 
@@ -88,6 +88,8 @@ cdev_decl(com);
 #include "bpfilter.h"
 
 #include "tun.h"
+
+#include "inet.h"
 
 #include "wsmux.h"
 
@@ -109,10 +111,16 @@ cdev_decl(pci);
 #include "ksyms.h"
 #include "usb.h"
 #include "uhid.h"
-
-#include "vscsi.h"
+#include "ugen.h"
+#include "ulpt.h"
+#include "urio.h"
+#include "ucom.h"
+#include "uscanner.h"
 
 #include "bthub.h"
+#include "vscsi.h"
+#include "pppx.h"
+#include "hotplug.h"
 
 struct cdevsw cdevsw[] = {
 	cdev_cn_init(1,cn),		/* 0: virtual console */
@@ -162,7 +170,7 @@ struct cdevsw cdevsw[] = {
 	cdev_video_init(NVIDEO,video),	/* 44: generic video I/O */
 	cdev_notdef(),			/* 45 */
 	cdev_notdef(),			/* 46 */
-	cdev_notdef(),			/* 47 */
+	cdev_crypto_init(NCRYPTO,crypto), /* 47: /dev/crypto */
 	cdev_notdef(),			/* 48 */
 	cdev_notdef(),			/* 49 */
 	cdev_systrace_init(NSYSTRACE,systrace),	/* 50 system call tracing */
@@ -178,10 +186,10 @@ struct cdevsw cdevsw[] = {
 	cdev_notdef(),			/* 60 */
 	cdev_usb_init(NUSB,usb),	/* 61: USB controller */
 	cdev_usbdev_init(NUHID,uhid),	/* 62: USB generic HID */
-	cdev_notdef(),			/* 63 */
-	cdev_notdef(),			/* 64 */
-	cdev_notdef(),			/* 65 */
-	cdev_notdef(),			/* 66 */
+	cdev_usbdev_init(NUGEN,ugen),	/* 63: USB generic driver */
+	cdev_ulpt_init(NULPT,ulpt),	/* 64: USB printers */
+	cdev_urio_init(NURIO,urio),	/* 65: USB Diamond Rio 500 */
+	cdev_tty_init(NUCOM,ucom),	/* 66: USB tty */
 	cdev_wsdisplay_init(NWSDISPLAY,	/* 67: frame buffers, etc. */
 		wsdisplay),
 	cdev_mouse_init(NWSKBD, wskbd),	/* 68: keyboards */
@@ -195,7 +203,7 @@ struct cdevsw cdevsw[] = {
 #endif
 	cdev_notdef(),			/* 72 */
 	cdev_notdef(),			/* 73 */
-	cdev_notdef(),			/* 74 */
+	cdev_usbdev_init(NUSCANNER,uscanner), /* 74: usb scanner */
 	cdev_notdef(),			/* 75 */
 	cdev_notdef(),			/* 76 */
 	cdev_ptm_init(NPTY,ptm),	/* 77: pseudo-tty ptm device */
@@ -204,8 +212,10 @@ struct cdevsw cdevsw[] = {
 	cdev_notdef(),			/* 80 */
 	cdev_bthub_init(NBTHUB,bthub),	/* 81: bluetooth hub */
 	cdev_disk_init(1,diskmap),	/* 82: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 83: pppx */
+	cdev_hotplug_init(NHOTPLUG,hotplug),	/* 84: devices hot plugging */
 };
-int nchrdev = sizeof cdevsw / sizeof cdevsw[0];
+int nchrdev = nitems(cdevsw);
 
 int mem_no = 2;				/* major number of /dev/mem */
 
@@ -297,10 +307,11 @@ int chrtoblktbl[] = {
 	/* 53 */	NODEV,
 	/* 54 */	19,		/* raid */
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);
 
 #include <dev/cons.h>
 
+#define comcnpollc	nullcnpollc
 cons_decl(com);
 
 struct consdev constab[] = {

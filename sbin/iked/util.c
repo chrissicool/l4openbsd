@@ -1,4 +1,4 @@
-/*	$OpenBSD: util.c,v 1.7 2010/06/29 21:04:42 reyk Exp $	*/
+/*	$OpenBSD: util.c,v 1.12 2011/01/21 11:56:00 reyk Exp $	*/
 /*	$vantronix: util.c,v 1.39 2010/06/02 12:22:58 reyk Exp $	*/
 
 /*
@@ -57,79 +57,6 @@ socket_set_blockmode(int fd, enum blockmodes bm)
 
 	if ((flags = fcntl(fd, F_SETFL, flags)) == -1)
 		fatal("fcntl F_SETFL");
-}
-
-void
-imsg_event_add(struct imsgev *iev)
-{
-	if (iev->handler == NULL) {
-		imsg_flush(&iev->ibuf);
-		return;
-	}
-
-	iev->events = EV_READ;
-	if (iev->ibuf.w.queued)
-		iev->events |= EV_WRITE;
-
-	event_del(&iev->ev);
-	event_set(&iev->ev, iev->ibuf.fd, iev->events, iev->handler, iev->data);
-	event_add(&iev->ev, NULL);
-}
-
-int
-imsg_compose_event(struct imsgev *iev, u_int16_t type, u_int32_t peerid,
-    pid_t pid, int fd, void *data, u_int16_t datalen)
-{
-	int	ret;
-
-	if ((ret = imsg_compose(&iev->ibuf, type, peerid,
-	    pid, fd, data, datalen)) == -1)
-		return (ret);
-	imsg_event_add(iev);
-	return (ret);
-}
-
-int
-imsg_composev_event(struct imsgev *iev, u_int16_t type, u_int32_t peerid,
-    pid_t pid, int fd, const struct iovec *iov, int iovcnt)
-{
-	int	ret;
-
-	if ((ret = imsg_composev(&iev->ibuf, type, peerid,
-	    pid, fd, iov, iovcnt)) == -1)
-		return (ret);
-	imsg_event_add(iev);
-	return (ret);
-}
-
-int
-imsg_compose_proc(struct iked *env, enum iked_procid id,
-    u_int16_t type, int fd, void *data, u_int16_t datalen)
-{
-	return (imsg_compose_event(&env->sc_ievs[id],
-	    type, -1, 0, fd, data, datalen));
-}
-
-int
-imsg_composev_proc(struct iked *env, enum iked_procid id,
-    u_int16_t type, int fd, const struct iovec *iov, int iovcnt)
-{
-	return (imsg_composev_event(&env->sc_ievs[id],
-	    type, -1, 0, fd, iov, iovcnt));
-}
-
-int
-imsg_forward_proc(struct iked *env, struct imsg *imsg,
-    enum iked_procid id)
-{
-	return (imsg_compose_proc(env, id, imsg->hdr.type,
-	    imsg->fd, imsg->data, IMSG_DATA_SIZE(imsg)));
-}
-
-void
-imsg_flush_proc(struct iked *env, enum iked_procid id)
-{
-	imsg_flush(&env->sc_ievs[id].ibuf);
 }
 
 int
@@ -298,9 +225,11 @@ sockaddr_cmp(struct sockaddr *a, struct sockaddr *b, int prefixlen)
 	struct sockaddr_in6	*a6, *b6;
 	u_int32_t		 av[4], bv[4], mv[4];
 
-	if (b->sa_family != AF_UNSPEC && (a->sa_family > b->sa_family))
+	if (a->sa_family == AF_UNSPEC || b->sa_family == AF_UNSPEC)
+		return (0);
+	else if (a->sa_family > b->sa_family)
 		return (1);
-	if (b->sa_family != AF_UNSPEC && (a->sa_family < b->sa_family))
+	else if (a->sa_family < b->sa_family)
 		return (-1);
 
 	if (prefixlen == -1)
@@ -555,6 +484,67 @@ print_bits(u_short v, char *bits)
 	return (buf[idx]);
 }
 
+u_int8_t
+mask2prefixlen(struct sockaddr *sa)
+{
+	struct sockaddr_in	*sa_in = (struct sockaddr_in *)sa;
+	in_addr_t		 ina = sa_in->sin_addr.s_addr;
+
+	if (ina == 0)
+		return (0);
+	else
+		return (33 - ffs(ntohl(ina)));
+}
+
+u_int8_t
+mask2prefixlen6(struct sockaddr *sa)
+{
+	struct sockaddr_in6	*sa_in6 = (struct sockaddr_in6 *)sa;
+	u_int8_t	 	 l = 0, *ap, *ep;
+
+	/*
+	 * sin6_len is the size of the sockaddr so substract the offset of
+	 * the possibly truncated sin6_addr struct.
+	 */
+	ap = (u_int8_t *)&sa_in6->sin6_addr;
+	ep = (u_int8_t *)sa_in6 + sa_in6->sin6_len;
+	for (; ap < ep; ap++) {
+		/* this "beauty" is adopted from sbin/route/show.c ... */
+		switch (*ap) {
+		case 0xff:
+			l += 8;
+			break;
+		case 0xfe:
+			l += 7;
+			return (l);
+		case 0xfc:
+			l += 6;
+			return (l);
+		case 0xf8:
+			l += 5;
+			return (l);
+		case 0xf0:
+			l += 4;
+			return (l);
+		case 0xe0:
+			l += 3;
+			return (l);
+		case 0xc0:
+			l += 2;
+			return (l);
+		case 0x80:
+			l += 1;
+			return (l);
+		case 0x00:
+			return (l);
+		default:
+			return (0);
+		}
+	}
+
+	return (l);
+}
+
 u_int32_t
 prefixlen2mask(u_int8_t prefixlen)
 {
@@ -639,96 +629,6 @@ get_string(u_int8_t *ptr, size_t len)
 	return (str);
 }
 
-int
-print_id(struct iked_id *id, char *idstr, size_t idstrlen)
-{
-	u_int8_t			 buf[BUFSIZ], *ptr;
-	struct sockaddr_in		*s4;
-	struct sockaddr_in6		*s6;
-	char				*str;
-	ssize_t				 len;
-	int				 i;
-	const char			*type;
-
-	bzero(buf, sizeof(buf));
-	bzero(idstr, idstrlen);
-
-	if (id->id_buf == NULL)
-		return (-1);
-
-	len = ibuf_size(id->id_buf);
-	ptr = ibuf_data(id->id_buf);
-
-	if (len <= id->id_offset)
-		return (-1);
-
-	len -= id->id_offset;
-	ptr += id->id_offset;
-
-	type = print_map(id->id_type, ikev2_id_map);
-
-	if (strlcpy(idstr, type, idstrlen) >= idstrlen ||
-	    strlcat(idstr, "/", idstrlen) >= idstrlen)
-		return (-1);
-
-	idstr += strlen(idstr);
-	idstrlen -= strlen(idstr);
-
-	switch (id->id_type) {
-	case IKEV2_ID_IPV4:
-		s4 = (struct sockaddr_in *)buf;
-		s4->sin_family = AF_INET;
-		s4->sin_len = sizeof(*s4);
-		memcpy(&s4->sin_addr.s_addr, ptr, len);
-
-		if (print_host((struct sockaddr_storage *)s4,
-		    idstr, idstrlen) == NULL)
-			return (-1);
-		break;
-	case IKEV2_ID_FQDN:
-	case IKEV2_ID_UFQDN:
-		if (len >= (ssize_t)sizeof(buf))
-			return (-1);
-
-		if ((str = get_string(ptr, len)) == NULL)
-			return (-1);
-
-		if (strlcpy(idstr, str, idstrlen) >= idstrlen) {
-			free(str);
-			return (-1);
-		}
-		free(str);
-		break;
-	case IKEV2_ID_IPV6:
-		s6 = (struct sockaddr_in6 *)buf;
-		s6->sin6_family = AF_INET6;
-		s6->sin6_len = sizeof(*s6);
-		memcpy(&s6->sin6_addr, ptr, len);
-
-		if (print_host((struct sockaddr_storage *)s6,
-		    idstr, idstrlen) == NULL)
-			return (-1);
-		break;
-	case IKEV2_ID_ASN1_DN:
-		if ((str = ca_asn1_name(ptr, len)) == NULL)
-			return (-1);
-		if (strlcpy(idstr, str, idstrlen) >= idstrlen) {
-			free(str);
-			return (-1);
-		}
-		free(str);
-		break;
-	default:
-		/* XXX test */
-		for (i = 0; i < ((ssize_t)idstrlen - 1) && i < len; i++)
-			snprintf(idstr + i, idstrlen - i,
-			    "%02x", ptr[i]);
-		break;
-	}
-
-	return (0);
-}
-
 const char *
 print_proto(u_int8_t proto)
 {
@@ -795,169 +695,4 @@ string2unicode(const char *ascii, size_t *outlen)
 	*outlen = len * 2;
 
 	return (uc);
-}
-
-/*
- * Extending the imsg buffer API for internal use
- */
-
-int
-ibuf_cat(struct ibuf *dst, struct ibuf *src)
-{
-	return (ibuf_add(dst, src->buf, ibuf_size(src)));
-}
-
-void
-ibuf_zero(struct ibuf *buf)
-{
-	memset(buf->buf, 0, buf->wpos);
-}
-
-struct ibuf *
-ibuf_new(void *data, size_t len)
-{
-	struct ibuf	*buf;
-
-	if ((buf = ibuf_dynamic(len,
-	    IKED_MSGBUF_MAX)) == NULL)
-		return (NULL);
-
-	ibuf_zero(buf);
-
-	if (data == NULL && len) {
-		if (ibuf_advance(buf, len) == NULL) {
-			ibuf_free(buf);
-			return (NULL);
-		}
-	} else {
-		if (ibuf_add(buf, data, len) != 0) {
-			ibuf_free(buf);
-			return (NULL);
-		}
-	}
-
-	return (buf);
-}
-
-struct ibuf *
-ibuf_static(void)
-{
-	struct ibuf	*buf;
-
-	if ((buf = ibuf_open(IKED_MSGBUF_MAX)) == NULL)
-		return (NULL);
-
-	ibuf_zero(buf);
-
-	return (buf);
-}
-
-void *
-ibuf_advance(struct ibuf *buf, size_t len)
-{
-	void	*ptr;
-
-	if ((ptr = ibuf_reserve(buf, len)) != NULL)
-		memset(ptr, 0, len);
-
-	return (ptr);
-}
-
-void
-ibuf_release(struct ibuf *buf)
-{
-	if (buf == NULL)
-		return;
-	if (buf->buf != NULL)
-		free(buf->buf);
-	free(buf);
-}
-
-size_t
-ibuf_length(struct ibuf *buf)
-{
-	if (buf == NULL || buf->buf == NULL)
-		return (0);
-	return (ibuf_size(buf));
-}
-
-u_int8_t *
-ibuf_data(struct ibuf *buf)
-{
-	return (ibuf_seek(buf, 0, 0));
-}
-
-void *
-ibuf_get(struct ibuf *buf, size_t len)
-{
-	void	*data;
-
-	if ((data = ibuf_seek(buf, buf->rpos, len)) == NULL)
-		return (NULL);
-	buf->rpos += len;
-
-	return (data);
-}
-
-struct ibuf *
-ibuf_copy(struct ibuf *buf, size_t len)
-{
-	void		*data;
-
-	if ((data = ibuf_get(buf, len)) == NULL)
-		return (NULL);
-
-	return (ibuf_new(data, len));
-}
-
-struct ibuf *
-ibuf_dup(struct ibuf *buf)
-{
-	if (buf == NULL)
-		return (NULL);
-	return (ibuf_new(ibuf_data(buf), ibuf_size(buf)));
-}
-
-struct ibuf *
-ibuf_random(size_t len)
-{
-	struct ibuf	*buf;
-	void		*ptr;
-
-	if ((buf = ibuf_open(len)) == NULL)
-		return (NULL);
-	if ((ptr = ibuf_reserve(buf, len)) == NULL) {
-		ibuf_free(buf);
-		return (NULL);
-	}
-	arc4random_buf(ptr, len);
-	return (buf);
-}
-
-int
-ibuf_setsize(struct ibuf *buf, size_t len)
-{
-	if (len > buf->size)
-		return (-1);
-	buf->wpos = len;
-	return (0);
-}
-
-int
-ibuf_prepend(struct ibuf *buf, void *data, size_t len)
-{
-	struct ibuf	*new;
-
-	/* Swap buffers (we could also use memmove here) */
-	if ((new = ibuf_new(data, len)) == NULL)
-		return (-1);
-	if (ibuf_cat(new, buf) == -1) {
-		ibuf_release(new);
-		return (-1);
-	}
-	free(buf->buf);
-	memcpy(buf, new, sizeof(*buf));
-	free(new);
-
-	return (0);
 }

@@ -1,4 +1,4 @@
-/*	$OpenBSD: ar9280.c,v 1.10 2010/07/15 20:37:38 damien Exp $	*/
+/*	$OpenBSD: ar9280.c,v 1.17 2011/01/06 07:27:15 damien Exp $	*/
 
 /*-
  * Copyright (c) 2009 Damien Bergamini <damien.bergamini@free.fr>
@@ -99,7 +99,7 @@ ar9280_attach(struct athn_softc *sc)
 	sc->eep_base = AR5416_EEP_START_LOC;
 	sc->eep_size = sizeof(struct ar5416_eeprom);
 	sc->def_nf = AR9280_PHY_CCA_MAX_GOOD_VALUE;
-	sc->ngpiopins = 10;
+	sc->ngpiopins = (sc->flags & ATHN_FLAG_USB) ? 16 : 10;
 	sc->led_pin = 1;
 	sc->workaround = AR9280_WA_DEFAULT;
 	sc->ops.setup = ar9280_setup;
@@ -110,6 +110,7 @@ ar9280_attach(struct athn_softc *sc)
 	sc->ops.spur_mitigate = ar9280_spur_mitigate;
 	sc->ops.get_spur_chans = ar5416_get_spur_chans;
 	sc->ops.olpc_init = ar9280_olpc_init;
+	sc->ops.olpc_temp_compensation = ar9280_olpc_temp_compensation;
 	sc->ini = &ar9280_2_0_ini;
 	sc->serdes = ar9280_2_0_serdes;
 
@@ -132,6 +133,17 @@ ar9280_setup(struct athn_softc *sc)
 	    (sc->eep_rev <= AR_EEP_MINOR_VER_16 ||
 	     eep->baseEepHeader.fastClk5g))
 		sc->flags |= ATHN_FLAG_FAST_PLL_CLOCK;
+
+	/*
+	 * Determine if initialization value for AR_AN_TOP2 must be fixed.
+	 * This is required for some AR9220 devices such as Ubiquiti SR71-12.
+	 */
+	if (AR_SREV_9280_20(sc) &&
+	    sc->eep_rev > AR_EEP_MINOR_VER_10 &&
+	    !eep->baseEepHeader.pwdclkind) {
+		DPRINTF(("AR_AN_TOP2 fixup required\n"));
+		sc->flags |= ATHN_FLAG_AN_TOP2_FIXUP;
+	}
 
 	if (AR_SREV_9280_20(sc)) {
 		/* Check if we have a valid rxGainType field in ROM. */
@@ -219,8 +231,10 @@ ar9280_set_synth(struct athn_softc *sc, struct ieee80211_channel *c,
 			AR_WRITE(sc, AR_AN_SYNTH9, reg);
 		}
 	}
+	AR_WRITE_BARRIER(sc);
 	DPRINTFN(4, ("AR9280_PHY_SYNTH_CONTROL=0x%08x\n", phy));
 	AR_WRITE(sc, AR9280_PHY_SYNTH_CONTROL, phy);
+	AR_WRITE_BARRIER(sc);
 	return (0);
 }
 
@@ -283,41 +297,46 @@ ar9280_init_from_rom(struct athn_softc *sc, struct ieee80211_channel *c,
 		reg = RW(reg, AR_AN_RF2G1_CH0_OB, modal->ob);
 		reg = RW(reg, AR_AN_RF2G1_CH0_DB, modal->db);
 		AR_WRITE(sc, AR_AN_RF2G1_CH0, reg);
+		AR_WRITE_BARRIER(sc);
 		DELAY(100);
 
 		reg = AR_READ(sc, AR_AN_RF2G1_CH1);
 		reg = RW(reg, AR_AN_RF2G1_CH1_OB, modal->ob_ch1);
 		reg = RW(reg, AR_AN_RF2G1_CH1_DB, modal->db_ch1);
 		AR_WRITE(sc, AR_AN_RF2G1_CH1, reg);
+		AR_WRITE_BARRIER(sc);
 		DELAY(100);
 	} else {
 		reg = AR_READ(sc, AR_AN_RF5G1_CH0);
 		reg = RW(reg, AR_AN_RF5G1_CH0_OB5, modal->ob);
 		reg = RW(reg, AR_AN_RF5G1_CH0_DB5, modal->db);
 		AR_WRITE(sc, AR_AN_RF5G1_CH0, reg);
+		AR_WRITE_BARRIER(sc);
 		DELAY(100);
 
 		reg = AR_READ(sc, AR_AN_RF5G1_CH1);
 		reg = RW(reg, AR_AN_RF5G1_CH1_OB5, modal->ob_ch1);
 		reg = RW(reg, AR_AN_RF5G1_CH1_DB5, modal->db_ch1);
 		AR_WRITE(sc, AR_AN_RF5G1_CH1, reg);
+		AR_WRITE_BARRIER(sc);
 		DELAY(100);
 	}
 	reg = AR_READ(sc, AR_AN_TOP2);
-	reg = RW(reg, AR_AN_TOP2_XPABIAS_LVL, modal->xpaBiasLvl);
+	if ((sc->flags & ATHN_FLAG_USB) && IEEE80211_IS_CHAN_5GHZ(c)) {
+		/*
+		 * Hardcode the output voltage of x-PA bias LDO to the
+		 * lowest value for UB94 such that the card doesn't get
+		 * too hot.
+		 */
+		reg = RW(reg, AR_AN_TOP2_XPABIAS_LVL, 0);
+	} else
+		reg = RW(reg, AR_AN_TOP2_XPABIAS_LVL, modal->xpaBiasLvl);
 	if (modal->flagBits & AR5416_EEP_FLAG_LOCALBIAS)
 		reg |= AR_AN_TOP2_LOCALBIAS;
 	else
 		reg &= ~AR_AN_TOP2_LOCALBIAS;
-	/* Fix for dual-band devices. */
-	if (sc->eep_rev > AR_EEP_MINOR_VER_10 &&
-	    (eep->baseEepHeader.opCapFlags & AR_OPFLAGS_11A)) {
-		if (eep->baseEepHeader.pwdclkind)
-			reg |= AR_AN_TOP2_PWDCLKIND;
-		else
-			reg &= ~AR_AN_TOP2_PWDCLKIND;
-	}
 	AR_WRITE(sc, AR_AN_TOP2, reg);
+	AR_WRITE_BARRIER(sc);
 	DELAY(100);
 
 	reg = AR_READ(sc, AR_PHY_XPA_CFG);
@@ -384,6 +403,7 @@ ar9280_init_from_rom(struct athn_softc *sc, struct ieee80211_channel *c,
 		else
 			reg &= ~AR_AN_TOP1_DACLPMODE;
 		AR_WRITE(sc, AR_AN_TOP1, reg);
+		AR_WRITE_BARRIER(sc);
 		DELAY(100);
 
 		reg = AR_READ(sc, AR_PHY_FRAME_CTL);
@@ -396,6 +416,7 @@ ar9280_init_from_rom(struct athn_softc *sc, struct ieee80211_channel *c,
 		    eep->baseEepHeader.desiredScaleCCK);
 		AR_WRITE(sc, AR_PHY_TX_PWRCTRL9, reg);
 	}
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -427,12 +448,17 @@ ar9280_olpc_get_pdadcs(struct athn_softc *sc, struct ieee80211_channel *c,
 	pwr = (pierdata[lo].pwrPdg[0][0] + pierdata[hi].pwrPdg[0][0]) / 2;
 	pwr /= 2;	/* Convert to dB. */
 
-	pcdac = pierdata[hi].pcdac[0][0];	/* XXX lo??? */
+	/* Find power control digital-to-analog converter (PCDAC) value. */
+	pcdac = pierdata[hi].pcdac[0][0];
 	for (idx = 0; idx < AR9280_TX_GAIN_TABLE_SIZE - 1; idx++)
-		if (pcdac > sc->tx_gain_tbl[idx])
+		if (pcdac <= sc->tx_gain_tbl[idx])
 			break;
 	*txgain = idx;
 
+	DPRINTFN(3, ("fbin=%d lo=%d hi=%d pwr=%d pcdac=%d txgain=%d\n",
+	    fbin, lo, hi, pwr, pcdac, idx));
+
+	/* Fill phase domain analog-to-digital converter (PDADC) table. */
 	for (i = 0; i < AR_NUM_PDADC_VALUES; i++)
 		pdadcs[i] = (i < pwr) ? 0x00 : 0xff;
 
@@ -456,7 +482,6 @@ ar9280_spur_mitigate(struct athn_softc *sc, struct ieee80211_channel *c,
 	spurchans = sc->ops.get_spur_chans(sc, IEEE80211_IS_CHAN_2GHZ(c));
 	for (i = 0; i < AR_EEPROM_MODAL_SPURS; i++) {
 		spur = spurchans[i].spurChan;
-		/* XXX Linux checks this too late? */
 		if (spur == AR_NO_SPUR)
 			return;	/* XXX disable if it was enabled! */
 		spur /= 10;
@@ -514,6 +539,7 @@ ar9280_spur_mitigate(struct athn_softc *sc, struct ieee80211_channel *c,
 
 	AR_WRITE(sc, AR_PHY_SFCORR_EXT,
 	    SM(AR_PHY_SFCORR_SPUR_SUBCHNL_SD, spur_subchannel_sd));
+	AR_WRITE_BARRIER(sc);
 
 	bin = spur * 320;
 	ar5008_set_viterbi_mask(sc, bin);
@@ -600,4 +626,5 @@ ar9280_olpc_temp_compensation(struct athn_softc *sc)
 		reg = RW(reg, AR_PHY_TX_GAIN, txgain);
 		AR_WRITE(sc, AR_PHY_TX_GAIN_TBL(i), reg);
 	}
+	AR_WRITE_BARRIER(sc);
 }

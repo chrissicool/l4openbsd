@@ -1,4 +1,4 @@
-/*	$OpenBSD: pcivar.h,v 1.59 2009/05/05 14:16:17 kettenis Exp $	*/
+/*	$OpenBSD: pcivar.h,v 1.63 2010/09/07 16:21:45 deraadt Exp $	*/
 /*	$NetBSD: pcivar.h,v 1.23 1997/06/06 23:48:05 thorpej Exp $	*/
 
 /*
@@ -183,7 +183,6 @@ struct pci_softc {
 	struct extent *sc_ioex;
 	struct extent *sc_memex;
 	struct extent *sc_pmemex;
-	void *sc_powerhook;
 	LIST_HEAD(, pci_dev) sc_devs;
 	int sc_domain, sc_bus, sc_maxndevs;
 	pcitag_t *sc_bridgetag;
@@ -193,6 +192,7 @@ struct pci_softc {
 };
 
 extern int pci_ndomains;
+extern int pci_dopm;
 
 /*
  * Locators devices that attach to 'pcibus', as specified to config.
@@ -236,6 +236,7 @@ struct pci_matchid {
 };
 
 int pci_matchbyid(struct pci_attach_args *, const struct pci_matchid *, int);
+int pci_get_powerstate(pci_chipset_tag_t, pcitag_t);
 int pci_set_powerstate(pci_chipset_tag_t, pcitag_t, int);
 
 /*
@@ -250,7 +251,7 @@ int pci_vpd_write(pci_chipset_tag_t, pcitag_t, int, int, pcireg_t *);
 const char *pci_findvendor(pcireg_t);
 const char *pci_findproduct(pcireg_t);
 int	pci_find_device(struct pci_attach_args *pa,
-			int (*match)(struct pci_attach_args *));
+	    int (*match)(struct pci_attach_args *));
 int	pci_probe_device(struct pci_softc *, pcitag_t tag,
 	    int (*)(struct pci_attach_args *), struct pci_attach_args *);
 int	pci_detach_devices(struct pci_softc *, int);

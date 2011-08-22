@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 # ex:ts=8 sw=4:
-# $OpenBSD: PkgInfo.pm,v 1.14 2010/07/26 07:28:29 espie Exp $
+# $OpenBSD: PkgInfo.pm,v 1.21 2011/01/10 13:04:38 espie Exp $
 #
 # Copyright (c) 2003-2010 Marc Espie <espie@openbsd.org>
 #
@@ -69,7 +69,7 @@ sub lock
 	my $state = shift;
 	return if $state->{locked};
 	return if $state->{subst}->value('nolock');
-	lock_db(1, $state->opt('q'));
+	lock_db(1, $state->opt('q') ? undef : $state);
 	$state->{locked} = 1;
 }
 
@@ -182,7 +182,7 @@ sub find_pkg_in
 		require OpenBSD::Search;
 		my $s = OpenBSD::Search::PkgSpec->new($pkgname);
 		if (!$s->is_valid) {
-			print STDERR "Invalid spec: $pkgname\n";
+			$state->errsay("Invalid spec: #1", $pkgname);
 			return 0;
 		}
 		my $r = $repo->match_locations($s);
@@ -487,9 +487,32 @@ sub parse_and_run
 		    }
 	    };
 	$state->{no_exports} = 1;
-	$state->handle_options('cCdfF:hIKLmPQ:qRsSUe:E:Ml:aAt',
+	$state->handle_options('cCdfF:hIKLmPQ:qr:RsSUe:E:Ml:aAt',
 	    '[-AaCcdfIKLMmPqRSstUv] [-D nolock][-E filename] [-e pkg-name] ',
-	    '[-l str] [-Q query] [pkg-name] [...]');
+	    '[-l str] [-Q query] [-r pkgspec] [pkg-name] [...]');
+
+	if ($state->opt('r')) {
+
+		require OpenBSD::PkgSpec;
+
+		my $pattern = $state->opt('r');
+		my $s = OpenBSD::PkgSpec->new($pattern);
+		if (!$s->is_valid) {
+			$state->errsay("Invalid pkgspec: #1", $pattern);
+			return 1;
+		}
+		my @l = $s->match_ref(\@ARGV);
+		unless ($state->opt('q')) {
+			$state->say("Pkgspec #1 matched #2", $pattern, 
+			    join(' ', @l));
+		}
+		if (@l != 0) {
+			return 0;
+		} else {
+			return 1;
+		}
+		
+	}
 
 	$state->lock;
 
@@ -515,7 +538,7 @@ sub parse_and_run
 			    is_installed($p) ? "#1 (installed)" : "#1", $p);
 		}
 
-		exit 0;
+		return 0;
 	}
 
 	if ($state->verbose) {
@@ -582,7 +605,7 @@ sub parse_and_run
 	if ($pkgs > 1) {
 		$state->say("Total size: #1", $total_size);
 	}
-	exit($exit_code);
+	return $exit_code;
 }
 
 1;

@@ -1,4 +1,4 @@
-/*	$OpenBSD: pci.c,v 1.80 2010/07/02 04:03:31 kettenis Exp $	*/
+/*	$OpenBSD: pci.c,v 1.88 2010/12/30 00:58:22 kettenis Exp $	*/
 /*	$NetBSD: pci.c,v 1.31 1997/06/06 23:48:04 thorpej Exp $	*/
 
 /*
@@ -49,19 +49,21 @@
 int pcimatch(struct device *, void *, void *);
 void pciattach(struct device *, struct device *, void *);
 int pcidetach(struct device *, int);
-void pcipower(int, void *);
 int pciactivate(struct device *, int);
+void pci_suspend(struct pci_softc *);
+void pci_resume(struct pci_softc *);
 
 #define NMAPREG			((PCI_MAPREG_END - PCI_MAPREG_START) / \
 				    sizeof(pcireg_t))
 struct pci_dev {
 	LIST_ENTRY(pci_dev) pd_next;
-	struct device *pd_dev;
 	pcitag_t pd_tag;        /* pci register tag */
 	pcireg_t pd_csr;
 	pcireg_t pd_bhlc;
 	pcireg_t pd_int;
 	pcireg_t pd_map[NMAPREG];
+	pcireg_t pd_mask[NMAPREG];
+	int pd_pmcsr_state;
 };
 
 #ifdef APERTURE
@@ -82,6 +84,8 @@ struct proc *pci_vga_proc;
 struct pci_softc *pci_vga_pci;
 pcitag_t pci_vga_tag;
 int	pci_vga_count;
+
+int	pci_dopm;
 
 int	pciprint(void *, const char *);
 int	pcisubmatch(struct device *, void *, void *);
@@ -158,7 +162,6 @@ pciattach(struct device *parent, struct device *self, void *aux)
 	printf("\n");
 
 	LIST_INIT(&sc->sc_devs);
-	sc->sc_powerhook = powerhook_establish(pcipower, sc);
 
 	sc->sc_iot = pba->pba_iot;
 	sc->sc_memt = pba->pba_memt;
@@ -193,53 +196,94 @@ pciactivate(struct device *self, int act)
 	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		rv = config_activate_children(self, act);
-		pcipower(PWR_SUSPEND, self);	
+		pci_suspend((struct pci_softc *)self);
 		break;
 	case DVACT_RESUME:
-		pcipower(PWR_RESUME, self);
+		pci_resume((struct pci_softc *)self);
 		rv = config_activate_children(self, act);
 		break;
 	}
 	return (rv);
 }
 
-/* save and restore the pci config space */
 void
-pcipower(int why, void *arg)
+pci_suspend(struct pci_softc *sc)
 {
-	struct pci_softc *sc = (struct pci_softc *)arg;
 	struct pci_dev *pd;
-	pcireg_t reg;
+	pcireg_t bhlc;
 	int i;
 
 	LIST_FOREACH(pd, &sc->sc_devs, pd_next) {
-		if (why != PWR_RESUME) {
-			for (i = 0; i < NMAPREG; i++)
-			       pd->pd_map[i] = pci_conf_read(sc->sc_pc,
-				   pd->pd_tag, PCI_MAPREG_START + (i * 4));
-			pd->pd_csr = pci_conf_read(sc->sc_pc, pd->pd_tag,
-			   PCI_COMMAND_STATUS_REG);
-			pd->pd_bhlc = pci_conf_read(sc->sc_pc, pd->pd_tag,
-			   PCI_BHLC_REG);
-			pd->pd_int = pci_conf_read(sc->sc_pc, pd->pd_tag,
-			   PCI_INTERRUPT_REG);
-		} else {
-			for (i = 0; i < NMAPREG; i++)
-				pci_conf_write(sc->sc_pc, pd->pd_tag,
-				    PCI_MAPREG_START + (i * 4),
-					pd->pd_map[i]);
-			reg = pci_conf_read(sc->sc_pc, pd->pd_tag,
-			    PCI_COMMAND_STATUS_REG);
-			pci_conf_write(sc->sc_pc, pd->pd_tag,
-			    PCI_COMMAND_STATUS_REG,
-			    (reg & 0xffff0000) | (pd->pd_csr & 0x0000ffff));
-			pci_conf_write(sc->sc_pc, pd->pd_tag, PCI_BHLC_REG,
-			    pd->pd_bhlc);
-			pci_conf_write(sc->sc_pc, pd->pd_tag, PCI_INTERRUPT_REG,
-			    pd->pd_int);
+		/*
+		 * Only handle header type 0 here; PCI-PCI bridges and
+		 * CardBus bridges need special handling, which will
+		 * be done in their specific drivers.
+		 */
+		bhlc = pci_conf_read(sc->sc_pc, pd->pd_tag, PCI_BHLC_REG);
+		if (PCI_HDRTYPE_TYPE(bhlc) != 0)
+			continue;
+
+		/* Save registers that may get lost. */
+		for (i = 0; i < NMAPREG; i++)
+			pd->pd_map[i] = pci_conf_read(sc->sc_pc, pd->pd_tag,
+			    PCI_MAPREG_START + (i * 4));
+		pd->pd_csr = pci_conf_read(sc->sc_pc, pd->pd_tag,
+		    PCI_COMMAND_STATUS_REG);
+		pd->pd_bhlc = pci_conf_read(sc->sc_pc, pd->pd_tag,
+		    PCI_BHLC_REG);
+		pd->pd_int = pci_conf_read(sc->sc_pc, pd->pd_tag,
+		    PCI_INTERRUPT_REG);
+
+		if (pci_dopm) {
+			/* Place the device into D3. */
+			pd->pd_pmcsr_state = pci_get_powerstate(sc->sc_pc,
+			    pd->pd_tag);
+			pci_set_powerstate(sc->sc_pc, pd->pd_tag,
+			    PCI_PMCSR_STATE_D3);
 		}
+	}
+}
+
+void
+pci_resume(struct pci_softc *sc)
+{
+	struct pci_dev *pd;
+	pcireg_t bhlc, reg;
+	int i;
+
+	LIST_FOREACH(pd, &sc->sc_devs, pd_next) {
+		/*
+		 * Only handle header type 0 here; PCI-PCI bridges and
+		 * CardBus bridges need special handling, which will
+		 * be done in their specific drivers.
+		 */
+		bhlc = pci_conf_read(sc->sc_pc, pd->pd_tag, PCI_BHLC_REG);
+		if (PCI_HDRTYPE_TYPE(bhlc) != 0)
+			continue;
+
+		if (pci_dopm) {
+			/* Restore power. */
+			pci_set_powerstate(sc->sc_pc, pd->pd_tag,
+			    pd->pd_pmcsr_state);
+		}
+
+		/* Restore the registers saved above. */
+		for (i = 0; i < NMAPREG; i++)
+			pci_conf_write(sc->sc_pc, pd->pd_tag,
+			    PCI_MAPREG_START + (i * 4), pd->pd_map[i]);
+		reg = pci_conf_read(sc->sc_pc, pd->pd_tag,
+		    PCI_COMMAND_STATUS_REG);
+		pci_conf_write(sc->sc_pc, pd->pd_tag, PCI_COMMAND_STATUS_REG,
+		    (reg & 0xffff0000) | (pd->pd_csr & 0x0000ffff));
+		pci_conf_write(sc->sc_pc, pd->pd_tag, PCI_BHLC_REG,
+		    pd->pd_bhlc);
+		pci_conf_write(sc->sc_pc, pd->pd_tag, PCI_INTERRUPT_REG,
+		    pd->pd_int);
 	}
 }
 
@@ -288,7 +332,7 @@ pci_probe_device(struct pci_softc *sc, pcitag_t tag,
 	struct pci_attach_args pa;
 	struct pci_dev *pd;
 	struct device *dev;
-	pcireg_t id, csr, class, intr, bhlcr;
+	pcireg_t id, class, intr, bhlcr;
 	int ret = 0, pin, bus, device, function;
 
 	pci_decompose_tag(pc, tag, &bus, &device, &function);
@@ -298,7 +342,6 @@ pci_probe_device(struct pci_softc *sc, pcitag_t tag,
 		return (0);
 
 	id = pci_conf_read(pc, tag, PCI_ID_REG);
-	csr = pci_conf_read(pc, tag, PCI_COMMAND_STATUS_REG);
 	class = pci_conf_read(pc, tag, PCI_CLASS_REG);
 
 	/* Invalid vendor ID value? */
@@ -360,23 +403,51 @@ pci_probe_device(struct pci_softc *sc, pcitag_t tag,
 		if (ret != 0 && pap != NULL)
 			*pap = pa;
 	} else {
-		if ((dev = config_found_sm(&sc->sc_dev, &pa, pciprint,
-		    pcisubmatch))) {
-			pcireg_t reg;
+		pcireg_t address, csr;
+		int i, reg, reg_start, reg_end;
+		int s;
 
-			pci_dev_postattach(dev, &pa);
+		pd = malloc(sizeof *pd, M_DEVBUF, M_ZERO | M_WAITOK);
+		pd->pd_tag = tag;
+		LIST_INSERT_HEAD(&sc->sc_devs, pd, pd_next);
 
-			/* skip header type != 0 */
-			reg = pci_conf_read(pc, tag, PCI_BHLC_REG);
-			if (PCI_HDRTYPE_TYPE(reg) != 0)
-				return(0);
-			if (!(pd = malloc(sizeof *pd, M_DEVBUF,
-			    M_NOWAIT)))
-				return(0);
-			pd->pd_tag = tag;
-			pd->pd_dev = dev;
-			LIST_INSERT_HEAD(&sc->sc_devs, pd, pd_next);
+		switch (PCI_HDRTYPE_TYPE(bhlcr)) {
+		case 0:
+			reg_start = PCI_MAPREG_START;
+			reg_end = PCI_MAPREG_END;
+			break;
+		case 1: /* PCI-PCI bridge */
+			reg_start = PCI_MAPREG_START;
+			reg_end = PCI_MAPREG_PPB_END;
+			break;
+		case 2: /* PCI-CardBus bridge */
+			reg_start = PCI_MAPREG_START;
+			reg_end = PCI_MAPREG_PCB_END;
+			break;
+		default:
+			return (0);
 		}
+
+		s = splhigh();
+		csr = pci_conf_read(pc, tag, PCI_COMMAND_STATUS_REG);
+		if (csr & (PCI_COMMAND_IO_ENABLE | PCI_COMMAND_MEM_ENABLE))
+			pci_conf_write(pc, tag, PCI_COMMAND_STATUS_REG, csr &
+			    ~(PCI_COMMAND_IO_ENABLE | PCI_COMMAND_MEM_ENABLE));
+
+		for (reg = reg_start, i = 0; reg < reg_end; reg += 4, i++) {
+			address = pci_conf_read(pc, tag, reg);
+			pci_conf_write(pc, tag, reg, 0xffffffff);
+			pd->pd_mask[i] = pci_conf_read(pc, tag, reg);
+			pci_conf_write(pc, tag, reg, address);
+		}
+
+		if (csr & (PCI_COMMAND_IO_ENABLE | PCI_COMMAND_MEM_ENABLE))
+			pci_conf_write(pc, tag, PCI_COMMAND_STATUS_REG, csr);
+		splx(s);
+
+		if ((dev = config_found_sm(&sc->sc_dev, &pa, pciprint,
+		    pcisubmatch)))
+			pci_dev_postattach(dev, &pa);
 	}
 
 #ifdef L4X
@@ -454,7 +525,7 @@ pci_get_capability(pci_chipset_tag_t pc, pcitag_t tag, int capid,
 
 int
 pci_find_device(struct pci_attach_args *pa,
-		int (*match)(struct pci_attach_args *))
+    int (*match)(struct pci_attach_args *))
 {
 	extern struct cfdriver pci_cd;
 	struct device *pcidev;
@@ -471,12 +542,38 @@ pci_find_device(struct pci_attach_args *pa,
 }
 
 int
+pci_get_powerstate(pci_chipset_tag_t pc, pcitag_t tag)
+{
+	pcireg_t reg;
+	int offset;
+
+	if (pci_get_capability(pc, tag, PCI_CAP_PWRMGMT, &offset, 0)) {
+		reg = pci_conf_read(pc, tag, offset + PCI_PMCSR);
+		return (reg & PCI_PMCSR_STATE_MASK);
+	}
+	return (PCI_PMCSR_STATE_D0);
+}
+
+int
 pci_set_powerstate(pci_chipset_tag_t pc, pcitag_t tag, int state)
 {
 	pcireg_t reg;
 	int offset;
 
 	if (pci_get_capability(pc, tag, PCI_CAP_PWRMGMT, &offset, 0)) {
+		if (state == PCI_PMCSR_STATE_D3) {
+			/*
+			 * The PCI Power Management spec says we
+			 * should disable I/O and memory space as well
+			 * as bus mastering before we place the device
+			 * into D3.
+			 */
+			reg = pci_conf_read(pc, tag, PCI_COMMAND_STATUS_REG);
+			reg &= ~PCI_COMMAND_IO_ENABLE;
+			reg &= ~PCI_COMMAND_MEM_ENABLE;
+			reg &= ~PCI_COMMAND_MASTER_ENABLE;
+			pci_conf_write(pc, tag, PCI_COMMAND_STATUS_REG, reg);
+		}
 		reg = pci_conf_read(pc, tag, offset + PCI_PMCSR);
 		if ((reg & PCI_PMCSR_STATE_MASK) != state) {
 			pci_conf_write(pc, tag, offset + PCI_PMCSR,
@@ -835,6 +932,7 @@ pciioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 
 	switch (cmd) {
 	case PCIOCREAD:
+	case PCIOCREADMASK:
 		break;
 	case PCIOCWRITE:
 		if (!(flag & FWRITE))
@@ -875,6 +973,10 @@ pciioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 		io = (struct pci_io *)data;
 		switch (io->pi_width) {
 		case 4:
+			/* Configuration space bounds check */
+			if (io->pi_reg < 0 ||
+			    io->pi_reg >= pci_conf_size(pc, tag))
+				return EINVAL;
 			/* Make sure the register is properly aligned */
 			if (io->pi_reg & 0x3) 
 				return EINVAL;
@@ -882,7 +984,7 @@ pciioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 			error = 0;
 			break;
 		default:
-			error = ENODEV;
+			error = EINVAL;
 			break;
 		}
 		break;
@@ -891,6 +993,10 @@ pciioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 		io = (struct pci_io *)data;
 		switch (io->pi_width) {
 		case 4:
+			/* Configuration space bounds check */
+			if (io->pi_reg < 0 ||
+			    io->pi_reg >= pci_conf_size(pc, tag))
+				return EINVAL;
 			/* Make sure the register is properly aligned */
 			if (io->pi_reg & 0x3)
 				return EINVAL;
@@ -898,10 +1004,34 @@ pciioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 			error = 0;
 			break;
 		default:
-			error = ENODEV;
+			error = EINVAL;
 			break;
 		}
 		break;
+
+	case PCIOCREADMASK:
+	{
+		io = (struct pci_io *)data;
+		struct pci_dev *pd;
+		int dev, func, i;
+
+		if (io->pi_width != 4 || io->pi_reg & 0x3 ||
+		    io->pi_reg < PCI_MAPREG_START ||
+		    io->pi_reg >= PCI_MAPREG_END)
+			return (EINVAL);
+
+		error = ENODEV;
+		LIST_FOREACH(pd, &pci->sc_devs, pd_next) {
+			pci_decompose_tag(pc, pd->pd_tag, NULL, &dev, &func);
+			if (dev == sel->pc_dev && func == sel->pc_func) {
+				i = (io->pi_reg - PCI_MAPREG_START) / 4;
+				io->pi_data = pd->pd_mask[i];
+				error = 0;
+				break;
+			}
+		}
+		break;
+	}
 
 	case PCIOCGETROMLEN:
 	case PCIOCGETROM:

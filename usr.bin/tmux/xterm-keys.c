@@ -1,4 +1,4 @@
-/* $OpenBSD: xterm-keys.c,v 1.5 2009/12/03 22:50:10 nicm Exp $ */
+/* $OpenBSD: xterm-keys.c,v 1.8 2011/01/01 03:43:20 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -48,7 +48,7 @@ struct xterm_keys_entry {
 	const char	*template;
 };
 
-struct xterm_keys_entry xterm_keys_table[] = {
+const struct xterm_keys_entry xterm_keys_table[] = {
 	{ KEYC_F1,	"\033[1;_P" },
 	{ KEYC_F1,	"\033O_P" },
 	{ KEYC_F2,	"\033[1;_Q" },
@@ -114,27 +114,23 @@ int
 xterm_keys_modifiers(const char *template, const char *buf, size_t len)
 {
 	size_t	idx;
+	int     param, modifiers;
 
 	idx = strcspn(template, "_");
 	if (idx >= len)
 		return (0);
-	switch (buf[idx]) {
-	case '2':
-		return (KEYC_SHIFT);
-	case '3':
-		return (KEYC_ESCAPE);
-	case '4':
-		return (KEYC_SHIFT|KEYC_ESCAPE);
-	case '5':
-		return (KEYC_CTRL);
-	case '6':
-		return (KEYC_SHIFT|KEYC_CTRL);
-	case '7':
-		return (KEYC_ESCAPE|KEYC_CTRL);
-	case '8':
-		return (KEYC_SHIFT|KEYC_ESCAPE|KEYC_CTRL);
-	}
-	return (0);
+	param = buf[idx] - '1';
+
+	modifiers = 0;
+	if (param & 1)
+		modifiers |= KEYC_SHIFT;
+	if (param & 2)
+		modifiers |= KEYC_ESCAPE;
+	if (param & 4)
+		modifiers |= KEYC_CTRL;
+	if (param & 8)
+		modifiers |= KEYC_ESCAPE;
+	return (modifiers);
 }
 
 /*
@@ -144,8 +140,8 @@ xterm_keys_modifiers(const char *template, const char *buf, size_t len)
 int
 xterm_keys_find(const char *buf, size_t len, size_t *size, int *key)
 {
-	struct xterm_keys_entry	*entry;
-	u_int			 i;
+	const struct xterm_keys_entry	*entry;
+	u_int				 i;
 
 	for (i = 0; i < nitems(xterm_keys_table); i++) {
 		entry = &xterm_keys_table[i];
@@ -166,35 +162,26 @@ xterm_keys_find(const char *buf, size_t len, size_t *size, int *key)
 char *
 xterm_keys_lookup(int key)
 {
-	struct xterm_keys_entry	*entry;
-	u_int			 i;
-	int			 modifiers;
-	char			*out;
+	const struct xterm_keys_entry	*entry;
+	u_int				 i;
+	int				 modifiers;
+	char				*out;
 
-#define KEY_MODIFIERS(key, modifiers) \
-	(((key) & (KEYC_SHIFT|KEYC_ESCAPE|KEYC_CTRL)) == (modifiers))
-	modifiers = 0;
-	if (KEY_MODIFIERS(key, KEYC_SHIFT))
-		modifiers = 2;
-	else if (KEY_MODIFIERS(key, KEYC_ESCAPE))
-		modifiers = 3;
-	else if (KEY_MODIFIERS(key, KEYC_SHIFT|KEYC_ESCAPE))
-		modifiers = 4;
-	else if (KEY_MODIFIERS(key, KEYC_CTRL))
-		modifiers = 5;
-	else if (KEY_MODIFIERS(key, KEYC_SHIFT|KEYC_CTRL))
-		modifiers = 6;
-	else if (KEY_MODIFIERS(key, KEYC_ESCAPE|KEYC_CTRL))
-		modifiers = 7;
-	else if (KEY_MODIFIERS(key, KEYC_SHIFT|KEYC_ESCAPE|KEYC_CTRL))
-		modifiers = 8;
-#undef KEY_MODIFIERS
+	modifiers = 1;
+	if (key & KEYC_SHIFT)
+		modifiers += 1;
+	if (key & KEYC_ESCAPE)
+		modifiers += 2;
+	if (key & KEYC_CTRL)
+		modifiers += 4;
+	if (key & KEYC_ESCAPE)
+		modifiers += 8;
 
 	/*
 	 * If the key has no modifiers, return NULL and let it fall through to
 	 * the normal lookup.
 	 */
-	if (modifiers == 0)
+	if (modifiers == 1)
 		return (NULL);
 
 	/* Otherwise, find the key in the table. */

@@ -1,14 +1,15 @@
-/*	$Id: mandoc.c,v 1.16 2010/07/25 18:05:54 schwarze Exp $ */
+/*	$Id: mandoc.c,v 1.21 2011/01/03 22:27:21 schwarze Exp $ */
 /*
  * Copyright (c) 2008, 2009, 2010 Kristaps Dzonsons <kristaps@bsd.lv>
+ * Copyright (c) 2011 Ingo Schwarze <schwarze@openbsd.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
  *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHORS DISCLAIM ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR
  * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
@@ -51,15 +52,9 @@ mandoc_special(char *p)
 		/* FALLTHROUGH */
 	case ('x'):
 		/* FALLTHROUGH */
-	case ('w'):
-		/* FALLTHROUGH */
-	case ('v'):
-		/* FALLTHROUGH */
 	case ('S'):
 		/* FALLTHROUGH */
 	case ('R'):
-		/* FALLTHROUGH */
-	case ('o'):
 		/* FALLTHROUGH */
 	case ('N'):
 		/* FALLTHROUGH */
@@ -87,13 +82,19 @@ mandoc_special(char *p)
 		term = '\'';
 		break;
 #endif
+	case ('h'):
+		/* FALLTHROUGH */
+	case ('v'):
+		/* FALLTHROUGH */
 	case ('s'):
 		if (ASCII_HYPH == *p)
 			*p = '-';
-		if ('+' == *p || '-' == *p)
-			p++;
 
-		i = ('s' != *(p - 1));
+		i = 0;
+		if ('+' == *p || '-' == *p) {
+			p++;
+			i = 1;
+		}
 
 		switch (*p++) {
 		case ('('):
@@ -106,7 +107,7 @@ mandoc_special(char *p)
 			term = '\'';
 			break;
 		case ('0'):
-			i++;
+			i = 1;
 			/* FALLTHROUGH */
 		default:
 			len = 1;
@@ -117,13 +118,32 @@ mandoc_special(char *p)
 		if (ASCII_HYPH == *p)
 			*p = '-';
 		if ('+' == *p || '-' == *p) {
-			if (i++)
+			if (i)
 				return(0);
 			p++;
 		} 
 		
-		if (0 == i)
+		/* Handle embedded numerical subexp or escape. */
+
+		if ('(' == *p) {
+			while (*p && ')' != *p)
+				if ('\\' == *p++) {
+					i = mandoc_special(--p);
+					if (0 == i)
+						return(0);
+					p += i;
+				}
+
+			if (')' == *p++)
+				break;
+
 			return(0);
+		} else if ('\\' == *p) {
+			if (0 == (i = mandoc_special(p)))
+				return(0);
+			p += i;
+		}
+
 		break;
 #if 0
 	case ('Y'):
@@ -134,9 +154,9 @@ mandoc_special(char *p)
 		/* FALLTHROUGH */
 	case ('n'):
 		/* FALLTHROUGH */
+#endif
 	case ('k'):
 		/* FALLTHROUGH */
-#endif
 	case ('M'):
 		/* FALLTHROUGH */
 	case ('m'):
@@ -165,6 +185,23 @@ mandoc_special(char *p)
 	case ('['):
 		term = ']';
 		break;
+	case ('z'):
+		len = 1;
+		if ('\\' == *p) {
+			if (0 == (i = mandoc_special(p)))
+				return(0);
+			p += i;
+			return(*p ? (int)(p - sv) : 0);
+		}
+		break;
+	case ('o'):
+		/* FALLTHROUGH */
+	case ('w'):
+		if ('\'' == *p++) {
+			term = '\'';
+			break;
+		}
+		/* FALLTHROUGH */
 	default:
 		len = 1;
 		p--;
@@ -193,7 +230,7 @@ mandoc_calloc(size_t num, size_t size)
 	ptr = calloc(num, size);
 	if (NULL == ptr) {
 		perror(NULL);
-		exit(EXIT_FAILURE);
+		exit((int)MANDOCLEVEL_SYSERR);
 	}
 
 	return(ptr);
@@ -208,7 +245,7 @@ mandoc_malloc(size_t size)
 	ptr = malloc(size);
 	if (NULL == ptr) {
 		perror(NULL);
-		exit(EXIT_FAILURE);
+		exit((int)MANDOCLEVEL_SYSERR);
 	}
 
 	return(ptr);
@@ -222,7 +259,7 @@ mandoc_realloc(void *ptr, size_t size)
 	ptr = realloc(ptr, size);
 	if (NULL == ptr) {
 		perror(NULL);
-		exit(EXIT_FAILURE);
+		exit((int)MANDOCLEVEL_SYSERR);
 	}
 
 	return(ptr);
@@ -237,10 +274,87 @@ mandoc_strdup(const char *ptr)
 	p = strdup(ptr);
 	if (NULL == p) {
 		perror(NULL);
-		exit(EXIT_FAILURE);
+		exit((int)MANDOCLEVEL_SYSERR);
 	}
 
 	return(p);
+}
+
+/*
+ * Parse a quoted or unquoted roff-style request or macro argument.
+ * Return a pointer to the parsed argument, which is either the original
+ * pointer or advanced by one byte in case the argument is quoted.
+ * Null-terminate the argument in place.
+ * Collapse pairs of quotes inside quoted arguments.
+ * Advance the argument pointer to the next argument,
+ * or to the null byte terminating the argument line.
+ */
+char *
+mandoc_getarg(char **cpp, mandocmsg msg, void *data, int ln, int *pos)
+{
+	char	 *start, *cp;
+	int	  quoted, pairs, white;
+
+	/* Quoting can only start with a new word. */
+	start = *cpp;
+	if ('"' == *start) {
+		quoted = 1;
+		start++;
+	} else
+		quoted = 0;
+
+	pairs = 0;
+	white = 0;
+	for (cp = start; '\0' != *cp; cp++) {
+		/* Move left after quoted quotes and escaped backslashes. */
+		if (pairs)
+			cp[-pairs] = cp[0];
+		if ('\\' == cp[0]) {
+			if ('\\' == cp[1]) {
+				/* Poor man's copy mode. */
+				pairs++;
+				cp++;
+			} else if (0 == quoted && ' ' == cp[1])
+				/* Skip escaped blanks. */
+				cp++;
+		} else if (0 == quoted) {
+			if (' ' == cp[0]) {
+				/* Unescaped blanks end unquoted args. */
+				white = 1;
+				break;
+			}
+		} else if ('"' == cp[0]) {
+			if ('"' == cp[1]) {
+				/* Quoted quotes collapse. */
+				pairs++;
+				cp++;
+			} else {
+				/* Unquoted quotes end quoted args. */
+				quoted = 2;
+				break;
+			}
+		}
+	}
+
+	/* Quoted argument without a closing quote. */
+	if (1 == quoted && msg)
+		(*msg)(MANDOCERR_BADQUOTE, data, ln, *pos, NULL);
+
+	/* Null-terminate this argument and move to the next one. */
+	if (pairs)
+		cp[-pairs] = '\0';
+	if ('\0' != *cp) {
+		*cp++ = '\0';
+		while (' ' == *cp)
+			cp++;
+	}
+	*pos += (cp - start) + (quoted ? 1 : 0);
+	*cpp = cp;
+
+	if ('\0' == *cp && msg && (white || ' ' == cp[-1]))
+		(*msg)(MANDOCERR_EOLNSPACE, data, ln, *pos, NULL);
+
+	return(start);
 }
 
 
@@ -333,7 +447,7 @@ mandoc_eos(const char *p, size_t sz, int enclosed)
 			found = 1;
 			break;
 		default:
-			return(found && (!enclosed || isalnum(*q)));
+			return(found && (!enclosed || isalnum((unsigned char)*q)));
 		}
 	}
 

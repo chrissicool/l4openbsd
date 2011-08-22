@@ -278,7 +278,7 @@ Anyway, here it is.  Should run on perl v4 or greater.  Maybe less.
 
 =cut
 
-$RCSID = '$Id: c2ph.PL,v 1.11 2009/10/12 18:30:28 millert Exp $';
+$RCSID = '$Id: c2ph,v 1.7 95/10/28 10:41:47 tchrist Exp Locker: tchrist $';
 
 use File::Temp;
 

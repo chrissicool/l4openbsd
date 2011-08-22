@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-pipe-pane.c,v 1.14 2010/06/14 23:06:13 nicm Exp $ */
+/* $OpenBSD: cmd-pipe-pane.c,v 1.18 2011/01/08 01:52:36 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -38,28 +38,27 @@ void	cmd_pipe_pane_error_callback(struct bufferevent *, short, void *);
 
 const struct cmd_entry cmd_pipe_pane_entry = {
 	"pipe-pane", "pipep",
+	"ot:", 0, 1,
 	CMD_TARGET_PANE_USAGE "[-o] [command]",
-	CMD_ARG01, "o",
-	cmd_target_init,
-	cmd_target_parse,
-	cmd_pipe_pane_exec,
-	cmd_target_free,
-	cmd_target_print
+	0,
+	NULL,
+	NULL,
+	cmd_pipe_pane_exec
 };
 
 int
 cmd_pipe_pane_exec(struct cmd *self, struct cmd_ctx *ctx)
 {
-	struct cmd_target_data	*data = self->data;
+	struct args		*args = self->args;
 	struct client		*c;
 	struct window_pane	*wp;
 	char			*command;
-	int			 old_fd, pipe_fd[2], null_fd, mode;
+	int			 old_fd, pipe_fd[2], null_fd;
 
 	if ((c = cmd_find_client(ctx, NULL)) == NULL)
 		return (-1);
 
-	if (cmd_find_pane(ctx, data->target, NULL, &wp) == NULL)
+	if (cmd_find_pane(ctx, args_get(args, 't'), NULL, &wp) == NULL)
 		return (-1);
 
 	/* Destroy the old pipe. */
@@ -71,7 +70,7 @@ cmd_pipe_pane_exec(struct cmd *self, struct cmd_ctx *ctx)
 	}
 
 	/* If no pipe command, that is enough. */
-	if (data->arg == NULL || *data->arg == '\0')
+	if (args->argc == 0 || *args->argv[0] == '\0')
 		return (0);
 
 	/*
@@ -80,7 +79,7 @@ cmd_pipe_pane_exec(struct cmd *self, struct cmd_ctx *ctx)
 	 *
 	 *	bind ^p pipep -o 'cat >>~/output'
 	 */
-	if (cmd_check_flag(data->chflags, 'o') && old_fd != -1)
+	if (args_has(self->args, 'o') && old_fd != -1)
 		return (0);
 
 	/* Open the new pipe. */
@@ -97,7 +96,7 @@ cmd_pipe_pane_exec(struct cmd *self, struct cmd_ctx *ctx)
 	case 0:
 		/* Child process. */
 		close(pipe_fd[0]);
-		clear_signals();
+		clear_signals(1);
 
 		if (dup2(pipe_fd[1], STDIN_FILENO) == -1)
 			_exit(1);
@@ -112,7 +111,9 @@ cmd_pipe_pane_exec(struct cmd *self, struct cmd_ctx *ctx)
 		if (null_fd != STDOUT_FILENO && null_fd != STDERR_FILENO)
 			close(null_fd);
 
-		command = status_replace(c, NULL, data->arg, time(NULL), 0);
+		closefrom(STDERR_FILENO + 1);
+
+		command = status_replace(c, NULL, args->argv[0], time(NULL), 0);
 		execl(_PATH_BSHELL, "sh", "-c", command, (char *) NULL);
 		_exit(1);
 	default:
@@ -126,12 +127,7 @@ cmd_pipe_pane_exec(struct cmd *self, struct cmd_ctx *ctx)
 		    NULL, NULL, cmd_pipe_pane_error_callback, wp);
 		bufferevent_enable(wp->pipe_event, EV_WRITE);
 
-		if ((mode = fcntl(wp->pipe_fd, F_GETFL)) == -1)
-			fatal("fcntl failed");
-		if (fcntl(wp->pipe_fd, F_SETFL, mode|O_NONBLOCK) == -1)
-			fatal("fcntl failed");
-		if (fcntl(wp->pipe_fd, F_SETFD, FD_CLOEXEC) == -1)
-			fatal("fcntl failed");
+		setblocking(wp->pipe_fd, 0);
 		return (0);
 	}
 }

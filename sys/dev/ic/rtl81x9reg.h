@@ -1,4 +1,4 @@
-/*	$OpenBSD: rtl81x9reg.h,v 1.68 2010/06/28 16:04:09 sthen Exp $	*/
+/*	$OpenBSD: rtl81x9reg.h,v 1.72 2010/11/28 22:08:59 kettenis Exp $	*/
 
 /*
  * Copyright (c) 1997, 1998
@@ -809,7 +809,6 @@ struct rl_softc {
 	int			rl_eecmd_read;
 	int			rl_eewidth;
 	int			rl_bus_speed;
-	void			*sc_pwrhook;
 	int			rl_txthresh;
 	struct rl_chain_data	rl_cdata;
 	struct timeout		sc_tick_tmo;
@@ -1008,3 +1007,4 @@ extern int rl_attach(struct rl_softc *);
 extern int rl_intr(void *);
 extern void rl_setmulti(struct rl_softc *);
 int rl_detach(struct rl_softc *);
+int rl_activate(struct device *, int);

@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.11 2010/08/03 18:42:40 henning Exp $	*/
+/*	$OpenBSD: parse.y,v 1.20 2011/01/21 11:56:00 reyk Exp $	*/
 /*	$vantronix: parse.y,v 1.22 2010/06/03 11:08:34 reyk Exp $	*/
 
 /*
@@ -85,7 +85,6 @@ struct sym {
 };
 int		 symset(const char *, const char *, int);
 char		*symget(const char *);
-int		 cmdline_symset(char *);
 
 #define KEYSIZE_LIMIT	1024
 
@@ -100,6 +99,8 @@ struct ipsec_xf {
 	u_int		 id;
 	u_int		 length;
 	u_int		 keylength;
+	u_int		 nonce;
+	u_int		 noauth;
 };
 
 struct ipsec_transforms {
@@ -150,7 +151,13 @@ const struct ipsec_xf ipsecencxfs[] = {
 	{ "aes-128",		IKEV2_XFORMENCR_AES_CBC,	16, 16 },
 	{ "aes-192",		IKEV2_XFORMENCR_AES_CBC, 	24, 24 },
 	{ "aes-256",		IKEV2_XFORMENCR_AES_CBC, 	32, 32 },
-	{ "aes-ctr",		IKEV2_XFORMENCR_AES_CTR, 	20, 20 },
+	{ "aes-ctr",		IKEV2_XFORMENCR_AES_CTR, 	16, 16, 4 },
+	{ "aes-128-gcm",	IKEV2_XFORMENCR_AES_GCM_16,	16, 16, 4, 1 },
+	{ "aes-192-gcm",	IKEV2_XFORMENCR_AES_GCM_16,	24, 24, 4, 1 },
+	{ "aes-256-gcm",	IKEV2_XFORMENCR_AES_GCM_16,	32, 32, 4, 1 },
+	{ "aes-128-gmac",	IKEV2_XFORMENCR_NULL_AES_GMAC,	16, 16, 4, 1 },
+	{ "aes-192-gmac",	IKEV2_XFORMENCR_NULL_AES_GMAC,	24, 24, 4, 1 },
+	{ "aes-256-gmac",	IKEV2_XFORMENCR_NULL_AES_GMAC,	32, 32, 4, 1 },
 	{ "blowfish",		IKEV2_XFORMENCR_BLOWFISH,	20, 20 },
 	{ "cast",		IKEV2_XFORMENCR_CAST,		16, 16 },
 	{ "null",		IKEV2_XFORMENCR_NULL,		0, 0 },
@@ -228,6 +235,11 @@ const struct ipsec_xf cpxfs[] = {
 	{ "access-server", IKEV2_CFG_INTERNAL_IP6_SERVER,	AF_INET6 }
 };
 
+const struct iked_lifetime deflifetime = {
+	IKED_LIFETIME_BYTES,
+	IKED_LIFETIME_SECONDS
+};
+
 struct ipsec_addr_wrap {
 	struct sockaddr_storage	 address;
 	u_int8_t		 mask;
@@ -270,11 +282,12 @@ void			 copy_transforms(u_int, const struct ipsec_xf *,
 			    const struct ipsec_xf *,
 			    struct iked_transform *, size_t,
 			    u_int *, struct iked_transform *, size_t);
-int			 create_ike(char *, u_int8_t, struct ipsec_hosts *,
+int			 create_ike(char *, int, u_int8_t, struct ipsec_hosts *,
 			     struct ipsec_hosts *, struct ipsec_mode *,
 			     struct ipsec_mode *, u_int8_t,
-			     u_int8_t, char *, char *, struct iked_auth *,
-			     struct ipsec_filters *, struct ipsec_addr_wrap *);
+			     u_int8_t, char *, char *, struct iked_lifetime *,
+			     struct iked_auth *, struct ipsec_filters *,
+			     struct ipsec_addr_wrap *);
 int			 create_user(const char *, const char *);
 int			 get_id_type(char *);
 u_int8_t		 x2i(unsigned char *);
@@ -304,6 +317,7 @@ typedef struct {
 		} ids;
 		char			*id;
 		u_int8_t		 type;
+		struct iked_lifetime	 lifetime;
 		struct iked_auth	 ikeauth;
 		struct iked_auth	 ikekey;
 		struct ipsec_transforms	*transforms;
@@ -319,7 +333,7 @@ typedef struct {
 %token	FILENAME AUTHXF PRFXF ENCXF ERROR IKEV2 IKESA CHILDSA
 %token	PASSIVE ACTIVE ANY TAG TAP PROTO LOCAL GROUP NAME CONFIG EAP USER
 %token	IKEV1 FLOW SA TCPMD5 TUNNEL TRANSPORT COUPLE DECOUPLE SET
-%token	INCLUDE
+%token	INCLUDE LIFETIME BYTES INET INET6 QUICK SKIP DEFAULT
 %token	<v.string>		STRING
 %token	<v.number>		NUMBER
 %type	<v.string>		string
@@ -328,7 +342,7 @@ typedef struct {
 %type	<v.number>		protoval
 %type	<v.hosts>		hosts hosts_list
 %type	<v.port>		port
-%type	<v.number>		portval
+%type	<v.number>		portval af
 %type	<v.peers>		peers
 %type	<v.anyhost>		anyhost
 %type	<v.host>		host host_spec
@@ -336,10 +350,12 @@ typedef struct {
 %type	<v.id>			id
 %type	<v.transforms>		transforms
 %type	<v.filters>		filters
-%type	<v.ikemode>		ikemode
+%type	<v.ikemode>		ikeflags ikematch ikemode
 %type	<v.ikeauth>		ikeauth
 %type	<v.ikekey>		keyspec
 %type	<v.mode>		ike_sa child_sa
+%type	<v.lifetime>		lifetime
+%type	<v.number>		byte_spec time_spec
 %type	<v.string>		name
 %type	<v.cfg>			cfg ikecfg ikecfgvals
 %%
@@ -382,14 +398,14 @@ set		: SET ACTIVE	{ passive = 0; }
 
 user		: USER STRING STRING		{
 			if (create_user($2, $3) == -1)
-				YYERROR;		
+				YYERROR;
 		}
 		;
 
-ikev2rule	: IKEV2 name ikemode satype proto hosts_list peers
-		    ike_sa child_sa ids ikeauth ikecfg filters {
-			if (create_ike($2, $5, $6, &$7, $8, $9, $4, $3,
-			    $10.srcid, $10.dstid, &$11, $13, $12) == -1)
+ikev2rule	: IKEV2 name ikeflags satype af proto hosts_list peers
+		    ike_sa child_sa ids lifetime ikeauth ikecfg filters {
+			if (create_ike($2, $5, $6, $7, &$8, $9, $10, $4, $3,
+			    $11.srcid, $11.dstid, &$12, &$13, $15, $14) == -1)
 				YYERROR;
 		}
 		;
@@ -435,6 +451,11 @@ name		: /* empty */			{ $$ = NULL; }
 satype		: /* empty */			{ $$ = IKEV2_SAPROTO_ESP; }
 		| ESP				{ $$ = IKEV2_SAPROTO_ESP; }
 		| AH				{ $$ = IKEV2_SAPROTO_AH; }
+		;
+
+af		: /* empty */			{ $$ = AF_UNSPEC; }
+		| INET				{ $$ = AF_INET; }
+		| INET6				{ $$ = AF_INET6; }
 		;
 
 proto		: /* empty */			{ $$ = 0; }
@@ -713,6 +734,15 @@ child_sa	: /* empty */	{
 		}
 		;
 
+ikeflags	: ikematch ikemode		{ $$ = $1 | $2; }
+		;
+
+ikematch	: /* empty */			{ $$ = 0; }
+		| QUICK				{ $$ = IKED_POLICY_QUICK; }
+		| SKIP				{ $$ = IKED_POLICY_SKIP; }
+		| DEFAULT			{ $$ = IKED_POLICY_DEFAULT; }
+		;
+
 ikemode		: /* empty */			{ $$ = IKED_POLICY_PASSIVE; }
 		| PASSIVE			{ $$ = IKED_POLICY_PASSIVE; }
 		| ACTIVE			{ $$ = IKED_POLICY_ACTIVE; }
@@ -736,7 +766,7 @@ ikeauth		: /* empty */			{
 			for (i = 0; i < strlen($2); i++)
 				if ($2[i] == '-')
 					$2[i] = '_';
-	
+
 			if (strcasecmp("mschap_v2", $2) != 0) {
 				yyerror("unsupported EAP method: %s", $2);
 				free($2);
@@ -747,6 +777,74 @@ ikeauth		: /* empty */			{
 			$$.auth_method = IKEV2_AUTH_RSA_SIG;
 			$$.auth_eap = EAP_TYPE_MSCHAP_V2;
 			$$.auth_length = 0;
+		}
+		;
+
+byte_spec	: NUMBER			{
+			$$ = $1;
+		}
+		| STRING			{
+			u_int64_t	 bytes = 0;
+			char		 unit = 0;
+
+			if (sscanf($1, "%llu%c", &bytes, &unit) != 2) {
+				yyerror("invalid byte specification: %s", $1);
+				YYERROR;
+			}
+			switch (toupper(unit)) {
+			case 'K':
+				bytes *= 1024;
+				break;
+			case 'M':
+				bytes *= 1024 * 1024;
+				break;
+			case 'G':
+				bytes *= 1024 * 1024 * 1024;
+				break;
+			default:
+				yyerror("invalid byte unit");
+				YYERROR;
+			}
+			$$ = bytes;
+		}
+		;
+
+time_spec	: NUMBER			{
+			$$ = $1;
+		}
+		| STRING			{
+			u_int64_t	 seconds = 0;
+			char		 unit = 0;
+
+			if (sscanf($1, "%llu%c", &seconds, &unit) != 2) {
+				yyerror("invalid time specification: %s", $1);
+				YYERROR;
+			}
+			switch (tolower(unit)) {
+			case 'm':
+				seconds *= 60;
+				break;
+			case 'h':
+				seconds *= 60 * 60;
+				break;
+			default:
+				yyerror("invalid time unit");
+				YYERROR;
+			}
+			$$ = seconds;
+		}
+		;
+
+lifetime	: /* empty */				{
+			$$ = deflifetime;
+		}
+		| LIFETIME time_spec			{
+			$$.lt_seconds = $2;
+			$$.lt_bytes = deflifetime.lt_bytes;
+		}
+		| LIFETIME time_spec BYTES byte_spec	{
+			$$.lt_seconds = $2;
+			$$.lt_bytes = $4;
 		}
 		;
 
@@ -924,10 +1022,12 @@ lookup(char *s)
 		{ "ah",			AH },
 		{ "any",		ANY },
 		{ "auth",		AUTHXF },
+		{ "bytes",		BYTES },
 		{ "childsa",		CHILDSA },
 		{ "config",		CONFIG },
 		{ "couple",		COUPLE },
 		{ "decouple",		DECOUPLE },
+		{ "default",		DEFAULT },
 		{ "dstid",		DSTID },
 		{ "eap",		EAP },
 		{ "enc",		ENCXF },
@@ -940,6 +1040,9 @@ lookup(char *s)
 		{ "ikesa",		IKESA },
 		{ "ikev2",		IKEV2 },
 		{ "include",		INCLUDE },
+		{ "inet",		INET },
+		{ "inet6",		INET6 },
+		{ "lifetime",		LIFETIME },
 		{ "local",		LOCAL },
 		{ "name",		NAME },
 		{ "passive",		PASSIVE },
@@ -948,9 +1051,11 @@ lookup(char *s)
 		{ "prf",		PRFXF },
 		{ "proto",		PROTO },
 		{ "psk",		PSK },
+		{ "quick",		QUICK },
 		{ "rsa",		RSA },
 		{ "sa",			SA },
 		{ "set",		SET },
+		{ "skip",		SKIP },
 		{ "srcid",		SRCID },
 		{ "tag",		TAG },
 		{ "tap",		TAP },
@@ -1714,6 +1819,8 @@ ifa_load(void)
 {
 	struct ifaddrs		*ifap, *ifa;
 	struct ipsec_addr_wrap	*n = NULL, *h = NULL;
+	struct sockaddr_in	*sa_in;
+	struct sockaddr_in6	*sa_in6;
 
 	if (getifaddrs(&ifap) < 0)
 		err(1, "ifa_load: getifaddrs");
@@ -1730,17 +1837,15 @@ ifa_load(void)
 		if ((n->name = strdup(ifa->ifa_name)) == NULL)
 			err(1, "ifa_load: strdup");
 		if (n->af == AF_INET) {
-			n->af = AF_INET;
-			memcpy(&n->address, ifa->ifa_addr,
-			    sizeof(struct sockaddr_in));
-			memcpy(&n->mask, ifa->ifa_addr,
-			    sizeof(struct sockaddr_in));
+			sa_in = (struct sockaddr_in *)ifa->ifa_addr;
+			memcpy(&n->address, sa_in, sizeof(*sa_in));
+			sa_in = (struct sockaddr_in *)ifa->ifa_netmask;
+			n->mask = mask2prefixlen((struct sockaddr *)sa_in);
 		} else if (n->af == AF_INET6) {
-			n->af = AF_INET6;
-			memcpy(&n->address, ifa->ifa_addr,
-			    sizeof(struct sockaddr_in6));
-			memcpy(&n->mask, ifa->ifa_addr,
-			    sizeof(struct sockaddr_in6));
+			sa_in6 = (struct sockaddr_in6 *)ifa->ifa_addr;
+			memcpy(&n->address, sa_in6, sizeof(*sa_in6));
+			sa_in6 = (struct sockaddr_in6 *)ifa->ifa_netmask;
+			n->mask = mask2prefixlen6((struct sockaddr *)sa_in6);
 		}
 		n->next = NULL;
 		n->tail = n;
@@ -1957,6 +2062,21 @@ keylength_xf(u_int saproto, u_int type, u_int id)
 	return (0);
 }
 
+size_t
+noncelength_xf(u_int type, u_int id)
+{
+	const struct ipsec_xf	*xfs = ipsecencxfs;
+	int			 i;
+
+	if (type != IKEV2_XFORMTYPE_ENCR)
+		return (0);
+
+	for (i = 0; xfs[i].name != NULL; i++)
+		if (xfs[i].id == id)
+			return (xfs[i].nonce * 8);
+	return (0);
+}
+
 void
 print_user(struct iked_user *usr)
 {
@@ -1980,6 +2100,11 @@ print_policy(struct iked_policy *pol)
 
 	if (pol->pol_flags & IKED_POLICY_DEFAULT)
 		print_verbose(" default");
+	else if (pol->pol_flags & IKED_POLICY_QUICK)
+		print_verbose(" quick");
+	else if (pol->pol_flags & IKED_POLICY_SKIP)
+		print_verbose(" skip");
+
 	if (pol->pol_flags & IKED_POLICY_ACTIVE)
 		print_verbose(" active");
 	else
@@ -1989,6 +2114,13 @@ print_policy(struct iked_policy *pol)
 
 	if (pol->pol_ipproto)
 		print_verbose(" proto %s", print_proto(pol->pol_ipproto));
+
+	if (pol->pol_af) {
+		if (pol->pol_af == AF_INET)
+			print_verbose(" inet");
+		else
+			print_verbose(" inet6");
+	}
 
 	TAILQ_FOREACH(flow, &pol->pol_flows, flow_entry) {
 		print_verbose(" from %s",
@@ -2012,16 +2144,16 @@ print_policy(struct iked_policy *pol)
 
 	if ((pol->pol_flags & IKED_POLICY_DEFAULT) == 0) {
 		print_verbose(" local %s",
-		    print_host(&pol->pol_local, NULL, 0));
-		if (pol->pol_local.ss_family != AF_UNSPEC &&
-		    pol->pol_localnet)
-			print_verbose("/%d", pol->pol_localmask);
+		    print_host(&pol->pol_local.addr, NULL, 0));
+		if (pol->pol_local.addr.ss_family != AF_UNSPEC &&
+		    pol->pol_local.addr_net)
+			print_verbose("/%d", pol->pol_local.addr_mask);
 
 		print_verbose(" peer %s",
-		    print_host(&pol->pol_peer, NULL, 0));
-		if (pol->pol_peer.ss_family != AF_UNSPEC &&
-		    pol->pol_peernet)
-			print_verbose("/%d", pol->pol_peermask);
+		    print_host(&pol->pol_peer.addr, NULL, 0));
+		if (pol->pol_peer.addr.ss_family != AF_UNSPEC &&
+		    pol->pol_peer.addr_net)
+			print_verbose("/%d", pol->pol_peer.addr_mask);
 	}
 
 	TAILQ_FOREACH(pp, &pol->pol_proposals, prop_entry) {
@@ -2081,6 +2213,9 @@ print_policy(struct iked_policy *pol)
 		print_verbose(" srcid %s", pol->pol_localid.id_data);
 	if (pol->pol_peerid.id_length != 0)
 		print_verbose(" dstid %s", pol->pol_peerid.id_data);
+
+	print_verbose(" lifetime %llu bytes %llu",
+	    pol->pol_lifetime.lt_seconds, pol->pol_lifetime.lt_bytes);
 
 	if (pol->pol_auth.auth_method == IKEV2_AUTH_SHARED_KEY_MIC) {
 			print_verbose(" psk 0x");
@@ -2145,10 +2280,10 @@ copy_transforms(u_int type, const struct ipsec_xf *xf,
 }
 
 int
-create_ike(char *name, u_int8_t ipproto, struct ipsec_hosts *hosts,
+create_ike(char *name, int af, u_int8_t ipproto, struct ipsec_hosts *hosts,
     struct ipsec_hosts *peers, struct ipsec_mode *ike_sa,
     struct ipsec_mode *ipsec_sa, u_int8_t saproto,
-    u_int8_t mode, char *srcid, char *dstid,
+    u_int8_t flags, char *srcid, char *dstid, struct iked_lifetime *lt,
     struct iked_auth *authtype, struct ipsec_filters *filter,
     struct ipsec_addr_wrap *ikecfg)
 {
@@ -2165,9 +2300,10 @@ create_ike(char *name, u_int8_t ipproto, struct ipsec_hosts *hosts,
 	bzero(&prop, sizeof(prop));
 
 	pol.pol_id = ++policy_id;
+	pol.pol_af = af;
 	pol.pol_saproto = saproto;
 	pol.pol_ipproto = ipproto;
-	pol.pol_flags = mode;
+	pol.pol_flags = flags;
 	memcpy(&pol.pol_auth, authtype, sizeof(struct iked_auth));
 
 	if (name != NULL) {
@@ -2211,13 +2347,20 @@ create_ike(char *name, u_int8_t ipproto, struct ipsec_hosts *hosts,
 			yyerror("active mode requires peer specification");
 			return (-1);
 		}
-		pol.pol_flags |= IKED_POLICY_DEFAULT;
+		pol.pol_flags |= IKED_POLICY_DEFAULT|IKED_POLICY_SKIP;
 	}
 
 	if (peers && peers->src && peers->dst &&
 	    (peers->src->af != AF_UNSPEC) && (peers->dst->af != AF_UNSPEC) &&
 	    (peers->src->af != peers->dst->af))
-		fatalx("create_ike: address family mismatch");
+		fatalx("create_ike: peer address family mismatch");
+
+	if (peers && (pol.pol_af != AF_UNSPEC) &&
+	    ((peers->src && (peers->src->af != AF_UNSPEC) &&
+	    (peers->src->af != pol.pol_af)) ||
+	    (peers->dst && (peers->dst->af != AF_UNSPEC) &&
+	    (peers->dst->af != pol.pol_af))))
+		fatalx("create_ike: policy address family mismatch");
 
 	ipa = ipb = NULL;
 	if (peers) {
@@ -2244,15 +2387,28 @@ create_ike(char *name, u_int8_t ipproto, struct ipsec_hosts *hosts,
 		}
 	}
 	if (ipa) {
-		memcpy(&pol.pol_local, &ipa->address, sizeof(pol.pol_local));
-		pol.pol_localmask = ipa->mask;
-		pol.pol_localnet = ipa->netaddress;
+		memcpy(&pol.pol_local.addr, &ipa->address,
+		    sizeof(ipa->address));
+		pol.pol_local.addr_af = ipa->af;
+		pol.pol_local.addr_mask = ipa->mask;
+		pol.pol_local.addr_net = ipa->netaddress;
+		if (pol.pol_af == AF_UNSPEC)
+			pol.pol_af = ipa->af;
 	}
 	if (ipb) {
-		memcpy(&pol.pol_peer, &ipb->address, sizeof(pol.pol_peer));
-		pol.pol_peermask = ipb->mask;
-		pol.pol_peernet = ipb->netaddress;
+		memcpy(&pol.pol_peer.addr, &ipb->address,
+		    sizeof(ipb->address));
+		pol.pol_peer.addr_af = ipb->af;
+		pol.pol_peer.addr_mask = ipb->mask;
+		pol.pol_peer.addr_net = ipb->netaddress;
+		if (pol.pol_af == AF_UNSPEC)
+			pol.pol_af = ipb->af;
 	}
+
+	if (lt)
+		pol.pol_lifetime = *lt;
+	else
+		pol.pol_lifetime = deflifetime;
 
 	TAILQ_INIT(&pol.pol_proposals);
 	TAILQ_INIT(&pol.pol_flows);
@@ -2296,11 +2452,19 @@ create_ike(char *name, u_int8_t ipproto, struct ipsec_hosts *hosts,
 		prop[1].prop_xforms = ikev2_default_esp_transforms;
 	} else {
 		j = 0;
-		copy_transforms(IKEV2_XFORMTYPE_INTEGR,
-		    ipsec_sa->xfs->authxf, authxfs,
-		    espxforms, nitems(espxforms), &j,
-		    ikev2_default_esp_transforms,
-		    ikev2_default_nesp_transforms);
+		if (ipsec_sa->xfs->encxf && ipsec_sa->xfs->encxf->noauth &&
+		    ipsec_sa->xfs->authxf) {
+			yyerror("authentication is implicit for %s",
+			    ipsec_sa->xfs->encxf->name);
+			return (-1);
+		}
+		if (ipsec_sa->xfs->encxf == NULL ||
+		    (ipsec_sa->xfs->encxf && !ipsec_sa->xfs->encxf->noauth))
+			copy_transforms(IKEV2_XFORMTYPE_INTEGR,
+			    ipsec_sa->xfs->authxf, authxfs,
+			    espxforms, nitems(espxforms), &j,
+			    ikev2_default_esp_transforms,
+			    ikev2_default_nesp_transforms);
 		copy_transforms(IKEV2_XFORMTYPE_ENCR,
 		    ipsec_sa->xfs->encxf, ipsecencxfs,
 		    espxforms, nitems(espxforms), &j,

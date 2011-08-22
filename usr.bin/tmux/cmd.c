@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd.c,v 1.43 2010/07/14 18:37:49 nicm Exp $ */
+/* $OpenBSD: cmd.c,v 1.50 2011/01/23 11:03:43 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -40,7 +40,6 @@ const struct cmd_entry *cmd_table[] = {
 	&cmd_clock_mode_entry,
 	&cmd_command_prompt_entry,
 	&cmd_confirm_before_entry,
-	&cmd_copy_buffer_entry,
 	&cmd_copy_mode_entry,
 	&cmd_delete_buffer_entry,
 	&cmd_detach_client_entry,
@@ -54,6 +53,7 @@ const struct cmd_entry *cmd_table[] = {
 	&cmd_kill_server_entry,
 	&cmd_kill_session_entry,
 	&cmd_kill_window_entry,
+	&cmd_last_pane_entry,
 	&cmd_last_window_entry,
 	&cmd_link_window_entry,
 	&cmd_list_buffers_entry,
@@ -111,7 +111,8 @@ const struct cmd_entry *cmd_table[] = {
 	NULL
 };
 
-struct session	*cmd_choose_session(struct sessions *);
+struct session	*cmd_choose_session_list(struct sessionslist *);
+struct session	*cmd_choose_session(void);
 struct client	*cmd_choose_client(struct clients *);
 struct client	*cmd_lookup_client(const char *);
 struct session	*cmd_lookup_session(const char *, int *);
@@ -165,6 +166,22 @@ cmd_unpack_argv(char *buf, size_t len, int argc, char ***argv)
 	return (0);
 }
 
+char **
+cmd_copy_argv(int argc, char *const *argv)
+{
+	char	**new_argv;
+	int	  i;
+
+	if (argc == 0)
+		return (NULL);
+	new_argv = xcalloc(argc, sizeof *new_argv);
+	for (i = 0; i < argc; i++) {
+		if (argv[i] != NULL)
+			new_argv[i] = xstrdup(argv[i]);
+	}
+	return (new_argv);
+}
+
 void
 cmd_free_argv(int argc, char **argv)
 {
@@ -184,8 +201,9 @@ cmd_parse(int argc, char **argv, char **cause)
 {
 	const struct cmd_entry **entryp, *entry;
 	struct cmd		*cmd;
+	struct args		*args;
 	char			 s[BUFSIZ];
-	int			 opt, ambiguous = 0;
+	int			 ambiguous = 0;
 
 	*cause = NULL;
 	if (argc == 0) {
@@ -219,30 +237,19 @@ cmd_parse(int argc, char **argv, char **cause)
 		return (NULL);
 	}
 
-	optreset = 1;
-	optind = 1;
-	if (entry->parse == NULL) {
-		while ((opt = getopt(argc, argv, "")) != -1) {
-			switch (opt) {
-			default:
-				goto usage;
-			}
-		}
-		argc -= optind;
-		argv += optind;
-		if (argc != 0)
-			goto usage;
-	}
+	args = args_parse(entry->args_template, argc, argv);
+	if (args == NULL)
+		goto usage;
+	if (entry->args_lower != -1 && args->argc < entry->args_lower)
+		goto usage;
+	if (entry->args_upper != -1 && args->argc > entry->args_upper)
+		goto usage;
+	if (entry->check != NULL && entry->check(args) != 0)
+		goto usage;
 
 	cmd = xmalloc(sizeof *cmd);
 	cmd->entry = entry;
-	cmd->data = NULL;
-	if (entry->parse != NULL) {
-		if (entry->parse(cmd, argc, argv, cause) != 0) {
-			xfree(cmd);
-			return (NULL);
-		}
-	}
+	cmd->args = args;
 	return (cmd);
 
 ambiguous:
@@ -260,6 +267,8 @@ ambiguous:
 	return (NULL);
 
 usage:
+	if (args != NULL)
+		args_free(args);
 	xasprintf(cause, "usage: %s %s", entry->name, entry->usage);
 	return (NULL);
 }
@@ -273,17 +282,27 @@ cmd_exec(struct cmd *cmd, struct cmd_ctx *ctx)
 void
 cmd_free(struct cmd *cmd)
 {
-	if (cmd->data != NULL && cmd->entry->free != NULL)
-		cmd->entry->free(cmd);
+	if (cmd->args != NULL)
+		args_free(cmd->args);
 	xfree(cmd);
 }
 
 size_t
 cmd_print(struct cmd *cmd, char *buf, size_t len)
 {
-	if (cmd->entry->print == NULL)
-		return (xsnprintf(buf, len, "%s", cmd->entry->name));
-	return (cmd->entry->print(cmd, buf, len));
+	size_t	off, used;
+
+	off = xsnprintf(buf, len, "%s ", cmd->entry->name);
+	if (off < len) {
+		used = args_print(cmd->args, buf + off, len - off);
+		if (used == 0)
+			buf[off - 1] = '\0';
+		else {
+			off += used;
+			buf[off] = '\0';
+		}
+	}
+	return (off);
 }
 
 /*
@@ -299,10 +318,9 @@ cmd_current_session(struct cmd_ctx *ctx)
 	struct msg_command_data	*data = ctx->msgdata;
 	struct client		*c = ctx->cmdclient;
 	struct session		*s;
-	struct sessions		 ss;
+	struct sessionslist	 ss;
 	struct winlink		*wl;
 	struct window_pane	*wp;
-	u_int			 i;
 	int			 found;
 
 	if (ctx->curclient != NULL && ctx->curclient->session != NULL)
@@ -315,9 +333,7 @@ cmd_current_session(struct cmd_ctx *ctx)
 	 */
 	if (c != NULL && c->tty.path != NULL) {
 		ARRAY_INIT(&ss);
-		for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-			if ((s = ARRAY_ITEM(&sessions, i)) == NULL)
-				continue;
+		RB_FOREACH(s, sessions, &sessions) {
 			found = 0;
 			RB_FOREACH(wl, winlinks, &s->windows) {
 				TAILQ_FOREACH(wp, &wl->window->panes, entry) {
@@ -333,29 +349,43 @@ cmd_current_session(struct cmd_ctx *ctx)
 				ARRAY_ADD(&ss, s);
 		}
 
-		s = cmd_choose_session(&ss);
+		s = cmd_choose_session_list(&ss);
 		ARRAY_FREE(&ss);
 		if (s != NULL)
 			return (s);
 	}
 
 	/* Use the session from the TMUX environment variable. */
-	if (data != NULL && data->pid != -1) {
-		if (data->pid != getpid())
-			return (NULL);
-		if (data->idx > ARRAY_LENGTH(&sessions))
-			return (NULL);
-		if ((s = ARRAY_ITEM(&sessions, data->idx)) == NULL)
-			return (NULL);
-		return (s);
+	if (data != NULL && data->pid == getpid() && data->idx != -1) {
+		s = session_find_by_index(data->idx);
+		if (s != NULL)
+			return (s);
 	}
 
-	return (cmd_choose_session(&sessions));
+	return (cmd_choose_session());
+}
+
+/* Find the most recently used session. */
+struct session *
+cmd_choose_session(void)
+{
+	struct session	*s, *sbest;
+	struct timeval	*tv = NULL;
+
+	sbest = NULL;
+	RB_FOREACH(s, sessions, &sessions) {
+		if (tv == NULL || timercmp(&s->activity_time, tv, >)) {
+			sbest = s;
+			tv = &s->activity_time;
+		}
+	}
+
+	return (sbest);
 }
 
 /* Find the most recently used session from a list. */
 struct session *
-cmd_choose_session(struct sessions *ss)
+cmd_choose_session_list(struct sessionslist *ss)
 {
 	struct session	*s, *sbest;
 	struct timeval	*tv = NULL;
@@ -503,7 +533,6 @@ struct session *
 cmd_lookup_session(const char *name, int *ambiguous)
 {
 	struct session	*s, *sfound;
-	u_int		 i;
 
 	*ambiguous = 0;
 
@@ -512,21 +541,15 @@ cmd_lookup_session(const char *name, int *ambiguous)
 	 * be unique so an exact match can't be ambigious and can just be
 	 * returned.
 	 */
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		if ((s = ARRAY_ITEM(&sessions, i)) == NULL)
-			continue;
-		if (strcmp(name, s->name) == 0)
-			return (s);
-	}
+	if ((s = session_find(name)) != NULL)
+		return (s);
 
 	/*
 	 * Otherwise look for partial matches, returning early if it is found to
 	 * be ambiguous.
 	 */
 	sfound = NULL;
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		if ((s = ARRAY_ITEM(&sessions, i)) == NULL)
-			continue;
+	RB_FOREACH(s, sessions, &sessions) {
 		if (strncmp(name, s->name, strlen(name)) == 0 ||
 		    fnmatch(name, s->name, 0) == 0) {
 			if (sfound != NULL) {

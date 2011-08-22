@@ -1,4 +1,4 @@
-/*	$OpenBSD: ncr53c9x.c,v 1.48 2010/06/28 18:31:02 krw Exp $	*/
+/*	$OpenBSD: ncr53c9x.c,v 1.50 2010/11/11 17:47:00 miod Exp $	*/
 /*     $NetBSD: ncr53c9x.c,v 1.56 2000/11/30 14:41:46 thorpej Exp $    */
 
 /*
@@ -761,7 +761,7 @@ ncr53c9x_get_ecb(sc, flags)
 	int flags;
 {
 	struct ncr53c9x_ecb *ecb;
-	int s, wait = 0;
+	int s, wait = PR_NOWAIT;
 
 	if ((curproc != NULL) && ((flags & SCSI_NOSLEEP) == 0))
 		wait = PR_WAITOK;
@@ -807,12 +807,12 @@ ncr53c9x_scsi_cmd(xs)
 	li = TINFO_LUN(ti, lun);
 	if (li == NULL) {
 		/* Initialize LUN info and add to list. */
-		if ((li = malloc(sizeof(*li), M_DEVBUF, M_NOWAIT)) == NULL) {
+		if ((li = malloc(sizeof(*li), M_DEVBUF,
+		    M_NOWAIT | M_ZERO)) == NULL) {
 			xs->error = XS_NO_CCB;
 			scsi_done(xs);
 			return;
 		}
-		bzero(li, sizeof(*li));
 		li->last_used = time_second;
 		li->lun = lun;
 		s = splbio();
@@ -954,11 +954,11 @@ ncr53c9x_sched(sc)
 		li = TINFO_LUN(ti, lun);
 		if (!li) {
 			/* Initialize LUN info and add to list. */
-			if ((li = malloc(sizeof(*li), M_DEVBUF, M_NOWAIT)) == NULL) {
+			if ((li = malloc(sizeof(*li), M_DEVBUF,
+			    M_NOWAIT | M_ZERO)) == NULL) {
 				splx(s);
 				continue;
 			}
-			bzero(li, sizeof(*li));
 			li->lun = lun;
 
 			LIST_INSERT_HEAD(&ti->luns, li, link);

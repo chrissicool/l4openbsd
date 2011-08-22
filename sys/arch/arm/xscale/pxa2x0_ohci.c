@@ -1,4 +1,4 @@
-/*	$OpenBSD: pxa2x0_ohci.c,v 1.21 2007/06/14 19:18:49 deraadt Exp $ */
+/*	$OpenBSD: pxa2x0_ohci.c,v 1.24 2010/09/07 16:21:35 deraadt Exp $ */
 
 /*
  * Copyright (c) 2005 David Gwynne <dlg@openbsd.org>
@@ -40,7 +40,7 @@
 int	pxaohci_match(struct device *, void *, void *);
 void	pxaohci_attach(struct device *, struct device *, void *);
 int	pxaohci_detach(struct device *, int);
-void	pxaohci_power(int, void *);
+int	pxaohci_activate(struct device *, int);
 
 struct pxaohci_softc {
 	ohci_softc_t	sc;
@@ -126,11 +126,6 @@ unsupported:
 		return;
 	}
 
-	sc->sc.sc_powerhook = powerhook_establish(pxaohci_power, sc);
-	if (sc->sc.sc_powerhook == NULL)
-		printf("%s: cannot establish powerhook\n",
-		    sc->sc.sc_bus.bdev.dv_xname);
-
 	sc->sc.sc_child = config_found((void *)sc, &sc->sc.sc_bus,
 	    usbctlprint);
 }
@@ -144,11 +139,6 @@ pxaohci_detach(struct device *self, int flags)
 	rv = ohci_detach(&sc->sc, flags);
 	if (rv)
 		return (rv);
-
-	if (sc->sc.sc_powerhook != NULL) {
-		powerhook_disestablish(sc->sc.sc_powerhook);
-		sc->sc.sc_powerhook = NULL;
-	}
 
 	if (sc->sc_ih != NULL) {
 		pxa2x0_intr_disestablish(sc->sc_ih);
@@ -169,29 +159,27 @@ pxaohci_detach(struct device *self, int flags)
 }
 
 
-void
-pxaohci_power(int why, void *arg)
+int
+pxaohci_activate(struct device *self, int act)
 {
-	struct pxaohci_softc		*sc = (struct pxaohci_softc *)arg;
-	int				s;
+	struct pxaohci_softc *sc = (struct pxaohci_softc *)self;
 
-	s = splhardusb();
-	sc->sc.sc_bus.use_polling++;
-	switch (why) {
-	case PWR_STANDBY:
-	case PWR_SUSPEND:
-		ohci_power(why, &sc->sc);
+	switch (act) {
+	case DVACT_SUSPEND:
+		sc->sc.sc_bus.use_polling++;
+		ohci_activate((struct device *)&sc->sc, act);
 		pxa2x0_clkman_config(CKEN_USBHC, 0);
+		sc->sc.sc_bus.use_polling--;
 		break;
-
-	case PWR_RESUME:
+	case DVACT_RESUME:
+		sc->sc.sc_bus.use_polling++;
 		pxa2x0_clkman_config(CKEN_USBHC, 1);
 		pxaohci_enable(sc);
-		ohci_power(why, &sc->sc);
+		ohci_activate((struct device *)&sc->sc, act);
+		sc->sc.sc_bus.use_polling--;
 		break;
 	}
-	sc->sc.sc_bus.use_polling--;
-	splx(s);
+	return 0;
 }
 
 void

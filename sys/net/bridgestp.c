@@ -1,4 +1,4 @@
-/*	$OpenBSD: bridgestp.c,v 1.36 2008/09/10 14:01:23 blambert Exp $	*/
+/*	$OpenBSD: bridgestp.c,v 1.39 2010/11/20 14:23:09 fgsch Exp $	*/
 
 /*
  * Copyright (c) 2000 Jason L. Wright (jason@thought.net)
@@ -227,7 +227,6 @@ struct bstp_tbpdu {
 
 const u_int8_t bstp_etheraddr[] = { 0x01, 0x80, 0xc2, 0x00, 0x00, 0x00 };
 
-LIST_HEAD(, bstp_state) bstp_list;
 
 void	bstp_transmit(struct bstp_state *, struct bstp_port *);
 void	bstp_transmit_bpdu(struct bstp_state *, struct bstp_port *);
@@ -287,11 +286,6 @@ void	bstp_edge_delay_expiry(struct bstp_state *,
 int	bstp_addr_cmp(const u_int8_t *, const u_int8_t *);
 int	bstp_same_bridgeid(u_int64_t, u_int64_t);
 
-void
-bstp_attach(int n)
-{
-	LIST_INIT(&bstp_list);
-}
 
 void
 bstp_transmit(struct bstp_state *bs, struct bstp_port *bp)
@@ -596,7 +590,7 @@ bstp_pdu_flags(struct bstp_port *bp)
 	return (flags);
 }
 
-struct mbuf *
+void
 bstp_input(struct bstp_state *bs, struct bstp_port *bp,
     struct ether_header *eh, struct mbuf *m)
 {
@@ -656,7 +650,6 @@ bstp_input(struct bstp_state *bs, struct bstp_port *bp,
  out:
 	if (m)
 		m_freem(m);
-	return (NULL);
 }
 
 void
@@ -1957,7 +1950,6 @@ bstp_create(struct ifnet *ifp)
 
 	getmicrotime(&bs->bs_last_tc_time);
 
-	LIST_INSERT_HEAD(&bstp_list, bs, bs_list);
 	splx(s);
 
 	return (bs);
@@ -1966,18 +1958,13 @@ bstp_create(struct ifnet *ifp)
 void
 bstp_destroy(struct bstp_state *bs)
 {
-	int s;
-
 	if (bs == NULL)
 		return;
 
 	if (!LIST_EMPTY(&bs->bs_bplist))
 		panic("bstp still active");
 
-	s = splnet();
-	LIST_REMOVE(bs, bs_list);
 	free(bs, M_DEVBUF);
-	splx(s);
 }
 
 void

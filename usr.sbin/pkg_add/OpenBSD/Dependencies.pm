@@ -1,5 +1,5 @@
 # ex:ts=8 sw=4:
-# $OpenBSD: Dependencies.pm,v 1.133 2010/08/07 10:26:58 espie Exp $
+# $OpenBSD: Dependencies.pm,v 1.151 2010/12/24 09:04:14 espie Exp $
 #
 # Copyright (c) 2005-2010 Marc Espie <espie@openbsd.org>
 #
@@ -16,6 +16,8 @@
 
 use strict;
 use warnings;
+
+use OpenBSD::SharedLibs;
 
 # generic dependencies lookup class: walk the dependency tree as far
 # as necessary to resolve dependencies
@@ -68,11 +70,11 @@ sub new
 
 sub dump
 {
-	my $self = shift;
+	my ($self, $state) = @_;
 
 	return unless %{$self->{done}};
-	print "Full dependency tree is ", join(' ', keys %{$self->{done}}),
-	    "\n";
+	$state->say("Full dependency tree is #1",
+	    join(' ', keys %{$self->{done}}));
 }
 
 package OpenBSD::lookup::library;
@@ -106,7 +108,7 @@ sub find_in_extra_sources
 	my ($self, $solver, $state, $obj) = @_;
 	return undef if !$obj->is_valid || defined $obj->{dir};
 
-	OpenBSD::SharedLibs::add_libs_from_system($state->{destdir});
+	OpenBSD::SharedLibs::add_libs_from_system($state->{destdir}, $state);
 	for my $dir (OpenBSD::SharedLibs::system_dirs()) {
 		if ($solver->check_lib_spec($dir, $obj, {system => 1})) {
 			$self->say_found($state, $obj, $state->f("#1/lib", $dir));
@@ -121,13 +123,12 @@ sub find_in_new_source
 	my ($self, $solver, $state, $obj, $dep) = @_;
 
 	if (defined $solver->{set}->{newer}->{$dep}) {
-		OpenBSD::SharedLibs::add_libs_from_plist($solver->{set}->{newer}->{$dep}->plist);
+		OpenBSD::SharedLibs::add_libs_from_plist($solver->{set}->{newer}->{$dep}->plist, $state);
 	} else {
-		OpenBSD::SharedLibs::add_libs_from_installed_package($dep);
+		OpenBSD::SharedLibs::add_libs_from_installed_package($dep, $state);
 	}
-	if ($solver->check_lib_spec($solver->{localbase}, $obj,
-	    {$dep => 1})) {
-	    	$self->say_found($state, $obj, $state->f("package #1", $dep));
+	if ($solver->check_lib_spec($solver->{localbase}, $obj, {$dep => 1})) {
+		$self->say_found($state, $obj, $state->f("package #1", $dep));
 		return $dep;
 	}
 	return undef;
@@ -166,7 +167,8 @@ sub find_in_already_done
 	my ($self, $solver, $state, $obj) = @_;
 	my $r = $self->{known_tags}->{$obj};
 	if (defined $r) {
-		$state->say("Found tag #1 in #2", $obj, $r) if $state->verbose >= 3;
+		$state->say("Found tag #1 in #2", $obj, $r)
+		    if $state->verbose >= 3;
 	}
 	return $r;
 }
@@ -274,7 +276,7 @@ sub do
 
 	if ($state->tracker->{to_update}{$$v}) {
 		$solver->add_dep($state->tracker->{to_update}{$$v});
-	    	return $$v;
+		return $$v;
 	}
 	if ($state->tracker->{uptodate}{$$v}) {
 		bless $v, "_cache::installed";
@@ -303,15 +305,185 @@ sub clone
 		while (my ($k, $e) = each %{$extra->{$h}}) {
 			$self->{$h}{$k} //= $e;
 		}
-    	}
+	}
 }
 
-package OpenBSD::Dependencies::Solver;
-our @ISA = (qw(OpenBSD::Cloner));
-
-use OpenBSD::PackageInfo;
+package OpenBSD::Dependencies::SolverBase;
+our @ISA = qw(OpenBSD::Cloner);
 
 my $global_cache = {};
+
+sub cached
+{
+	my ($self, $dep) = @_;
+	return $global_cache->{$dep->{pattern}} ||
+	    $self->{cache}{$dep->{pattern}};
+}
+
+sub set_cache
+{
+	my ($self, $dep, $value) = @_;
+	$self->{cache}{$dep->{pattern}} = $value;
+}
+
+sub set_global
+{
+	my ($self, $dep, $value) = @_;
+	$global_cache->{$dep->{pattern}} = $value;
+}
+
+sub global_cache
+{
+	my ($self, $pattern) = @_;
+	return $global_cache->{$pattern};
+}
+
+sub find_candidate
+{
+	my ($self, $dep, @list) = @_;
+	my @candidates = $dep->spec->filter(@list);
+	if (@candidates >= 1) {
+		return $candidates[0];
+	} else {
+		return undef;
+	}
+}
+
+sub solve_dependency
+{
+	my ($self, $state, $dep, $package) = @_;
+
+	my $v;
+
+	if (defined $self->cached($dep)) {
+		if ($state->defines('stat_cache')) {
+			if (defined $self->global_cache($dep->{pattern})) {
+				$state->print("Global ");
+			}
+			$state->say("Cache hit on #1: #2", $dep->{pattern},
+			    $self->cached($dep)->pretty);
+		}
+		$v = $self->cached($dep)->do($self, $state, $dep, $package);
+		return $v if $v;
+	}
+	if ($state->defines('stat_cache')) {
+		$state->say("No cache hit on #1", $dep->{pattern});
+	}
+
+	$self->really_solve_dependency($state, $dep, $package);
+}
+
+sub solve_depends
+{
+	my ($self, $state) = @_;
+
+	$self->{all_dependencies} = {};
+	$self->{to_register} = {};
+	$self->{deplist} = {};
+	delete $self->{installed};
+
+	for my $package ($self->{set}->newer, $self->{set}->kept) {
+		$package->{before} = [];
+		for my $dep (@{$package->{plist}->{depend}}) {
+			my $v = $self->solve_dependency($state, $dep, $package);
+			# XXX
+			next if !defined $v;
+			$self->{all_dependencies}->{$v} = $dep;
+			$self->{to_register}->{$package}->{$v} = $dep;
+		}
+	}
+
+	return values %{$self->{deplist}};
+}
+
+sub solve_wantlibs
+{
+	my ($solver, $state) = @_;
+	my $okay = 1;
+
+	my $lib_finder = OpenBSD::lookup::library->new($solver);
+	for my $h ($solver->{set}->newer) {
+		for my $lib (@{$h->{plist}->{wantlib}}) {
+			$solver->{localbase} = $h->{plist}->localbase;
+			next if $lib_finder->lookup($solver,
+			    $solver->{to_register}->{$h}, $state,
+			    $lib->spec);
+			if ($okay) {
+				$solver->errsay_library($state, $h);
+			}
+			$okay = 0;
+			OpenBSD::SharedLibs::report_problem($state,
+			    $lib->spec);
+		}
+	}
+	if (!$okay) {
+		$solver->dump($state);
+		$lib_finder->dump($state);
+	}
+	return $okay;
+}
+
+sub dump
+{
+	my ($self, $state) = @_;
+	if ($self->dependencies) {
+	    $state->print("Direct dependencies for #1 resolve to #2",
+	    	$self->{set}->print, join(' ',  $self->dependencies));
+	    $state->print(" (todo: #1)",
+	    	join(' ', (map {$_->print} values %{$self->{deplist}})))
+	    	if %{$self->{deplist}};
+	    $state->print("\n");
+	}
+}
+
+sub dependencies
+{
+	my $self = shift;
+	if (wantarray) {
+		return keys %{$self->{all_dependencies}};
+	} else {
+		return scalar(%{$self->{all_dependencies}});
+	}
+}
+
+sub check_lib_spec
+{
+	my ($self, $base, $spec, $dependencies) = @_;
+	my $r = OpenBSD::SharedLibs::lookup_libspec($base, $spec);
+	for my $candidate (@$r) {
+		if ($dependencies->{$candidate->origin}) {
+			return $candidate->origin;
+		}
+	}
+	return;
+}
+
+sub find_dep_in_installed
+{
+	my ($self, $state, $dep) = @_;
+
+	return $self->find_candidate($dep, @{$self->installed_list});
+}
+
+sub find_dep_in_self
+{
+	my ($self, $state, $dep) = @_;
+
+	return $self->find_candidate($dep, $self->{set}->newer_names);
+}
+
+use OpenBSD::PackageInfo;
+OpenBSD::Auto::cache(installed_list,
+	sub {
+		my $self = shift;
+		my @l = installed_packages();
+
+		for my $o ($self->{set}->older_names) {
+			@l = grep {$_ ne $o} @l;
+		}
+		return \@l;
+	}
+);
 
 sub add_dep
 {
@@ -319,22 +491,16 @@ sub add_dep
 	$self->{deplist}{$d} = $d;
 }
 
+package OpenBSD::Dependencies::Solver;
+our @ISA = qw(OpenBSD::Dependencies::SolverBase);
+
+use OpenBSD::PackageInfo;
+
 sub merge
 {
 	my ($solver, @extra) = @_;
 
 	$solver->clone('cache', @extra);
-}
-
-sub find_candidate
-{
-	    my $spec = shift;
-	    my @candidates = $spec->filter(@_);
-	    if (@candidates >= 1) {
-		    return $candidates[0];
-	    } else {
-		    return undef;
-	    }
 }
 
 sub new
@@ -356,12 +522,12 @@ sub check_for_loops
 
 	while (my $set = shift @todo) {
 		next unless defined $set->{solver};
-		next if $set->real_set eq $initial->real_set;
 		for my $l (values %{$set->solver->{deplist}}) {
 			if ($l eq $initial) {
 				push(@to_merge, $set);
 			}
 			next if $done->{$l};
+			next if $done->{$l->real_set};
 			push(@todo, $l);
 			$done->{$l} = $set;
 		}
@@ -385,16 +551,6 @@ sub check_for_loops
 		}
 		delete $initial->solver->{deplist};
 		$initial->merge($state->tracker, @real);
-	}
-}
-
-sub dependencies
-{
-	my $self = shift;
-	if (wantarray) {
-		return keys %{$self->{all_dependencies}};
-	} else {
-		return scalar(%{$self->{all_dependencies}});
 	}
 }
 
@@ -430,18 +586,12 @@ sub find_dep_in_repositories
 	}
 }
 
-sub find_dep_in_self
-{
-	my ($self, $state, $dep) = @_;
-
-	return find_candidate($dep->spec, $self->{set}->newer_names);
-}
-
 sub find_dep_in_stuff_to_install
 {
 	my ($self, $state, $dep) = @_;
 
-	my $v = find_candidate($dep->spec, keys %{$state->tracker->{uptodate}});
+	my $v = $self->find_candidate($dep,
+	    keys %{$state->tracker->{uptodate}});
 	if ($v) {
 		$self->set_global($dep, _cache::installed->new($v));
 		return $v;
@@ -461,7 +611,7 @@ sub find_dep_in_stuff_to_install
 		return $candidates[0];
 	}
 
-	$v = find_candidate($dep->spec, keys %{$state->tracker->{to_install}});
+	$v = $self->find_candidate($dep, keys %{$state->tracker->{to_install}});
 	if ($v) {
 		$self->set_cache($dep, _cache::to_install->new($v));
 		$self->add_dep($state->tracker->{to_install}->{$v});
@@ -469,59 +619,11 @@ sub find_dep_in_stuff_to_install
 	return $v;
 }
 
-sub cached
-{
-	my ($self, $dep) = @_;
-	return $global_cache->{$dep->{pattern}} ||
-	    $self->{cache}{$dep->{pattern}};
-}
-
-sub set_cache
-{
-	my ($self, $dep, $value) = @_;
-	$self->{cache}{$dep->{pattern}} = $value;
-}
-
-sub set_global
-{
-	my ($self, $dep, $value) = @_;
-	$global_cache->{$dep->{pattern}} = $value;
-}
-
-sub installed_list
-{
-	my $self = shift;
-
-	if (!defined $self->{installed}) {
-		my @l = installed_packages();
-		for my $o ($self->{set}->older_names) {
-			@l = grep {$_ ne $o} @l;
-		}
-		$self->{installed} = \@l;
-	}
-	return $self->{installed};
-}
-
-sub solve_dependency
+sub really_solve_dependency
 {
 	my ($self, $state, $dep, $package) = @_;
 
 	my $v;
-
-	if (defined $self->cached($dep)) {
-		if ($state->defines('stat_cache')) {
-			if (defined $global_cache->{$dep->{pattern}}) {
-				$state->print("Global ");
-			}
-			$state->say("Cache hit on #1: #2", $dep->{pattern},
-			    $self->cached($dep)->pretty);
-		}
-		$v = $self->cached($dep)->do($self, $state, $dep, $package);
-		return $v if $v;
-	}
-	if ($state->defines('stat_cache')) {
-		$state->say("No cache hit on #1", $dep->{pattern});
-	}
 
 	if ($state->{allow_replacing}) {
 
@@ -531,16 +633,16 @@ sub solve_dependency
 			push(@{$package->{before}}, $v);
 			return $v;
 		}
-		$v = find_candidate($dep->spec, $self->{set}->older_names);
+		$v = $self->find_candidate($dep, $self->{set}->older_names);
 		if ($v) {
-			push(@{$self->{bad}}, $dep);
+			push(@{$self->{bad}}, $dep->{pattern});
 			return $v;
 		}
 		$v = $self->find_dep_in_stuff_to_install($state, $dep);
 		return $v if $v;
 	}
 
-	$v = find_candidate($dep->spec, @{$self->installed_list});
+	$v = $self->find_dep_in_installed($state, $dep);
 	if ($v) {
 		if ($state->{newupdates}) {
 			if ($state->tracker->is_known($v)) {
@@ -578,52 +680,16 @@ sub solve_dependency
 	return $v;
 }
 
-sub solve_depends
-{
-	my ($self, $state) = @_;
-
-	$self->{all_dependencies} = {};
-	$self->{to_register} = {};
-	$self->{deplist} = {};
-	delete $self->{installed};
-
-	for my $package ($self->{set}->newer, $self->{set}->kept) {
-		$package->{before} = [];
-		for my $dep (@{$package->{plist}->{depend}}) {
-			my $v = $self->solve_dependency($state, $dep, $package);
-			$self->{all_dependencies}->{$v} = $dep;
-			$self->{to_register}->{$package}->{$v} = $dep;
-		}
-	}
-
-	return values %{$self->{deplist}};
-}
-
 sub check_depends
 {
 	my $self = shift;
-	my @bad = (@{$self->{bad}});
 
 	for my $dep ($self->dependencies) {
-		push(@bad, $dep)
+		push(@{$self->{bad}}, $dep)
 		    unless is_installed($dep) or
 		    	defined $self->{set}->{newer}->{$dep};
 	}
-	return @bad;
-}
-
-sub dump
-{
-	my $self = shift;
-	if ($self->dependencies) {
-	    print "Direct dependencies for ", $self->{set}->print,
-	    	" resolve to: ", join(' ',  $self->dependencies);
-	    print " (todo: ",
-	    	join(' ', (map {$_->print} values %{$self->{deplist}})),
-		")"
-	    	if %{$self->{deplist}};
-	    print "\n";
-	}
+	return $self->{bad};
 }
 
 sub register_dependencies
@@ -655,20 +721,6 @@ sub repair_dependencies
 	}
 }
 
-use OpenBSD::SharedLibs;
-
-sub check_lib_spec
-{
-	my ($self, $base, $spec, $dependencies) = @_;
-	my $r = OpenBSD::SharedLibs::lookup_libspec($base, $spec);
-	for my $candidate (@$r) {
-		if ($dependencies->{$candidate->origin}) {
-			return $candidate->origin;
-		}
-	}
-	return;
-}
-
 sub find_old_lib
 {
 	my ($self, $state, $base, $pattern, $lib) = @_;
@@ -677,7 +729,7 @@ sub find_old_lib
 
 	my $r = $state->repo->installed->match_locations(OpenBSD::Search::PkgSpec->new(".libs-".$pattern));
 	for my $try (map {$_->name} @$r) {
-		OpenBSD::SharedLibs::add_libs_from_installed_package($try);
+		OpenBSD::SharedLibs::add_libs_from_installed_package($try, $state);
 		if ($self->check_lib_spec($base, $lib, {$try => 1})) {
 			return $try;
 		}
@@ -685,31 +737,11 @@ sub find_old_lib
 	return undef;
 }
 
-sub solve_wantlibs
+sub errsay_library
 {
-	my ($solver, $state) = @_;
-	my $okay = 1;
+	my ($solver, $state, $h) = @_;
 
-	my $lib_finder = OpenBSD::lookup::library->new($solver);
-	for my $h ($solver->{set}->newer) {
-		for my $lib (@{$h->{plist}->{wantlib}}) {
-			$solver->{localbase} = $h->{plist}->localbase;
-			next if $lib_finder->lookup($solver,
-			    $solver->{to_register}->{$h}, $state,
-			    $lib->spec);
-			if ($okay) {
-				$state->errsay("Can't install #1 because of libraries", $h->pkgname);
-			}
-			$okay = 0;
-			OpenBSD::SharedLibs::report_problem($state,
-			    $lib->spec);
-		}
-	}
-	if (!$okay) {
-		$solver->dump;
-		$lib_finder->dump;
-	}
-	return $okay;
+	$state->errsay("Can't install #1 because of libraries", $h->pkgname);
 }
 
 sub solve_tags
@@ -725,8 +757,8 @@ sub solve_tags
 			$state->errsay("Can't install #1: tag definition not found #2",
 			    $h->pkgname, $tag);
 			if ($okay) {
-				$solver->dump;
-				$tag_finder->dump;
+				$solver->dump($state);
+				$tag_finder->dump($state);
 				$okay = 0;
 			}
 	    	}

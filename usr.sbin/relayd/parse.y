@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.146 2010/08/07 17:59:02 claudio Exp $	*/
+/*	$OpenBSD: parse.y,v 1.149 2010/10/26 15:04:37 reyk Exp $	*/
 
 /*
  * Copyright (c) 2007, 2008 Reyk Floeter <reyk@openbsd.org>
@@ -149,14 +149,14 @@ typedef struct {
 %token	QUERYSTR REAL REDIRECT RELAY REMOVE REQUEST RESPONSE RETRY
 %token	RETURN ROUNDROBIN ROUTE SACK SCRIPT SEND SESSION SOCKET
 %token	SSL STICKYADDR STYLE TABLE TAG TCP TIMEOUT TO ROUTER RTLABEL
-%token	TRANSPARENT TRAP UPDATES URL VIRTUAL WITH TTL RTABLE
+%token	TRANSPARENT TRAP UPDATES URL VIRTUAL WITH TTL RTABLE MATCH
 %token	<v.string>	STRING
 %token  <v.number>	NUMBER
 %type	<v.string>	hostname interface table
 %type	<v.number>	http_type loglevel mark
 %type	<v.number>	direction dstmode flag forwardmode retry
 %type	<v.number>	optssl optsslclient sslcache
-%type	<v.number>	redirect_proto relay_proto
+%type	<v.number>	redirect_proto relay_proto match
 %type	<v.port>	port
 %type	<v.host>	host
 %type	<v.addr>	address
@@ -192,6 +192,7 @@ include		: INCLUDE STRING		{
 			file = nfile;
 			lungetc('\n');
 		}
+		;
 
 optssl		: /*empty*/	{ $$ = 0; }
 		| SSL		{ $$ = 1; }
@@ -498,16 +499,18 @@ rdroptsl	: forwardmode TO tablespec interface	{
 		}
 		| DISABLE		{ rdr->conf.flags |= F_DISABLE; }
 		| STICKYADDR		{ rdr->conf.flags |= F_STICKY; }
-		| TAG STRING {
+		| match TAG STRING {
 			conf->sc_flags |= F_NEEDPF;
-			if (strlcpy(rdr->conf.tag, $2,
+			if (strlcpy(rdr->conf.tag, $3,
 			    sizeof(rdr->conf.tag)) >=
 			    sizeof(rdr->conf.tag)) {
 				yyerror("redirection tag name truncated");
-				free($2);
+				free($3);
 				YYERROR;
 			}
-			free($2);
+			if ($1)
+				rdr->conf.flags |= F_MATCH;
+			free($3);
 		}
 		| SESSION TIMEOUT NUMBER		{
 			if ((rdr->conf.timeout.tv_sec = $3) < 0) {
@@ -516,6 +519,10 @@ rdroptsl	: forwardmode TO tablespec interface	{
 			}
 		}
 		| include
+		;
+
+match		: /* empty */		{ $$ = 0; }
+		| MATCH			{ $$ = 1; }
 		;
 
 forwardmode	: FORWARD		{ $$ = FWD_NORMAL; }
@@ -610,7 +617,7 @@ tableopts_l	: tableopts tableopts_l
 		| tableopts
 		;
 
-tableopts	: CHECK tablecheck 
+tableopts	: CHECK tablecheck
 		| port			{
 			if ($1.op != PF_OP_EQ) {
 				yyerror("invalid port");
@@ -1039,7 +1046,7 @@ protonode	: nodetype APPEND STRING TO STRING nodeopts		{
 				fatal("out of memory");
 			free($3);
 			proto->lateconnect++;
-		}		
+		}
 		| nodetype FILTER					{
 			node.action = NODE_ACTION_FILTER;
 			node.key = NULL;
@@ -1735,6 +1742,7 @@ lookup(char *s)
 		{ "lookup",		LOOKUP },
 		{ "mark",		MARK },
 		{ "marked",		MARKED },
+		{ "match",		MATCH },
 		{ "mode",		MODE },
 		{ "nat",		NAT },
 		{ "no",			NO },

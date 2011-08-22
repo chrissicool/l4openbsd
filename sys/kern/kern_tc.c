@@ -6,7 +6,7 @@
  * this stuff is worth it, you can buy me a beer in return.   Poul-Henning Kamp
  * ----------------------------------------------------------------------------
  *
- * $OpenBSD: kern_tc.c,v 1.14 2010/04/20 22:05:43 tedu Exp $
+ * $OpenBSD: kern_tc.c,v 1.16 2010/09/24 07:29:30 deraadt Exp $
  * $FreeBSD: src/sys/kern/kern_tc.c,v 1.148 2003/03/18 08:45:23 phk Exp $
  */
 
@@ -472,7 +472,6 @@ sysctl_tc_choice(void *oldp, size_t *oldlenp, void *newp, size_t newlen)
 	int error, maxlen;
 
 	spc = "";
-	error = 0;
 	maxlen = 0;
 	for (tc = timecounters; tc != NULL; tc = tc->tc_next)
 		maxlen += sizeof(buf);
@@ -511,7 +510,9 @@ tc_ticktock(void)
 void
 inittimecounter(void)
 {
+#ifdef DEBUG
 	u_int p;
+#endif
 
 	/*
 	 * Set the initial timeout to
@@ -525,8 +526,8 @@ inittimecounter(void)
 		tc_tick = (hz + 500) / 1000;
 	else
 		tc_tick = 1;
-	p = (tc_tick * 1000000) / hz;
 #ifdef DEBUG
+	p = (tc_tick * 1000000) / hz;
 	printf("Timecounters tick every %d.%03u msec\n", p / 1000, p % 1000);
 #endif
 

@@ -1,4 +1,4 @@
-/*	$OpenBSD: auth.c,v 1.5 2010/06/30 19:26:39 martinh Exp $ */
+/*	$OpenBSD: auth.c,v 1.9 2010/12/17 07:17:38 martinh Exp $ */
 
 /*
  * Copyright (c) 2009, 2010 Martin Hedenfalk <martin@bzero.se>
@@ -159,14 +159,47 @@ authorized(struct conn *conn, struct namespace *ns, int rights, char *dn,
 }
 
 static int
-check_password(const char *stored_passwd, const char *passwd)
+send_auth_request(struct request *req, const char *username,
+    const char *password)
 {
-	int		 sz;
+	struct auth_req	 auth_req;
+
+	bzero(&auth_req, sizeof(auth_req));
+	if (strlcpy(auth_req.name, username,
+	    sizeof(auth_req.name)) >= sizeof(auth_req.name))
+		goto fail;
+	if (strlcpy(auth_req.password, password,
+	    sizeof(auth_req.password)) >= sizeof(auth_req.password))
+		goto fail;
+	auth_req.fd = req->conn->fd;
+	auth_req.msgid = req->msgid;
+
+	if (imsgev_compose(iev_ldapd, IMSG_LDAPD_AUTH, 0, 0, -1, &auth_req,
+	    sizeof(auth_req)) == -1)
+		goto fail;
+
+	req->conn->bind_req = req;
+	return 0;
+
+fail:
+	bzero(&auth_req, sizeof(auth_req));
+	return -1;
+}
+
+/*
+ * Check password. Returns 1 if password matches, 2 if password matching
+ * is in progress, 0 on mismatch and -1 on error.
+ */
+static int
+check_password(struct request *req, const char *stored_passwd,
+    const char *passwd)
+{
+	unsigned char	 tmp[128];
+	unsigned char	 md[SHA_DIGEST_LENGTH];
 	char		*encpw;
 	unsigned char	*salt;
-	unsigned char	 md[SHA_DIGEST_LENGTH];
-	unsigned char	 tmp[128];
 	SHA_CTX		 ctx;
+	int		 sz;
 
 	if (stored_passwd == NULL)
 		return -1;
@@ -174,41 +207,41 @@ check_password(const char *stored_passwd, const char *passwd)
 	if (strncmp(stored_passwd, "{SHA}", 5) == 0) {
 		sz = b64_pton(stored_passwd + 5, tmp, sizeof(tmp));
 		if (sz != SHA_DIGEST_LENGTH)
-			return -1;
+			return (-1);
 		SHA1_Init(&ctx);
 		SHA1_Update(&ctx, passwd, strlen(passwd));
 		SHA1_Final(md, &ctx);
-		return memcmp(md, tmp, SHA_DIGEST_LENGTH);
-	}
-	else if (strncmp(stored_passwd, "{SSHA}", 6) == 0) {
+		return (bcmp(md, tmp, SHA_DIGEST_LENGTH) == 0 ? 1 : 0);
+	} else if (strncmp(stored_passwd, "{SSHA}", 6) == 0) {
 		sz = b64_pton(stored_passwd + 6, tmp, sizeof(tmp));
 		if (sz <= SHA_DIGEST_LENGTH)
-			return -1;
+			return (-1);
 		salt = tmp + SHA_DIGEST_LENGTH;
 		SHA1_Init(&ctx);
 		SHA1_Update(&ctx, passwd, strlen(passwd));
 		SHA1_Update(&ctx, salt, sz - SHA_DIGEST_LENGTH);
 		SHA1_Final(md, &ctx);
-		return memcmp(md, tmp, SHA_DIGEST_LENGTH);
-	}
-	else if (strncmp(stored_passwd, "{CRYPT}", 7) == 0) {
+		return (bcmp(md, tmp, SHA_DIGEST_LENGTH) == 0 ? 1 : 0);
+	} else if (strncmp(stored_passwd, "{CRYPT}", 7) == 0) {
 		encpw = crypt(passwd, stored_passwd + 7);
 		if (encpw == NULL)
-			return -1;
-		return strcmp(encpw, stored_passwd + 7);
-	}
-	else
-		return strcmp(stored_passwd, passwd);
+			return (-1);
+		return (strcmp(encpw, stored_passwd + 7) == 0 ? 1 : 0);
+	} else if (strncmp(stored_passwd, "{BSDAUTH}", 9) == 0) {
+		if (send_auth_request(req, stored_passwd + 9, passwd) == -1)
+			return (-1);
+		return 2;	/* Operation in progress. */
+	} else
+		return (strcmp(stored_passwd, passwd) == 0 ? 1 : 0);
 }
 
 static int
 ldap_auth_sasl(struct request *req, char *binddn, struct ber_element *params)
 {
-	size_t			 len;
 	char			*method;
 	char			*authzid, *authcid, *password;
 	char			*creds;
-	struct auth_req		 auth_req;
+	size_t			 len;
 
 	if (ber_scanf_elements(params, "{sx", &method, &creds, &len) != 0)
 		return LDAP_PROTOCOL_ERROR;
@@ -234,23 +267,13 @@ ldap_auth_sasl(struct request *req, char *binddn, struct ber_element *params)
 	log_debug("sasl authorization id = [%s]", authzid);
 	log_debug("sasl authentication id = [%s]", authcid);
 
-	bzero(&auth_req, sizeof(auth_req));
-	if (strlcpy(auth_req.name, authcid, sizeof(auth_req.name)) >=
-	    sizeof(auth_req.name))
+	if (send_auth_request(req, authcid, password) != 0)
 		return LDAP_OPERATIONS_ERROR;
-	if (strlcpy(auth_req.password, password, sizeof(auth_req.password)) >=
-	    sizeof(auth_req.password))
-		return LDAP_OPERATIONS_ERROR;
-	auth_req.fd = req->conn->fd;
-	auth_req.msgid = req->msgid;
-	bzero(password, strlen(password));
 
-	if (imsg_compose(&iev_ldapd->ibuf, IMSG_LDAPD_AUTH, 0, 0, -1, &auth_req,
-	    sizeof(auth_req)) == -1)
-		return LDAP_OPERATIONS_ERROR;
-	imsg_event_add(iev_ldapd);
-
-	req->conn->bind_req = req;
+	free(req->conn->binddn);
+	req->conn->binddn = NULL;
+	if ((req->conn->pending_binddn = strdup(authcid)) == NULL)
+		return LDAP_OTHER;
 
 	return LDAP_SUCCESS;
 }
@@ -258,7 +281,7 @@ ldap_auth_sasl(struct request *req, char *binddn, struct ber_element *params)
 static int
 ldap_auth_simple(struct request *req, char *binddn, struct ber_element *auth)
 {
-	int			 ok = 0;
+	int			 pwret = 0;
 	char			*password;
 	char			*user_password;
 	struct namespace	*ns;
@@ -286,13 +309,11 @@ ldap_auth_simple(struct request *req, char *binddn, struct ber_element *auth)
 	}
 
 	if (conf->rootdn != NULL && strcmp(conf->rootdn, binddn) == 0) {
-		if (check_password(conf->rootpw, password) == 0)
-			ok = 1;
+		pwret = check_password(req, conf->rootpw, password);
 	} else if ((ns = namespace_lookup_base(binddn, 1)) == NULL) {
 		return LDAP_INVALID_CREDENTIALS;
 	} else if (ns->rootdn != NULL && strcmp(ns->rootdn, binddn) == 0) {
-		if (check_password(ns->rootpw, password) == 0)
-			ok = 1;
+		pwret = check_password(req, ns->rootpw, password);
 	} else if (namespace_has_referrals(ns)) {
 		return LDAP_INVALID_CREDENTIALS;
 	} else {
@@ -314,24 +335,30 @@ ldap_auth_simple(struct request *req, char *binddn, struct ber_element *auth)
 			    elm = elm->be_next) {
 				if (ber_get_string(elm, &user_password) != 0)
 					continue;
-				if (check_password(user_password,
-				    password) == 0) {
-					ok = 1;
+				pwret = check_password(req, user_password, password);
+				if (pwret >= 1)
 					break;
-				}
 			}
 		}
 	}
 
-	if (ok) {
-		free(req->conn->binddn);
+	free(req->conn->binddn);
+	req->conn->binddn = NULL;
+
+	if (pwret == 1) {
 		if ((req->conn->binddn = strdup(binddn)) == NULL)
 			return LDAP_OTHER;
 		log_debug("successfully authenticated as %s",
 		    req->conn->binddn);
 		return LDAP_SUCCESS;
-	} else
+	} else if (pwret == 2) {
+		if ((req->conn->pending_binddn = strdup(binddn)) == NULL)
+			return LDAP_OTHER;
+		return -LDAP_SASL_BIND_IN_PROGRESS;
+	} else if (pwret == 0)
 		return LDAP_INVALID_CREDENTIALS;
+	else
+		return LDAP_OPERATIONS_ERROR;
 }
 
 void
@@ -339,10 +366,15 @@ ldap_bind_continue(struct conn *conn, int ok)
 {
 	int			 rc;
 
-	if (ok)
+	if (ok) {
 		rc = LDAP_SUCCESS;
-	else
+		conn->binddn = conn->pending_binddn;
+		log_debug("successfully authenticated as %s", conn->binddn);
+	} else {
 		rc = LDAP_INVALID_CREDENTIALS;
+		free(conn->pending_binddn);
+	}
+	conn->pending_binddn = NULL;
 
 	ldap_respond(conn->bind_req, rc);
 	conn->bind_req = NULL;

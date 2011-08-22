@@ -1,4 +1,4 @@
-/* $OpenBSD: pfkeyv2.c,v 1.121 2010/07/09 16:58:06 reyk Exp $ */
+/* $OpenBSD: pfkeyv2.c,v 1.124 2011/01/12 18:49:21 mikeb Exp $ */
 
 /*
  *	@(#)COPYRIGHT	1.1 (NRL) 17 January 1995
@@ -107,7 +107,6 @@ static const struct sadb_alg ealgs[] = {
 	{ SADB_EALG_3DESCBC, 64, 192, 192 },
 	{ SADB_X_EALG_BLF, 64, 40, BLF_MAXKEYLEN * 8},
 	{ SADB_X_EALG_CAST, 64, 40, 128},
-	{ SADB_X_EALG_SKIPJACK, 64, 80, 80},
 	{ SADB_X_EALG_AES, 128, 128, 256},
 	{ SADB_X_EALG_AESCTR, 128, 128 + 32, 256 + 32}
 };
@@ -1084,6 +1083,7 @@ pfkeyv2_send(struct socket *socket, void *message, int len)
 			headers[SADB_EXT_KEY_AUTH] = NULL;
 			headers[SADB_EXT_KEY_ENCRYPT] = NULL;
 			headers[SADB_X_EXT_LOCAL_AUTH] = NULL;
+			headers[SADB_X_EXT_REMOTE_AUTH] = NULL;
 
 			newsa->tdb_seq = smsg->sadb_msg_seq;
 
@@ -1252,6 +1252,7 @@ pfkeyv2_send(struct socket *socket, void *message, int len)
 			headers[SADB_EXT_KEY_AUTH] = NULL;
 			headers[SADB_EXT_KEY_ENCRYPT] = NULL;
 			headers[SADB_X_EXT_LOCAL_AUTH] = NULL;
+			headers[SADB_X_EXT_REMOTE_AUTH] = NULL;
 
 			newsa->tdb_seq = smsg->sadb_msg_seq;
 
@@ -1616,7 +1617,7 @@ pfkeyv2_send(struct socket *socket, void *message, int len)
 			}
 
 			/* Allocate policy entry */
-			ipo = pool_get(&ipsec_policy_pool, 0);
+			ipo = pool_get(&ipsec_policy_pool, PR_NOWAIT);
 			if (ipo == NULL) {
 				splx(s);
 				rval = ENOMEM;
@@ -2070,11 +2071,6 @@ pfkeyv2_acquire(struct ipsec_policy *ipo, union sockaddr_union *gw,
 				sadb_comb->sadb_comb_encrypt = SADB_X_EALG_BLF;
 				sadb_comb->sadb_comb_encrypt_minbits = 40;
 				sadb_comb->sadb_comb_encrypt_maxbits = BLF_MAXKEYLEN * 8;
-			} else if (!strncasecmp(ipsec_def_enc, "skipjack",
-			    sizeof("skipjack"))) {
-				sadb_comb->sadb_comb_encrypt = SADB_X_EALG_SKIPJACK;
-				sadb_comb->sadb_comb_encrypt_minbits = 80;
-				sadb_comb->sadb_comb_encrypt_maxbits = 80;
 			} else if (!strncasecmp(ipsec_def_enc, "cast128",
 			    sizeof("cast128"))) {
 				sadb_comb->sadb_comb_encrypt = SADB_X_EALG_CAST;

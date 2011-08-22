@@ -1,4 +1,4 @@
-/*	$OpenBSD: hifn7751.c,v 1.162 2010/07/05 11:07:56 blambert Exp $	*/
+/*	$OpenBSD: hifn7751.c,v 1.164 2011/01/12 20:55:22 deraadt Exp $	*/
 
 /*
  * Invertex AEON / Hifn 7751 driver
@@ -1851,7 +1851,7 @@ hifn_newsession(u_int32_t *sidp, struct cryptoini *cri)
 			if (ses == NULL)
 				return (ENOMEM);
 			bcopy(sc->sc_sessions, ses, sesn * sizeof(*ses));
-			bzero(sc->sc_sessions, sesn * sizeof(*ses));
+			explicit_bzero(sc->sc_sessions, sesn * sizeof(*ses));
 			free(sc->sc_sessions, M_DEVBUF);
 			sc->sc_sessions = ses;
 			ses = &sc->sc_sessions[sesn];
@@ -1873,10 +1873,6 @@ hifn_newsession(u_int32_t *sidp, struct cryptoini *cri)
 		case CRYPTO_DES_CBC:
 		case CRYPTO_3DES_CBC:
 		case CRYPTO_AES_CBC:
-			arc4random_buf(ses->hs_iv,
-			    (c->cri_alg == CRYPTO_AES_CBC ?
-			    HIFN_AES_IV_LENGTH : HIFN_IV_LENGTH));
-			/*FALLTHROUGH*/
 		case CRYPTO_ARC4:
 			if (cry)
 				return (EINVAL);
@@ -2074,8 +2070,7 @@ hifn_process(struct cryptop *crp)
 				if (enccrd->crd_flags & CRD_F_IV_EXPLICIT)
 					bcopy(enccrd->crd_iv, cmd->iv, ivlen);
 				else
-					bcopy(sc->sc_sessions[session].hs_iv,
-					    cmd->iv, ivlen);
+					arc4random_buf(cmd->iv, ivlen);
 
 				if ((enccrd->crd_flags & CRD_F_IV_PRESENT)
 				    == 0) {
@@ -2173,8 +2168,10 @@ hifn_process(struct cryptop *crp)
 		return 0;
 
 errout:
-	if (cmd != NULL)
+	if (cmd != NULL) {
+		explicit_bzero(cmd, sizeof(*cmd));
 		free(cmd, M_DEVBUF);
+	}
 	if (err == EINVAL)
 		hifnstats.hst_invalid++;
 	else
@@ -2235,6 +2232,7 @@ hifn_abort(struct hifn_softc *sc)
 			bus_dmamap_unload(sc->sc_dmat, cmd->src_map);
 			bus_dmamap_destroy(sc->sc_dmat, cmd->src_map);
 
+			explicit_bzero(cmd, sizeof(*cmd));
 			free(cmd, M_DEVBUF);
 			if (crp->crp_etype != EAGAIN)
 				crypto_done(crp);
@@ -2259,7 +2257,7 @@ hifn_callback(struct hifn_softc *sc, struct hifn_command *cmd,
 	struct cryptop *crp = cmd->crp;
 	struct cryptodesc *crd;
 	struct mbuf *m;
-	int totlen, i, u, ivlen;
+	int totlen, i, u;
 
 	if (cmd->src_map == cmd->dst_map)
 		bus_dmamap_sync(sc->sc_dmat, cmd->src_map,
@@ -2322,28 +2320,6 @@ hifn_callback(struct hifn_softc *sc, struct hifn_command *cmd,
 
 	hifnstats.hst_obytes += cmd->dst_map->dm_mapsize;
 
-	if ((cmd->base_masks & (HIFN_BASE_CMD_CRYPT | HIFN_BASE_CMD_DECODE)) ==
-	    HIFN_BASE_CMD_CRYPT) {
-		for (crd = crp->crp_desc; crd; crd = crd->crd_next) {
-			if (crd->crd_alg != CRYPTO_DES_CBC &&
-			    crd->crd_alg != CRYPTO_3DES_CBC &&
-			    crd->crd_alg != CRYPTO_AES_CBC)
-				continue;
-			ivlen = ((crd->crd_alg == CRYPTO_AES_CBC) ?
-			    HIFN_AES_IV_LENGTH : HIFN_IV_LENGTH);
-			if (crp->crp_flags & CRYPTO_F_IMBUF)
-				m_copydata((struct mbuf *)crp->crp_buf,
-				    crd->crd_skip + crd->crd_len - ivlen, ivlen,
-				    cmd->softc->sc_sessions[cmd->session_num].hs_iv);
-			else if (crp->crp_flags & CRYPTO_F_IOV) {
-				cuio_copydata((struct uio *)crp->crp_buf,
-				    crd->crd_skip + crd->crd_len - ivlen, ivlen,
-				    cmd->softc->sc_sessions[cmd->session_num].hs_iv);
-			}
-			break;
-		}
-	}
-
 	if (cmd->base_masks & HIFN_BASE_CMD_MAC) {
 		u_int8_t *macbuf;
 
@@ -2380,6 +2356,7 @@ hifn_callback(struct hifn_softc *sc, struct hifn_command *cmd,
 	}
 	bus_dmamap_unload(sc->sc_dmat, cmd->src_map);
 	bus_dmamap_destroy(sc->sc_dmat, cmd->src_map);
+	explicit_bzero(cmd, sizeof(*cmd));
 	free(cmd, M_DEVBUF);
 	crypto_done(crp);
 }
@@ -2504,6 +2481,7 @@ fail:
 			bus_dmamap_unload(sc->sc_dmat, cmd->src_map);
 		bus_dmamap_destroy(sc->sc_dmat, cmd->src_map);
 	}
+	explicit_bzero(cmd, sizeof(*cmd));
 	free(cmd, M_DEVBUF);
 	if (err == EINVAL)
 		hifnstats.hst_invalid++;
@@ -2720,6 +2698,7 @@ hifn_callback_comp(struct hifn_softc *sc, struct hifn_command *cmd,
 	}
 
 	m_freem(cmd->srcu.src_m);
+	explicit_bzero(cmd, sizeof(*cmd));
 	free(cmd, M_DEVBUF);
 	crp->crp_etype = 0;
 	crypto_done(crp);
@@ -2738,6 +2717,7 @@ out:
 	}
 	if (cmd->dstu.dst_m != NULL)
 		m_freem(cmd->dstu.dst_m);
+	explicit_bzero(cmd, sizeof(*cmd));
 	free(cmd, M_DEVBUF);
 	crp->crp_etype = err;
 	crypto_done(crp);

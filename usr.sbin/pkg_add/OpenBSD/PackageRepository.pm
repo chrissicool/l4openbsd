@@ -1,5 +1,5 @@
 # ex:ts=8 sw=4:
-# $OpenBSD: PackageRepository.pm,v 1.88 2010/07/27 09:09:43 espie Exp $
+# $OpenBSD: PackageRepository.pm,v 1.93 2010/12/24 09:04:14 espie Exp $
 #
 # Copyright (c) 2003-2010 Marc Espie <espie@openbsd.org>
 #
@@ -286,6 +286,11 @@ sub did_it_fork
 	if (!defined $pid) {
 		$self->{state}->fatal("Cannot fork: #1", $!);
 	}
+	if ($pid == 0) {
+		undef $SIG{'WINCH'};
+		undef $SIG{'CONT'};
+		undef $SIG{'INFO'};
+	}
 }
 
 sub exec_gunzip
@@ -351,7 +356,7 @@ sub may_copy
 			return;
 		}
 	}
-	Copy($src, $destdir);
+	$self->{state}->copy_file($src, $destdir);
 }
 
 sub open_pipe
@@ -531,7 +536,7 @@ sub open_pipe
 	if ($pid) {
 		$object->{pid} = $pid;
 	} else {
-		open(STDIN, '<&', $rdfh) or 
+		open(STDIN, '<&', $rdfh) or
 		    $self->{state}->fatal("Bad dup: #1", $!);
 		close($rdfh);
 		close($wrfh);
@@ -543,10 +548,8 @@ sub open_pipe
 	if ($pid2) {
 		$object->{pid2} = $pid2;
 	} else {
-		undef $SIG{'WINCH'};
-		undef $SIG{'CONT'};
 		open STDERR, '>', $object->{errors};
-		open(STDOUT, '>&', $wrfh) or 
+		open(STDOUT, '>&', $wrfh) or
 		    $self->{state}->fatal("Bad dup: #1", $!);
 		close($rdfh);
 		close($wrfh);
@@ -814,7 +817,7 @@ sub get_ftp_list
 sub obtain_list
 {
 	my ($self, $error) = @_;
-	if (defined $ENV{'ftp_proxy'}) {
+	if (defined $ENV{'ftp_proxy'} && $ENV{'ftp_proxy'} ne '') {
 		return $self->get_http_list($error);
 	} else {
 		return $self->get_ftp_list($error);

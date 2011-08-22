@@ -1,4 +1,4 @@
-/*	$OpenBSD: machdep.c,v 1.39 2010/06/27 12:41:21 miod Exp $	*/
+/*	$OpenBSD: machdep.c,v 1.42 2011/01/05 22:20:19 miod Exp $	*/
 /*
  * Copyright (c) 2007 Miodrag Vallat.
  *
@@ -245,18 +245,7 @@ setstatclockrate(int newhz)
 void
 cpu_startup()
 {
-	int i;
 	vaddr_t minaddr, maxaddr;
-
-	/*
-	 * Initialize error message buffer (at end of core).
-	 * avail_end was pre-decremented in aviion_bootstrap() to compensate.
-	 */
-	for (i = 0; i < atop(MSGBUFSIZE); i++)
-		pmap_kenter_pa((paddr_t)msgbufp + i * PAGE_SIZE,
-		    avail_end + i * PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE);
-	pmap_update(pmap_kernel());
-	initmsgbuf((caddr_t)msgbufp, round_page(MSGBUFSIZE));
 
 	/*
 	 * Good {morning,afternoon,evening,night}.
@@ -487,10 +476,7 @@ dumpsys()
 		if (pg != 0 && (pg % NPGMB) == 0)
 			printf("%d ", pg / NPGMB);
 #undef NPGMB
-		pmap_enter(pmap_kernel(), (vaddr_t)vmmap, maddr,
-		    VM_PROT_READ, VM_PROT_READ|PMAP_WIRED);
-
-		error = (*dump)(dumpdev, blkno, vmmap, PAGE_SIZE);
+		error = (*dump)(dumpdev, blkno, (caddr_t)maddr, PAGE_SIZE);
 		if (error == 0) {
 			maddr += PAGE_SIZE;
 			blkno += btodb(PAGE_SIZE);
@@ -698,7 +684,6 @@ cpu_sysctl(name, namelen, oldp, oldlenp, newp, newlen, p)
 void
 aviion_bootstrap()
 {
-	extern int kernelstart;
 	extern char *end;
 #ifndef MULTIPROCESSOR
 	cpuid_t master_cpu;
@@ -764,10 +749,6 @@ aviion_bootstrap()
 	avail_start = round_page(first_addr);
 	avail_end = last_addr;
 
-	/* Steal MSGBUFSIZE at the top of physical memory for msgbuf. */
-	avail_end -= round_page(MSGBUFSIZE);
-	pmap_bootstrap((vaddr_t)trunc_page((vaddr_t)&kernelstart));
-
 	/*
 	 * Tell the VM system about available physical memory.
 	 * The aviion systems only have one contiguous area.
@@ -777,6 +758,14 @@ aviion_bootstrap()
 	 */
 	uvm_page_physload(atop(avail_start), atop(avail_end),
 	    atop(avail_start), atop(avail_end), VM_FREELIST_DEFAULT);
+
+	/*
+	 * Initialize message buffer.
+	 */
+	initmsgbuf((caddr_t)pmap_steal_memory(MSGBUFSIZE, NULL, NULL),
+	    MSGBUFSIZE);
+
+	pmap_bootstrap(0, 0);	/* ROM image is on top of physical memory */
 
 	/* Initialize the "u-area" pages. */
 	bzero((caddr_t)curpcb, USPACE);

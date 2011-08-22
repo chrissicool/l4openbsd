@@ -1,4 +1,4 @@
-/*	$OpenBSD: check_tcp.c,v 1.37 2010/05/26 13:56:08 nicm Exp $	*/
+/*	$OpenBSD: check_tcp.c,v 1.39 2010/12/20 12:38:06 dhill Exp $	*/
 
 /*
  * Copyright (c) 2006 Pierre-Yves Ritschard <pyr@openbsd.org>
@@ -50,11 +50,10 @@ void
 check_tcp(struct ctl_tcp_event *cte)
 {
 	int			 s;
-	int			 type;
 	socklen_t		 len;
 	struct timeval		 tv;
 	struct linger		 lng;
-	int			 he = HCE_TCP_CONNECT_ERROR;
+	int			 he = HCE_TCP_SOCKET_OPTION;
 
 	switch (cte->host->conf.ss.ss_family) {
 	case AF_INET:
@@ -69,15 +68,16 @@ check_tcp(struct ctl_tcp_event *cte)
 
 	len = ((struct sockaddr *)&cte->host->conf.ss)->sa_len;
 
-	if ((s = socket(cte->host->conf.ss.ss_family, SOCK_STREAM, 0)) == -1)
+	if ((s = socket(cte->host->conf.ss.ss_family, SOCK_STREAM, 0)) == -1) {
+		if (errno == EMFILE || errno == ENFILE)
+			he = HCE_TCP_SOCKET_LIMIT;
+		else
+			he = HCE_TCP_SOCKET_ERROR;
 		goto bad;
+	}
 
 	bzero(&lng, sizeof(lng));
 	if (setsockopt(s, SOL_SOCKET, SO_LINGER, &lng, sizeof(lng)) == -1)
-		goto bad;
-
-	type = 1;
-	if (setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &type, sizeof(type)) == -1)
 		goto bad;
 
 	if (cte->host->conf.ttl > 0) {

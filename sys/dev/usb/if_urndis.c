@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_urndis.c,v 1.25 2010/07/31 11:51:45 mk Exp $ */
+/*	$OpenBSD: if_urndis.c,v 1.29 2011/01/25 20:03:35 jakemsr Exp $ */
 
 /*
  * Copyright (c) 2010 Jonathan Armani <armani@openbsd.org>
@@ -1389,12 +1389,12 @@ urndis_attach(struct device *parent, struct device *self, void *aux)
 		DPRINTF(("urndis_attach: union interface: ctl %u, data %u\n",
 		    if_ctl, if_data));
 		for (i = 0; i < uaa->nifaces; i++) {
-			if (uaa->ifaces[i] == NULL)
+			if (usbd_iface_claimed(sc->sc_udev, i))
 				continue;
 			id = usbd_get_interface_descriptor(uaa->ifaces[i]);
 			if (id && id->bInterfaceNumber == if_data) {
 				sc->sc_iface_data = uaa->ifaces[i];
-				uaa->ifaces[i] = NULL;
+				usbd_claim_iface(sc->sc_udev, i);
 			}
 		}
 	}
@@ -1509,8 +1509,6 @@ urndis_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_attached = 1;
 
 	splx(s);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev, &sc->sc_dev);
 }
 
 int
@@ -1521,30 +1519,26 @@ urndis_detach(struct device *self, int flags)
 	int			 s;
 
 	sc = (void*)self;
-	s = splusb();
 
 	DPRINTF(("urndis_detach: %s flags %u\n", DEVNAME(sc),
 	    flags));
 	
-	if (!sc->sc_attached) {
-		splx(s);
+	if (!sc->sc_attached)
 		return 0;
-	}
 
-	sc->sc_dying = 1;
+	s = splusb();
 
 	ifp = GET_IFP(sc);
 
-	ether_ifdetach(ifp);
-	if_detach(ifp);
+	if (ifp->if_softc != NULL) {
+		ether_ifdetach(ifp);
+		if_detach(ifp);
+	}
 
 	urndis_stop(sc);
 	sc->sc_attached = 0;
 
 	splx(s);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
 
 	return 0;
 }

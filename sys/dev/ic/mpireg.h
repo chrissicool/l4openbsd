@@ -1,4 +1,4 @@
-/*	$OpenBSD: mpireg.h,v 1.38 2010/05/19 07:26:02 dlg Exp $ */
+/*	$OpenBSD: mpireg.h,v 1.40 2010/09/13 05:28:29 dlg Exp $ */
 
 /*
  * Copyright (c) 2005 David Gwynne <dlg@openbsd.org>
@@ -1383,6 +1383,27 @@ struct mpi_cfg_fc_port_pg1 {
 	struct mpi_cfg_hdr	config_header;
 
 	u_int32_t		flags;
+#define MPI_CFG_FC_PORT_0_FLAGS_MAP_BY_D_ID		(1<<0)
+#define MPI_CFG_FC_PORT_0_FLAGS_MAINTAIN_LOGINS		(1<<1)
+#define MPI_CFG_FC_PORT_0_FLAGS_PLOGI_AFTER_LOGO	(1<<2)
+#define MPI_CFG_FC_PORT_0_FLAGS_SUPPRESS_PROT_REG	(1<<3)
+#define MPI_CFG_FC_PORT_0_FLAGS_MASK_RR_TOV_UNITS	(0x7<<4)
+#define MPI_CFG_FC_PORT_0_FLAGS_MASK_RR_TOV_UNIT_NONE		(0x0<<4)
+#define MPI_CFG_FC_PORT_0_FLAGS_MASK_RR_TOV_UNIT_0_001_SEC	(0x1<<4)
+#define MPI_CFG_FC_PORT_0_FLAGS_MASK_RR_TOV_UNIT_0_1_SEC	(0x3<<4)
+#define MPI_CFG_FC_PORT_0_FLAGS_MASK_RR_TOV_UNIT_10_SEC		(0x5<<4)
+#define MPI_CFG_FC_PORT_0_FLAGS_TGT_LARGE_CDB_EN	(1<<7)
+#define MPI_CFG_FC_PORT_0_FLAGS_SOFT_ALPA_FALLBACK	(1<<21)
+#define MPI_CFG_FC_PORT_0_FLAGS_PORT_OFFLINE		(1<<22)
+#define MPI_CFG_FC_PORT_0_FLAGS_TGT_MODE_OXID		(1<<23)
+#define MPI_CFG_FC_PORT_0_FLAGS_VERBOSE_RESCAN		(1<<24)
+#define MPI_CFG_FC_PORT_0_FLAGS_FORCE_NOSEEPROM_WWNS	(1<<25)
+#define MPI_CFG_FC_PORT_0_FLAGS_IMMEDIATE_ERROR		(1<<26)
+#define MPI_CFG_FC_PORT_0_FLAGS_EXT_FCP_STATUS_EN	(1<<27)
+#define MPI_CFG_FC_PORT_0_FLAGS_REQ_PROT_LOG_BUS_ADDR	(1<<28)
+#define MPI_CFG_FC_PORT_0_FLAGS_REQ_PROT_LAN		(1<<29)
+#define MPI_CFG_FC_PORT_0_FLAGS_REQ_PROT_TARGET		(1<<30)
+#define MPI_CFG_FC_PORT_0_FLAGS_REQ_PROT_INITIATOR	(1<<31)
 
 	u_int64_t		noseepromwwnn;
 
@@ -1593,6 +1614,61 @@ struct mpi_cfg_raid_physdisk_path {
 	u_int16_t		flags;
 #define MPI_CFG_RAID_PHYDISK_PATH_INVALID		(1<<0)
 #define MPI_CFG_RAID_PHYDISK_PATH_BROKEN		(1<<1)
+} __packed;
+
+struct mpi_cfg_sas_iou_pg0 {
+	struct mpi_ecfg_hdr	config_header;
+
+	u_int16_t		nvdata_version_default;
+	u_int16_t		nvdata_version_persistent;
+
+	u_int8_t		num_phys;
+	u_int8_t		_reserved1[3];
+
+	/* followed by mpi_cfg_sas_iou_pg0_phy structs */
+} __packed;
+
+struct mpi_cfg_sas_iou_pg0_phy {
+	u_int8_t		port;
+	u_int8_t		port_flags;
+	u_int8_t		phy_flags;
+	u_int8_t		negotiated_link_rate;
+
+	u_int32_t		controller_phy_dev_info;
+
+	u_int16_t		attached_dev_handle;
+	u_int16_t		controller_dev_handle;
+
+	u_int32_t		discovery_status;
+} __packed;
+
+struct mpi_cfg_sas_iou_pg1 {
+	struct mpi_ecfg_hdr	config_header;
+
+	u_int16_t		control_flags;
+	u_int16_t		max_sata_targets;
+
+	u_int16_t		additional_control_flags;
+	u_int16_t		_reserved1;
+
+	u_int8_t		num_phys;
+	u_int8_t		max_sata_q_depth;
+	u_int8_t		report_dev_missing_delay;
+	u_int8_t		io_dev_missing_delay;
+
+	/* followed by mpi_cfg_sas_iou_pg1_phy structs */
+} __packed;
+
+struct mpi_cfg_sas_iou_pg1_phy {
+	u_int8_t		port;
+	u_int8_t		port_flags;
+	u_int8_t		phy_flags;
+	u_int8_t		max_min_link_rate;
+
+	u_int32_t		controller_phy_dev_info;
+
+	u_int16_t		max_target_port_connect_time;
+	u_int16_t		_reserved1;
 } __packed;
 
 #define MPI_CFG_SAS_DEV_ADDR_NEXT		(0<<28)

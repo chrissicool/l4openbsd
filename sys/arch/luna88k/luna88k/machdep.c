@@ -1,4 +1,4 @@
-/*	$OpenBSD: machdep.c,v 1.72 2010/06/27 12:41:23 miod Exp $	*/
+/*	$OpenBSD: machdep.c,v 1.75 2011/01/05 22:20:22 miod Exp $	*/
 /*
  * Copyright (c) 1998, 1999, 2000, 2001 Steve Murphree, Jr.
  * Copyright (c) 1996 Nivas Madhur
@@ -172,8 +172,6 @@ struct nvram_t {
 	char symbol[NVSYMLEN];
 	char value[NVVALLEN];
 } nvram[NNVSYM];
-
-vaddr_t obiova;
 
 int physmem;	  /* available physical memory, in pages */
 
@@ -356,18 +354,7 @@ identifycpu()
 void
 cpu_startup()
 {
-	int i;
 	vaddr_t minaddr, maxaddr;
-
-	/*
-	 * Initialize error message buffer (at end of core).
-	 * avail_end was pre-decremented in luna88k_bootstrap() to compensate.
-	 */
-	for (i = 0; i < atop(MSGBUFSIZE); i++)
-		pmap_kenter_pa((paddr_t)msgbufp + i * PAGE_SIZE,
-		    avail_end + i * PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE);
-	pmap_update(pmap_kernel());
-	initmsgbuf((caddr_t)msgbufp, round_page(MSGBUFSIZE));
 
 	/* Determine the machine type from FUSE ROM data.  */
 	get_fuse_rom_data();
@@ -439,17 +426,6 @@ cpu_startup()
 		printf("boot arg: (0x%x) %s\n", *p, buf);
 	}
 #endif
-
-	/*
-	 * Grab the OBIO space that we hardwired in pmap_bootstrap
-	 */
-	obiova = OBIO_START;
-	uvm_map(kernel_map, (vaddr_t *)&obiova, OBIO_SIZE,
-	    NULL, UVM_UNKNOWN_OFFSET, 0,
-	      UVM_MAPFLAG(UVM_PROT_NONE, UVM_PROT_NONE, UVM_INH_NONE,
-	        UVM_ADV_NORMAL, UVM_FLAG_FIXED));
-	if (obiova != OBIO_START)
-		panic("obiova %lx: OBIO not free", obiova);
 
 	/*
 	 * Allocate a submap for exec arguments.  This map effectively
@@ -669,10 +645,7 @@ dumpsys()
 		if (pg != 0 && (pg % NPGMB) == 0)
 			printf("%d ", pg / NPGMB);
 #undef NPGMB
-		pmap_enter(pmap_kernel(), (vaddr_t)vmmap, maddr,
-		    VM_PROT_READ, VM_PROT_READ|PMAP_WIRED);
-
-		error = (*dump)(dumpdev, blkno, vmmap, PAGE_SIZE);
+		error = (*dump)(dumpdev, blkno, (caddr_t)maddr, PAGE_SIZE);
 		if (error == 0) {
 			maddr += PAGE_SIZE;
 			blkno += btodb(PAGE_SIZE);
@@ -934,13 +907,11 @@ cpu_sysctl(name, namelen, oldp, oldlenp, newp, newlen, p)
 void
 luna88k_bootstrap()
 {
-	extern int kernelstart;
 	extern struct cmmu_p cmmu8820x;
 	extern char *end;
 #ifndef MULTIPROCESSOR
 	cpuid_t master_cpu;
 #endif
-	cpuid_t cpu;
 	extern void m8820x_initialize_cpu(cpuid_t);
 	extern void m8820x_set_sapr(cpuid_t, apr_t);
 
@@ -979,16 +950,10 @@ luna88k_bootstrap()
 	avail_start = first_addr;
 	avail_end = last_addr;
 
-	/*
-	 * Steal MSGBUFSIZE at the top of physical memory for msgbuf
-	 */
-	avail_end -= round_page(MSGBUFSIZE);
-
 #ifdef DEBUG
 	printf("LUNA88K boot: memory from 0x%x to 0x%x\n",
 	    avail_start, avail_end);
 #endif
-	pmap_bootstrap((vaddr_t)trunc_page((vaddr_t)&kernelstart));
 
 	/*
 	 * Tell the VM system about available physical memory.
@@ -997,21 +962,17 @@ luna88k_bootstrap()
 	uvm_page_physload(atop(avail_start), atop(avail_end),
 	    atop(avail_start), atop(avail_end),VM_FREELIST_DEFAULT);
 
+	/*
+	 * Initialize message buffer.
+	 */
+	initmsgbuf((caddr_t)pmap_steal_memory(MSGBUFSIZE, NULL, NULL),
+	    MSGBUFSIZE);
+
+	pmap_bootstrap(0, 0x20000);	/* ROM needs 128KB */
+
 	/* Initialize the "u-area" pages. */
 	bzero((caddr_t)curpcb, USPACE);
 
-	/*
-	 * On the luna88k, secondary processors are not disabled while the
-	 * kernel is initializing. We just initialized the CMMUs tied to the
-	 * currently-running CPU; initialize the others with similar settings
-	 * as well, after calling pmap_bootstrap() above.
-	 */
-	for (cpu = 0; cpu < ncpusfound; cpu++) {
-		if (cpu == master_cpu)
-			continue;
-		m8820x_initialize_cpu(cpu);
-		cmmu_set_sapr(kernel_pmap->pm_apr);
-	}
 	/* Release the cpu_mutex */
 	cpu_boot_secondary_processors();
 

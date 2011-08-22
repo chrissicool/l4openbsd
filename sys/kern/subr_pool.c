@@ -1,4 +1,4 @@
-/*	$OpenBSD: subr_pool.c,v 1.96 2010/07/03 03:04:55 tedu Exp $	*/
+/*	$OpenBSD: subr_pool.c,v 1.99 2010/11/03 17:49:42 mikeb Exp $	*/
 /*	$NetBSD: subr_pool.c,v 1.61 2001/09/26 07:14:56 chs Exp $	*/
 
 /*-
@@ -453,9 +453,11 @@ pool_get(struct pool *pp, int flags)
 {
 	void *v;
 
+	KASSERT(flags & (PR_WAITOK | PR_NOWAIT));
+
 #ifdef DIAGNOSTIC
 	if ((flags & PR_WAITOK) != 0)
-		splassert(IPL_NONE);
+		assertwaitok();
 #endif /* DIAGNOSTIC */
 
 	mtx_enter(&pp->pr_mtx);
@@ -991,13 +993,6 @@ pool_sethardlimit(struct pool *pp, u_int n, const char *warnmsg, int ratecap)
 	pp->pr_hardlimit_ratecap.tv_sec = ratecap;
 	pp->pr_hardlimit_warning_last.tv_sec = 0;
 	pp->pr_hardlimit_warning_last.tv_usec = 0;
-
-	/*
-	 * In-line version of pool_sethiwat().
-	 */
-	pp->pr_maxpages = (n == 0 || n == UINT_MAX)
-		? n
-		: roundup(n, pp->pr_itemsperpage) / pp->pr_itemsperpage;
 
 done:
 	return (error);

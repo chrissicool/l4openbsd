@@ -31,17 +31,19 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ***************************************************************************/
 
-/* $OpenBSD: if_em.c,v 1.244 2010/08/08 12:53:16 kettenis Exp $ */
+/* $OpenBSD: if_em.c,v 1.249 2011/02/13 19:45:54 miod Exp $ */
 /* $FreeBSD: if_em.c,v 1.46 2004/09/29 18:28:28 mlaier Exp $ */
 
 #include <dev/pci/if_em.h>
 #include <dev/pci/if_em_soc.h>
 
+#ifndef SMALL_KERNEL
 #ifdef EM_DEBUG
 /*********************************************************************
  *  Set this to one to display debug statistics
  *********************************************************************/
 int             em_display_debug_stats = 0;
+#endif
 #endif
 
 /*********************************************************************
@@ -135,6 +137,7 @@ const struct pci_matchid em_devices[] = {
 	{ PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_82577LM },
 	{ PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_82578DC },
 	{ PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_82578DM },
+	{ PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_82583V },
 	{ PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_ICH8_82567V_3 },
 	{ PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_ICH8_IFE },
 	{ PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_ICH8_IFE_G },
@@ -171,7 +174,6 @@ void em_defer_attach(struct device*);
 int  em_detach(struct device *, int);
 int  em_activate(struct device *, int);
 int  em_intr(void *);
-void em_power(int, void *);
 void em_start(struct ifnet *);
 int  em_ioctl(struct ifnet *, u_long, caddr_t);
 void em_watchdog(struct ifnet *);
@@ -280,9 +282,6 @@ em_defer_attach(struct device *self)
 		if (sc->sc_intrhand)
 			pci_intr_disestablish(pc, sc->sc_intrhand);
 		sc->sc_intrhand = 0;
-
-		if (sc->sc_powerhook != NULL)
-			powerhook_disestablish(sc->sc_powerhook);
 
 		em_stop(sc, 1);
 
@@ -484,7 +483,9 @@ em_attach(struct device *parent, struct device *self, void *aux)
 
 	/* Initialize statistics */
 	em_clear_hw_cntrs(&sc->hw);
+#ifndef SMALL_KERNEL
 	em_update_stats_counters(sc);
+#endif
 	sc->hw.get_link_status = 1;
 	if (!defer)
 		em_update_link_status(sc);
@@ -507,7 +508,6 @@ em_attach(struct device *parent, struct device *self, void *aux)
 	sc->hw.icp_xxxx_is_link_up = FALSE;
 
 	INIT_DEBUGOUT("em_attach: end");
-	sc->sc_powerhook = powerhook_establish(em_power, sc);
 	return;
 
 err_mac_addr:
@@ -518,19 +518,6 @@ err_rx_desc:
 err_tx_desc:
 err_pci:
 	em_free_pci_resources(sc);
-}
-
-void
-em_power(int why, void *arg)
-{
-	struct em_softc *sc = (struct em_softc *)arg;
-	struct ifnet *ifp;
-
-	if (why == PWR_RESUME) {
-		ifp = &sc->interface_data.ac_if;
-		if (ifp->if_flags & IFF_UP)
-			em_init(sc);
-	}
 }
 
 /*********************************************************************
@@ -1428,10 +1415,12 @@ em_local_timer(void *arg)
 
 	em_check_for_link(&sc->hw);
 	em_update_link_status(sc);
+#ifndef SMALL_KERNEL
 	em_update_stats_counters(sc);
 #ifdef EM_DEBUG
 	if (em_display_debug_stats && ifp->if_flags & IFF_RUNNING)
 		em_print_hw_stats(sc);
+#endif
 #endif
 	em_smartspeed(sc);
 
@@ -1870,9 +1859,6 @@ em_detach(struct device *self, int flags)
 		pci_intr_disestablish(pc, sc->sc_intrhand);
 	sc->sc_intrhand = 0;
 
-	if (sc->sc_powerhook != NULL)
-		powerhook_disestablish(sc->sc_powerhook);
-
 	em_stop(sc, 1);
 
 	em_free_pci_resources(sc);
@@ -1893,6 +1879,9 @@ em_activate(struct device *self, int act)
 	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		if (ifp->if_flags & IFF_RUNNING)
 			em_stop(sc, 0);
@@ -1905,7 +1894,7 @@ em_activate(struct device *self, int act)
 			em_init(sc);
 		break;
 	}
-	return rv;
+	return (rv);
 }
 
 /*********************************************************************
@@ -2841,8 +2830,10 @@ em_rxeof(struct em_softc *sc, int count)
 			last_byte = *(mtod(m, caddr_t) + desc_len - 1);
 			if (TBI_ACCEPT(&sc->hw, status, desc->errors,
 			    pkt_len, last_byte)) {
+#ifndef SMALL_KERNEL
 				em_tbi_adjust_stats(&sc->hw, &sc->stats, 
 				    pkt_len, sc->hw.mac_addr);
+#endif
 				if (len > 0)
 					len--;
 			} else
@@ -3111,6 +3102,7 @@ em_fill_descriptors(u_int64_t address, u_int32_t length,
         return desc_array->elements;
 }
 
+#ifndef SMALL_KERNEL
 /**********************************************************************
  *
  *  Update the board statistics counters. 
@@ -3275,3 +3267,4 @@ em_print_hw_stats(struct em_softc *sc)
 		(long long)sc->stats.gptc);
 }
 #endif
+#endif /* !SMALL_KERNEL */

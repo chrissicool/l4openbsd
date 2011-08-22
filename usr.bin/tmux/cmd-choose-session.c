@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-choose-session.c,v 1.9 2009/11/13 19:53:28 nicm Exp $ */
+/* $OpenBSD: cmd-choose-session.c,v 1.12 2011/01/04 00:42:46 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -33,13 +33,12 @@ void	cmd_choose_session_free(void *);
 
 const struct cmd_entry cmd_choose_session_entry = {
 	"choose-session", NULL,
+	"t:", 0, 1,
 	CMD_TARGET_WINDOW_USAGE " [template]",
-	CMD_ARG01, "",
-	cmd_target_init,
-	cmd_target_parse,
-	cmd_choose_session_exec,
-	cmd_target_free,
-	cmd_target_print
+	0,
+	NULL,
+	NULL,
+	cmd_choose_session_exec
 };
 
 struct cmd_choose_session_data {
@@ -50,12 +49,12 @@ struct cmd_choose_session_data {
 int
 cmd_choose_session_exec(struct cmd *self, struct cmd_ctx *ctx)
 {
-	struct cmd_target_data		*data = self->data;
+	struct args			*args = self->args;
 	struct cmd_choose_session_data	*cdata;
 	struct winlink			*wl;
 	struct session			*s;
 	struct session_group		*sg;
-	u_int			 	 i, idx, cur;
+	u_int			 	 idx, sgidx, cur;
 	char				 tmp[64];
 
 	if (ctx->curclient == NULL) {
@@ -63,17 +62,14 @@ cmd_choose_session_exec(struct cmd *self, struct cmd_ctx *ctx)
 		return (-1);
 	}
 
-	if ((wl = cmd_find_window(ctx, data->target, NULL)) == NULL)
+	if ((wl = cmd_find_window(ctx, args_get(args, 't'), NULL)) == NULL)
 		return (-1);
 
 	if (window_pane_set_mode(wl->window->active, &window_choose_mode) != 0)
 		return (0);
 
 	cur = idx = 0;
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		s = ARRAY_ITEM(&sessions, i);
-		if (s == NULL)
-			continue;
+	RB_FOREACH(s, sessions, &sessions) {
 		if (s == ctx->curclient->session)
 			cur = idx;
 		idx++;
@@ -82,19 +78,19 @@ cmd_choose_session_exec(struct cmd *self, struct cmd_ctx *ctx)
 		if (sg == NULL)
 			*tmp = '\0';
 		else {
-			idx = session_group_index(sg);
-			xsnprintf(tmp, sizeof tmp, " (group %u)", idx);
+			sgidx = session_group_index(sg);
+			xsnprintf(tmp, sizeof tmp, " (group %u)", sgidx);
 		}
 
-		window_choose_add(wl->window->active, i,
+		window_choose_add(wl->window->active, s->idx,
 		    "%s: %u windows [%ux%u]%s%s", s->name,
 		    winlink_count(&s->windows), s->sx, s->sy,
 		    tmp, s->flags & SESSION_UNATTACHED ? "" : " (attached)");
 	}
 
 	cdata = xmalloc(sizeof *cdata);
-	if (data->arg != NULL)
-		cdata->template = xstrdup(data->arg);
+	if (args->argc != 0)
+		cdata->template = xstrdup(args->argv[0]);
 	else
 		cdata->template = xstrdup("switch-client -t '%%'");
 	cdata->client = ctx->curclient;
@@ -120,9 +116,7 @@ cmd_choose_session_callback(void *data, int idx)
 	if (cdata->client->flags & CLIENT_DEAD)
 		return;
 
-	if ((u_int) idx > ARRAY_LENGTH(&sessions) - 1)
-		return;
-	s = ARRAY_ITEM(&sessions, idx);
+	s = session_find_by_index(idx);
 	if (s == NULL)
 		return;
 	template = cmd_template_replace(cdata->template, s->name, 1);

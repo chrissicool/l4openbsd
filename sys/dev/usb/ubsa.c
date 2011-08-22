@@ -1,4 +1,4 @@
-/*	$OpenBSD: ubsa.c,v 1.49 2010/04/22 19:47:30 mk Exp $ 	*/
+/*	$OpenBSD: ubsa.c,v 1.52 2011/01/25 20:03:36 jakemsr Exp $ 	*/
 /*	$NetBSD: ubsa.c,v 1.5 2002/11/25 00:51:33 fvdl Exp $	*/
 /*-
  * Copyright (c) 2002, Alexander Kabaev <kan.FreeBSD.org>.
@@ -219,7 +219,6 @@ const struct usb_devno ubsa_devs[] = {
 	/* ZTE Inc. AC8700 */
 	{ USB_VENDOR_ZTE, USB_PRODUCT_ZTE_AC8700 },
 };
-#define ubsa_lookup(v, p) usb_lookup(ubsa_devs, v, p)
 
 int ubsa_match(struct device *, void *, void *); 
 void ubsa_attach(struct device *, struct device *, void *); 
@@ -246,8 +245,8 @@ ubsa_match(struct device *parent, void *match, void *aux)
 	if (uaa->iface != NULL)
 		return (UMATCH_NONE);
 
-	return (ubsa_lookup(uaa->vendor, uaa->product) != NULL ?
-		UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
+	return (usb_lookup(ubsa_devs, uaa->vendor, uaa->product) != NULL ?
+	    UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
 }
 
 void
@@ -366,9 +365,6 @@ ubsa_attach(struct device *parent, struct device *self, void *aux)
 	uca.arg = sc;
 	uca.info = NULL;
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
-
 	DPRINTF(("ubsa: in = 0x%x, out = 0x%x, intr = 0x%x\n",
 	    uca.bulkin, uca.bulkout, sc->sc_intr_number));
 
@@ -394,14 +390,10 @@ ubsa_detach(struct device *self, int flags)
 		sc->sc_intr_pipe = NULL;
 	}
 
-	sc->sc_dying = 1;
 	if (sc->sc_subdev != NULL) {
 		rv = config_detach(sc->sc_subdev, flags);
 		sc->sc_subdev = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (rv);
 }

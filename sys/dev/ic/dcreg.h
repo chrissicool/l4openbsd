@@ -1,4 +1,4 @@
-/*	$OpenBSD: dcreg.h,v 1.46 2010/08/05 07:57:04 deraadt Exp $ */
+/*	$OpenBSD: dcreg.h,v 1.48 2010/09/07 16:21:42 deraadt Exp $ */
 
 /*
  * Copyright (c) 1997, 1998, 1999
@@ -723,7 +723,6 @@ struct dc_softc {
 	bus_space_handle_t	dc_bhandle;	/* bus space handle */
 	bus_space_tag_t		dc_btag;	/* bus space tag */
 	void			*dc_intrhand;
-	void			*sc_pwrhook;
 	u_int8_t		dc_type;
 	u_int8_t		dc_pmode;
 	u_int8_t		dc_link;
@@ -1048,6 +1047,7 @@ struct dc_eblock_reset {
 
 extern void dc_attach(struct dc_softc *);
 extern int dc_detach(struct dc_softc *);
+extern int dc_activate(struct device *, int);
 extern int dc_intr(void *);
 
 void dc_init(void *);

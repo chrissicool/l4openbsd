@@ -1,4 +1,4 @@
-/*	$OpenBSD: locore.S,v 1.178 2010/08/01 14:20:41 kettenis Exp $	*/
+/*	$OpenBSD: locore.S,v 1.184 2010/12/30 15:10:54 kettenis Exp $	*/
 
 /*
  * Copyright (c) 1998-2004 Michael Shalayeff
@@ -93,7 +93,6 @@
 	.import	bootdev, data
 	.import	esym, data
 	.import cpu_info, data
-	.import virtual_avail, data
 	.import	proc0, data
 	.import	proc0paddr, data
 	.import	panic, code
@@ -102,13 +101,6 @@
 #define	FPEMU_STACKSIZE	(1*NBPG)
 
 	.data
-
-	.export netisr, data
-	.align 16
-netisr
-	.word	0
-	.size	netisr, .-netisr
-	.align	16
 
 	BSS(pdc_stack, 4)	/* temp stack for PDC call */
 	BSS(emrg_stack, 4)	/* stack for HPMC/TOC/PWRF */
@@ -688,6 +680,10 @@ $syscall_return
 	/* t3 == VA trapframe */
 
 	/* disable interrupts, just in case */
+#ifdef MULTIPROCESSOR
+	mfctl	eiem, t1
+	stw	t1, TF_CR15(t3)
+#endif
 	mtctl	r0, eiem
 
 	/*
@@ -1095,6 +1091,29 @@ $fpusw_set
 	sync
 
 $fpusw_nosave
+
+#ifdef MULTIPROCESSOR
+	/* See if this process has FPU context on another CPU. */
+	ldw	HFP_CPU(r9), r1
+	comb,=,n r1, r0, $fpusw_noshoot
+
+	/* Perform FPU shootdown. */
+	ldi	(1 << HPPA_IPI_FPU_SAVE), r1
+	ldw	HFP_CPU(r9), r16
+	stw	r1, CI_IPI(r16)
+	ldi	1, r1
+	ldw	CI_HPA(r16), r16
+	stw	r1, 0(r16)
+
+$fpusw_spin
+	/* Wait for shootdown to complete. */
+	sync
+	ldw	HFP_CPU(r9), r1
+	comb,<>,n r1, r0, $fpusw_spin
+
+$fpusw_noshoot
+#endif
+
 	/* count switches */
 	.import	uvmexp, data
 	ldil	L%(uvmexp+FPSWTCH), r1
@@ -2328,16 +2347,6 @@ LEAF_ENTRY(fpu_save)
 	fstds,ma %fr29, 8(arg0)
 	fstds,ma %fr30, 8(arg0)
 	fstds    %fr31, 0(arg0)
-	ldo	-24(arg0), arg0
-	ldi	-32, r25	/* gotta be free for all callers */
-	fdc,m	r25(arg0)
-	fdc,m	r25(arg0)
-	fdc,m	r25(arg0)
-	fdc,m	r25(arg0)
-	fdc,m	r25(arg0)
-	fdc,m	r25(arg0)
-	fdc,m	r25(arg0)
-	fdc,m	r25(arg0)
 	bv	r0(rp)
 	sync
 EXIT(fpu_save)
@@ -2413,16 +2422,6 @@ ENTRY($fpu_emulate,320)
 	ldw	4(r25), r17	/* fpu exception reg 0 */
 	zdep	ret0, 5, 6, r17	/* intentionally zero the insn */
 	stw	r17, 4(r25)
-
-	fdc,m	r1(r25)
-	fdc,m	r1(r25)
-	fdc,m	r1(r25)
-	fdc,m	r1(r25)
-	fdc,m	r1(r25)
-	fdc,m	r1(r25)
-	fdc,m	r1(r25)
-	fdc	r0(r25)
-	sync
 
 	mfctl	cr29, r31
 	ldw	CI_STACK(r31), r31
@@ -3058,16 +3057,5 @@ sigcode_call
 	ldi	SYS_exit, t1
 ALTENTRY(esigcode)
 EXIT(sigcode)
-
-
-#ifdef COMPAT_LINUX
-ENTRY(linux_sigcode,0)
-
-	/* TODO linux signal trampoline */
-	bv	0(rp)
-	nop
-ALTENTRY(linux_esigcode)
-EXIT(linux_sigcode)
-#endif /* COMPAT_LINUX */
 
 	.end

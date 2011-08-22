@@ -1,5 +1,5 @@
 # $FreeBSD: src/gnu/lib/libgcc/Makefile,v 1.58.8.1 2009/04/15 03:14:26 kensmith Exp $
-# $OpenBSD: Makefile,v 1.12 2010/08/01 21:23:02 kettenis Exp $
+# $OpenBSD: Makefile,v 1.17 2010/10/23 09:46:30 miod Exp $
 
 .include <bsd.own.mk>
 
@@ -8,9 +8,14 @@ GCCDIR= ${GCCLIB}/gcc
 
 .include "../Makefile.tgt"
 
+.if defined(CROSSDIR)
+LD=${CROSSDIR}/usr/${GCC_TARGET}/bin/ld
+RANLIB=${CROSSDIR}/usr/${GCC_TARGET}/bin/ranlib
+.endif
+
 .if defined(CROSS_TARGET)
 #Building cc for target, CC should already be the cross compiler
-.elif exists(${.CURDIR}/../cc/obj)
+.elif ${.OBJDIR} != ${.CURDIR}
 CC=${.OBJDIR}/../cc/cc -B ${.OBJDIR}/../cc1
 .else
 CC=${.CURDIR}/../cc/cc -B ${.CURDIR}/../cc1
@@ -55,13 +60,13 @@ LIB2FUNCS= _muldi3 _negdi2 _lshrdi3 _ashldi3 _ashrdi3 \
 
 # The floating-point conversion routines that involve a single-word integer.
 .for mode in sf df xf
-LIB2FUNCS+= _fixuns${mode}si
+SWFLOATFUNCS+= _fixuns${mode}si
 .endfor
 
 # Likewise double-word routines.
 .for mode in sf df xf tf
-LIB2FUNCS+= _fix${mode}di _fixuns${mode}di
-LIB2FUNCS+= _floatdi${mode} _floatundi${mode}
+DWFLOATFUNCS+= _fix${mode}di _fixuns${mode}di
+DWFLOATFUNCS+= _floatdi${mode} _floatundi${mode}
 .endfor
 
 LIB2ADD = $(LIB2FUNCS_EXTRA)
@@ -82,19 +87,17 @@ LIB2FUNCS_EXTRA =
 LIB2FUNCS_STATIC_EXTRA =
 
 # Defined in libgcc2.c, included only in the static library.
-# KAN: Excluded _sf_to_tf and _df_to_tf as TPBIT_FUNCS are not
-# built on any of our platforms.
 LIB2FUNCS_ST = _eprintf __gcc_bcmp
 
 FPBIT_FUNCS = _pack_sf _unpack_sf _addsub_sf _mul_sf _div_sf \
     _fpcmp_parts_sf _compare_sf _eq_sf _ne_sf _gt_sf _ge_sf \
     _lt_sf _le_sf _unord_sf _si_to_sf _sf_to_si _negate_sf _make_sf \
-    _sf_to_df _thenan_sf _sf_to_usi _usi_to_sf
+    _sf_to_df _sf_to_tf _thenan_sf _sf_to_usi _usi_to_sf _sf_to_tf
 
 DPBIT_FUNCS = _pack_df _unpack_df _addsub_df _mul_df _div_df \
     _fpcmp_parts_df _compare_df _eq_df _ne_df _gt_df _ge_df \
     _lt_df _le_df _unord_df _si_to_df _df_to_si _negate_df _make_df \
-    _df_to_sf _thenan_df _df_to_usi _usi_to_df
+    _df_to_sf _df_to_tf _thenan_df _df_to_usi _usi_to_df
 
 TPBIT_FUNCS = _pack_tf _unpack_tf _addsub_tf _mul_tf _div_tf \
     _fpcmp_parts_tf _compare_tf _eq_tf _ne_tf _gt_tf _ge_tf \
@@ -138,6 +141,15 @@ LIB1ASMSRC =	pa/milli64.S
 LIB2FUNCS_EXTRA = fptr.c
 .endif
 
+.if ${TARGET_ARCH} == "sh"
+CFLAGS+=	-fpic
+LIB1ASMSRC = sh/lib1funcs.asm
+LIB1ASMFUNCS = _ashiftrt _ashiftrt_n _ashiftlt _lshiftrt _movmem \
+  _movmem_i4 _mulsi3 _sdivsi3 _sdivsi3_i4 _udivsi3 _udivsi3_i4 _set_fpscr \
+  _div_table _udiv_qrnnd_16 \
+  _ic_invalidate
+.endif
+
 .if ${TARGET_ARCH} == "powerpc"
 #	from config/rs6000/t-ppccomm
 LIB2FUNCS_EXTRA = tramp.asm darwin-ldouble.c
@@ -172,29 +184,65 @@ CC_S =	${CC} -c ${CFLAGS} ${PICFLAG} -DSHARED
 #
 STD_CFLAGS =
 DIV_CFLAGS =	-fexceptions -fnon-call-exceptions
+SW_CFLAGS =
+DW_CFLAGS =
 
 STD_FUNCS =	${LIB2FUNCS}
 DIV_FUNCS =	${LIB2_DIVMOD_FUNCS}
+SI_FUNCS =	${SWFLOATFUNCS}
+DI_FUNCS =	${DWFLOATFUNCS}
 
 STD_CFILE =	libgcc2.c
 DIV_CFILE =	libgcc2.c
+SI_CFILE =	libgcc2.c
+DI_CFILE =	libgcc2.c
 
-OBJ_GRPS =	STD DIV
+OBJ_GRPS =	STD DIV SI DI
 
 #-----------------------------------------------------------------------
 #
 # Floating point emulation functions
 #
-.if ${TARGET_ARCH} == "armNOT_YET" || ${TARGET_ARCH} == "powerpc" || \
+.if ${TARGET_ARCH} == "armNOT_YET" || ${TARGET_ARCH} == "mips64" || \
+    ${TARGET_ARCH} == "mips64el" || ${TARGET_ARCH} == "powerpc" || \
     ${TARGET_ARCH} == "sparc" || ${TARGET_ARCH} == "sparc64"
 
 FPBIT_CFLAGS =	-DFINE_GRAINED_LIBRARIES -DFLOAT
 DPBIT_CFLAGS =	-DFINE_GRAINED_LIBRARIES
 
+.if ${TARGET_ARCH} == "mips64" || ${TARGET_ARCH} == "mips64el"
+SI_CFLAGS +=	-DLIBGCC2_UNITS_PER_WORD=4
+DI_CFLAGS +=	-DLIBGCC2_UNITS_PER_WORD=4
+
+TI_FUNCS =	${DWFLOATFUNCS:S/di/ti/}
+TI_CFILE =	libgcc2.c
+
+FPBIT_CFLAGS +=	-DTMODES
+DPBIT_CFLAGS +=	-DTMODES
+.endif
+
+.if ${TARGET_ARCH} == "mips64el"
+FPBIT_CFLAGS +=	-DFLOAT_BIT_ORDER_MISMATCH
+DPBIT_CFLAGS +=	-DFLOAT_BIT_ORDER_MISMATCH
+.endif
+
 FPBIT_CFILE =	config/fp-bit.c
 DPBIT_CFILE =	config/fp-bit.c
 
 OBJ_GRPS +=	FPBIT DPBIT
+.endif
+
+.if ${TARGET_ARCH} == "mips64" || ${TARGET_ARCH} == "mips64el"
+
+TPBIT_CFLAGS =	-DFINE_GRAINED_LIBRARIES -DTFLOAT
+
+.if ${TARGET_ARCH} == "mips64el"
+TPBIT_CFLAGS +=	-DFLOAT_BIT_ORDER_MISMATCH
+.endif
+
+TPBIT_CFILE =	config/fp-bit.c
+
+OBJ_GRPS +=	TPBIT
 .endif
 
 #-----------------------------------------------------------------------
@@ -214,6 +262,22 @@ ${${T}_OBJS_P}: ${${T}_CFILE} ${COMMONHDRS}
 ${${T}_OBJS_S}: ${${T}_CFILE} ${COMMONHDRS}
 	${CC_S} ${${T}_CFLAGS} -DL${.PREFIX} -o ${.TARGET} ${.ALLSRC:M*.c}
 .endfor
+
+#-----------------------------------------------------------------------
+#
+# Special versions of the floating-point conversion routines.
+#
+.if !empty{TI_FUNCS}
+TI_OBJS_T =	${TI_FUNCS:S/$/.o/}
+OBJS +=		${TI_FUNCS:S/$/.o/}
+
+${TI_OBJS_T}: ${TI_CFILE} ${COMMONHDRS}
+	${CC_T} ${TI_CFLAGS} -DL${.PREFIX:S/ti/di/} -o ${.TARGET} ${.ALLSRC:M*.c}
+${TI_OBJS_P}: ${TI_CFILE} ${COMMONHDRS}
+	${CC_P} ${TI_CFLAGS} -DL${.PREFIX:S/ti/di/} -o ${.TARGET} ${.ALLSRC:M*.c}
+${TI_OBJS_T}: ${TI_CFILE} ${COMMONHDRS}
+	${CC_S} ${TI_CFLAGS} -DL${.PREFIX:S/ti/di/} -o ${.TARGET} ${.ALLSRC:M*.c}
+.endif
 
 #-----------------------------------------------------------------------
 #

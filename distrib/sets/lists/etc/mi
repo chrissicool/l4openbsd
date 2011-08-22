@@ -81,6 +81,7 @@
 ./etc/netstart
 ./etc/networks
 ./etc/newsyslog.conf
+./etc/nsd.conf
 ./etc/ntpd.conf
 ./etc/ospf6d.conf
 ./etc/ospfd.conf
@@ -160,7 +161,6 @@
 ./var/log/wtmp
 ./var/log/xferlog
 ./var/mail/root
-./var/msgs/bounds
 ./var/named/etc/named-dual.conf
 ./var/named/etc/named-simple.conf
 ./var/named/etc/named.conf

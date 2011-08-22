@@ -1,4 +1,4 @@
-#	$OpenBSD: files.usb,v 1.92 2010/07/31 16:04:50 miod Exp $
+#	$OpenBSD: files.usb,v 1.97 2011/01/06 19:32:09 damien Exp $
 #	$NetBSD: files.usb,v 1.16 2000/02/14 20:29:54 augustss Exp $
 #
 # Config file and device description for machine-independent USB code.
@@ -164,9 +164,9 @@ attach	utrh at uhidbus
 file	dev/usb/utrh.c			utrh
 
 # Maywa-denki/Kayac YUREX
-device	uyurex: hid
-attach	uyurex at uhidbus
-file	dev/usb/uyurex.c		uyurex
+device	utwitch: hid
+attach	utwitch at uhidbus
+file	dev/usb/utwitch.c		utwitch
 
 # Ethernet adapters
 # ADMtek AN986 Pegasus
@@ -338,6 +338,16 @@ device	urtw: ether, ifnet, ifmedia, wlan
 attach	urtw at uhub
 file	dev/usb/if_urtw.c		urtw
 
+# Realtek RTL8188CU/RTL8192CU
+device	urtwn: ether, ifnet, ifmedia, wlan, firmload
+attach	urtwn at uhub
+file	dev/usb/if_urtwn.c		urtwn
+
+# Realtek RTL8188SU/RTL8191SU/RTL8192SU
+device	rsu: ether, ifnet, ifmedia, wlan, firmload
+attach	rsu at uhub
+file	dev/usb/if_rsu.c		rsu
+
 # Atheros AR9170
 device	otus: ether, ifnet, ifmedia, wlan, firmload
 attach	otus at uhub
@@ -364,6 +374,10 @@ file	dev/usb/if_cdcef.c		cdcef
 device	uath: ether, ifnet, ifmedia, wlan, firmload
 attach	uath at uhub
 file	dev/usb/if_uath.c		uath
+
+# Atheros AR9002U
+attach	athn at uhub with athn_usb: firmload
+file	dev/usb/if_athn_usb.c		athn_usb		needs-flag
 
 # Maxim/Dallas DS2490 1-Wire adapter
 device	uow: onewirebus

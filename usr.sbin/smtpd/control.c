@@ -1,4 +1,4 @@
-/*	$OpenBSD: control.c,v 1.53 2010/06/02 19:16:53 chl Exp $	*/
+/*	$OpenBSD: control.c,v 1.56 2010/11/28 13:56:43 gilles Exp $	*/
 
 /*
  * Copyright (c) 2008 Pierre-Yves Ritschard <pyr@openbsd.org>
@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <event.h>
 #include <fcntl.h>
+#include <imsg.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -36,7 +37,7 @@
 #include <unistd.h>
 
 #include "smtpd.h"
-#include "queue_backend.h"
+#include "log.h"
 
 #define CONTROL_BACKLOG 5
 
@@ -64,7 +65,8 @@ control_imsg(struct smtpd *env, struct imsgev *iev, struct imsg *imsg)
 {
 	struct ctl_conn	*c;
 	struct reload	*reload;
-	int		 error;
+	struct remove	*rem;
+	struct sched	*sched;
 
 	if (iev->proc == PROC_SMTP) {
 		switch (imsg->hdr.type) {
@@ -81,17 +83,23 @@ control_imsg(struct smtpd *env, struct imsgev *iev, struct imsg *imsg)
 	if (iev->proc == PROC_QUEUE) {
 		switch (imsg->hdr.type) {
 		case IMSG_QUEUE_SCHEDULE:
-		case IMSG_QUEUE_REMOVE:
-			c = control_connbyfd(imsg->hdr.peerid);
+			sched = imsg->data;
+			c = control_connbyfd(sched->fd);
 			if (c == NULL)
 				return;
-			memcpy(&error, imsg->data, sizeof error);
-			if (error)
-				imsg_compose_event(&c->iev, IMSG_CTL_FAIL, 0, 0,
-				    -1, NULL, 0);
-			else
-				imsg_compose_event(&c->iev, IMSG_CTL_OK, 0, 0,
-				    -1, NULL, 0);
+			imsg_compose_event(&c->iev,
+			    sched->ret ? IMSG_CTL_OK : IMSG_CTL_FAIL, 0, 0, -1,
+			    NULL, 0);
+			return;
+
+		case IMSG_QUEUE_REMOVE:
+			rem = imsg->data;
+			c = control_connbyfd(rem->fd);
+			if (c == NULL)
+				return;
+			imsg_compose_event(&c->iev,
+			    rem->ret ? IMSG_CTL_OK : IMSG_CTL_FAIL, 0, 0,
+			    -1, NULL, 0);
 			return;
 		}
 	}
@@ -217,6 +225,7 @@ control(struct smtpd *env)
 	config_pipes(env, peers, nitems(peers));
 	config_peers(env, peers, nitems(peers));
 	control_listen(env);
+
 	if (event_dispatch() < 0)
 		fatal("event_dispatch");
 	control_shutdown();
@@ -287,6 +296,8 @@ control_accept(int listenfd, short event, void *arg)
 
 	env->stats->control.sessions++;
 	env->stats->control.sessions_active++;
+	SET_IF_GREATER(env->stats->control.sessions_active,
+		env->stats->control.sessions_maxactive);
 
 	if (env->stats->control.sessions_active >= env->sc_maxconn) {
 		log_warnx("ctl client limit hit, disabling new connections");
@@ -389,14 +400,47 @@ control_dispatch_ext(int fd, short event, void *arg)
 			imsg_compose_event(&c->iev, IMSG_STATS, 0, 0, -1,
 			    env->stats, sizeof(struct stats));
 			break;
-		case IMSG_QUEUE_SCHEDULE:
-		case IMSG_QUEUE_REMOVE:
-			if (euid || IMSG_DATA_SIZE(&imsg) != sizeof(u_int64_t))
+		case IMSG_QUEUE_SCHEDULE: {
+			struct sched *s = imsg.data;
+
+			if (euid)
 				goto badcred;
-			imsg_compose_event(env->sc_ievs[PROC_QUEUE],
-			    imsg.hdr.type, fd, 0, -1, imsg.data,
-			    sizeof(u_int64_t));
+	
+			if (IMSG_DATA_SIZE(&imsg) != sizeof(*s))
+				goto badcred;
+
+			s->fd = fd;
+
+			if (! valid_message_id(s->mid) && ! valid_message_uid(s->mid)) {
+				imsg_compose_event(&c->iev, IMSG_CTL_FAIL, 0, 0, -1,
+				    NULL, 0);
+				break;
+			}
+
+			imsg_compose_event(env->sc_ievs[PROC_QUEUE], IMSG_QUEUE_SCHEDULE, 0, 0, -1, s, sizeof(*s));
 			break;
+		}
+
+		case IMSG_QUEUE_REMOVE: {
+			struct remove *s = imsg.data;
+
+			if (euid)
+				goto badcred;
+	
+			if (IMSG_DATA_SIZE(&imsg) != sizeof(*s))
+				goto badcred;
+
+			s->fd = fd;
+
+			if (! valid_message_id(s->mid) && ! valid_message_uid(s->mid)) {
+				imsg_compose_event(&c->iev, IMSG_CTL_FAIL, 0, 0, -1,
+				    NULL, 0);
+				break;
+			}
+
+			imsg_compose_event(env->sc_ievs[PROC_QUEUE], IMSG_QUEUE_REMOVE, 0, 0, -1, s, sizeof(*s));
+			break;
+		}
 /*
 		case IMSG_CONF_RELOAD: {
 			struct reload r;
@@ -463,7 +507,7 @@ control_dispatch_ext(int fd, short event, void *arg)
 			    IMSG_QUEUE_PAUSE_LOCAL, 0, 0, -1, NULL, 0);
 			imsg_compose_event(&c->iev, IMSG_CTL_OK, 0, 0, -1, NULL, 0);
 			break;
-		case IMSG_QUEUE_PAUSE_RELAY:
+		case IMSG_QUEUE_PAUSE_OUTGOING:
 			if (euid)
 				goto badcred;
 
@@ -474,7 +518,7 @@ control_dispatch_ext(int fd, short event, void *arg)
 			}
 			env->sc_flags |= SMTPD_MTA_PAUSED;
 			imsg_compose_event(env->sc_ievs[PROC_QUEUE],
-			    IMSG_QUEUE_PAUSE_RELAY, 0, 0, -1, NULL, 0);
+			    IMSG_QUEUE_PAUSE_OUTGOING, 0, 0, -1, NULL, 0);
 			imsg_compose_event(&c->iev, IMSG_CTL_OK, 0, 0, -1, NULL, 0);
 			break;
 		case IMSG_SMTP_PAUSE:
@@ -505,7 +549,7 @@ control_dispatch_ext(int fd, short event, void *arg)
 			    IMSG_QUEUE_RESUME_LOCAL, 0, 0, -1, NULL, 0);
 			imsg_compose_event(&c->iev, IMSG_CTL_OK, 0, 0, -1, NULL, 0);
 			break;
-		case IMSG_QUEUE_RESUME_RELAY:
+		case IMSG_QUEUE_RESUME_OUTGOING:
 			if (euid)
 				goto badcred;
 
@@ -516,7 +560,7 @@ control_dispatch_ext(int fd, short event, void *arg)
 			}
 			env->sc_flags &= ~SMTPD_MTA_PAUSED;
 			imsg_compose_event(env->sc_ievs[PROC_QUEUE],
-			    IMSG_QUEUE_RESUME_RELAY, 0, 0, -1, NULL, 0);
+			    IMSG_QUEUE_RESUME_OUTGOING, 0, 0, -1, NULL, 0);
 			imsg_compose_event(&c->iev, IMSG_CTL_OK, 0, 0, -1, NULL, 0);
 			break;
 		case IMSG_SMTP_RESUME:

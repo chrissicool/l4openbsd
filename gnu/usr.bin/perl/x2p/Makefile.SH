@@ -27,12 +27,9 @@ esac
 echo "Extracting x2p/Makefile (with variable substitutions)"
 rm -f Makefile
 cat >Makefile <<!GROK!THIS!
-# $RCSfile: Makefile.SH,v $$Revision: 1.12 $$Date: 2009/10/12 18:30:28 $
+# $RCSfile: Makefile.SH,v $$Revision: 4.1 $$Date: 92/08/07 18:29:07 $
 #
-# $Log: Makefile.SH,v $
-# Revision 1.12  2009/10/12 18:30:28  millert
-# Merge in perl 5.10.1; part two
-#
+# $Log:	Makefile.SH,v $
 
 CC = $cc
 BYACC = $byacc
@@ -145,6 +142,8 @@ a2p$(OBJ_EXT): a2p.c a2py.c a2p.h EXTERN.h util.h INTERN.h \
 
 clean:
 	rm -f a2p$(EXE_EXT) psed *$(OBJ_EXT) $(plexe) $(plc) $(plm)
+
+distclean: veryclean
 
 realclean: clean
 	-rmdir .depending

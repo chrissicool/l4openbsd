@@ -1,4 +1,4 @@
-/*	$OpenBSD: exec_elf.c,v 1.76 2010/07/26 01:56:27 guenther Exp $	*/
+/*	$OpenBSD: exec_elf.c,v 1.78 2010/12/15 04:59:52 tedu Exp $	*/
 
 /*
  * Copyright (c) 1996 Per Fogelstrom
@@ -417,11 +417,11 @@ ELFNAME(load_file)(struct proc *p, char *path, struct exec_package *epp,
 		addr = trunc_page(pos + loadmap[i].vaddr);
 		size =  round_page(addr + loadmap[i].memsz) - addr;
 
-		/* CRAP - map_findspace does not avoid daddr+MAXDSIZ */
+		/* CRAP - map_findspace does not avoid daddr+BRKSIZ */
 		if ((addr + size > (vaddr_t)p->p_vmspace->vm_daddr) &&
-		    (addr < (vaddr_t)p->p_vmspace->vm_daddr + MAXDSIZ))
+		    (addr < (vaddr_t)p->p_vmspace->vm_daddr + BRKSIZ))
 			addr = round_page((vaddr_t)p->p_vmspace->vm_daddr +
-			    MAXDSIZ);
+			    BRKSIZ);
 
 		vm_map_lock(&p->p_vmspace->vm_map);
 		if (uvm_map_findspace(&p->p_vmspace->vm_map, addr, size,
@@ -1078,6 +1078,8 @@ ELFNAMEEND(coredump)(struct proc *p, void *cookie)
 	}
 
 out:
+	if (psections)
+		free(psections, M_TEMP);
 	return (error);
 #endif
 }

@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-set-buffer.c,v 1.6 2009/11/26 22:28:24 nicm Exp $ */
+/* $OpenBSD: cmd-set-buffer.c,v 1.8 2011/01/04 00:42:47 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -30,39 +30,45 @@ int	cmd_set_buffer_exec(struct cmd *, struct cmd_ctx *);
 
 const struct cmd_entry cmd_set_buffer_entry = {
 	"set-buffer", "setb",
-	CMD_BUFFER_SESSION_USAGE " data",
-	CMD_ARG1, "",
-	cmd_buffer_init,
-	cmd_buffer_parse,
-	cmd_set_buffer_exec,
-	cmd_buffer_free,
-	cmd_buffer_print
+	"b:", 1, 1,
+	CMD_BUFFER_USAGE " data",
+	0,
+	NULL,
+	NULL,
+	cmd_set_buffer_exec
 };
 
 int
 cmd_set_buffer_exec(struct cmd *self, struct cmd_ctx *ctx)
 {
-	struct cmd_buffer_data	*data = self->data;
-	struct session		*s;
-	u_int			 limit;
-	char			*pdata;
-	size_t			 psize;
+	struct args	*args = self->args;
+	u_int		 limit;
+	char		*pdata, *cause;
+	size_t		 psize;
+	int		 buffer;
 
-	if ((s = cmd_find_session(ctx, data->target)) == NULL)
-		return (-1);
-	limit = options_get_number(&s->options, "buffer-limit");
+	limit = options_get_number(&global_options, "buffer-limit");
 
-	pdata = xstrdup(data->arg);
+	pdata = xstrdup(args->argv[0]);
 	psize = strlen(pdata);
 
-	if (data->buffer == -1) {
-		paste_add(&s->buffers, pdata, psize, limit);
+	if (!args_has(args, 'b')) {
+		paste_add(&global_buffers, pdata, psize, limit);
 		return (0);
 	}
-	if (paste_replace(&s->buffers, data->buffer, pdata, psize) != 0) {
-		ctx->error(ctx, "no buffer %d", data->buffer);
+
+	buffer = args_strtonum(args, 'b', 0, INT_MAX, &cause);
+	if (cause != NULL) {
+		ctx->error(ctx, "buffer %s", cause);
+		xfree(cause);
+		return (-1);
+	}
+
+	if (paste_replace(&global_buffers, buffer, pdata, psize) != 0) {
+		ctx->error(ctx, "no buffer %d", buffer);
 		xfree(pdata);
 		return (-1);
 	}
+
 	return (0);
 }

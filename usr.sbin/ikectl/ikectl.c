@@ -1,4 +1,4 @@
-/*	$OpenBSD: ikectl.c,v 1.5 2010/06/23 16:01:01 jsg Exp $	*/
+/*	$OpenBSD: ikectl.c,v 1.11 2010/10/08 11:41:56 jsg Exp $	*/
 
 /*
  * Copyright (c) 2007, 2008 Reyk Floeter <reyk@vantronix.net>
@@ -50,20 +50,6 @@ void		 monitor_id(struct imsg *);
 int		 monitor(struct imsg *);
 
 int		 ca_opt(struct parse_result *);
-struct ca	*ca_setup(char *, int);
-int		 ca_create(struct ca *);
-int		 ca_certificate(struct ca *, char *, int);
-int		 ca_export(struct ca *, char *, char *);
-int		 ca_revoke(struct ca *, char *);
-int		 ca_delete(struct ca *);
-int		 ca_delkey(struct ca *, char *);
-int		 ca_install(struct ca *);
-int		 ca_cert_install(struct ca *, char *);
-int		 ca_show_certs(struct ca *);
-int		 ca_key_create(struct ca *, char *);
-int		 ca_key_delete(struct ca *, char *);
-int		 ca_key_install(struct ca *, char *);
-int		 ca_key_import(struct ca *, char *, char *);
 
 struct imsgname imsgs[] = {
 	{ IMSG_CTL_OK,			"ok",			NULL },
@@ -86,7 +72,7 @@ usage(void)
 {
 	extern char *__progname;
 
-	fprintf(stderr, "usage: %s [-n] [-s socket] command [arg ...]\n", __progname);
+	fprintf(stderr, "usage: %s [-q] [-s socket] command [arg ...]\n", __progname);
 	exit(1);
 }
 
@@ -94,10 +80,23 @@ int
 ca_opt(struct parse_result *res)
 {
 	struct ca	*ca;
+	size_t		 len;
+	char		*p;
 
-	ca = ca_setup(res->caname, (res->action == CA_CREATE));
+	ca = ca_setup(res->caname, (res->action == CA_CREATE),
+	    res->quiet, res->pass);
 	if (ca == NULL)
 		errx(1, "ca_setup failed");
+
+	/* assume paths are relative to /etc if not absolute */
+	if (res->path && (res->path[0] != '.') && (res->path[0] != '/')) {
+		len = 5 + strlen(res->path) + 1;
+		if ((p = malloc(len)) == NULL)
+			err(1, "malloc");
+		snprintf(p, len, "/etc/%s", res->path);
+		free(res->path);
+		res->path = p;
+	}
 
 	switch (res->action) {
 	case CA_CREATE:
@@ -107,28 +106,30 @@ ca_opt(struct parse_result *res)
 		ca_delete(ca);
 		break;
 	case CA_INSTALL:
-		ca_install(ca);
+		ca_install(ca, res->path);
 		break;
 	case CA_EXPORT:
-		ca_export(ca, NULL, res->peer);
+		ca_export(ca, NULL, res->peer, res->pass);
 		break;
 	case CA_CERT_CREATE:
-		ca_certificate(ca, res->host, res->htype);
+	case CA_SERVER:
+	case CA_CLIENT:
+		ca_certificate(ca, res->host, res->htype, res->action);
 		break;
 	case CA_CERT_DELETE:
 		ca_delkey(ca, res->host);
 		break;
 	case CA_CERT_INSTALL:
-		ca_cert_install(ca, res->host);
+		ca_cert_install(ca, res->host, res->path);
 		break;
 	case CA_CERT_EXPORT:
-		ca_export(ca, res->host, res->peer);
+		ca_export(ca, res->host, res->peer, res->pass);
 		break;
 	case CA_CERT_REVOKE:
 		ca_revoke(ca, res->host);
 		break;
 	case SHOW_CA_CERTIFICATES:
-		ca_show_certs(ca);
+		ca_show_certs(ca, res->host);
 		break;
 	case CA_KEY_CREATE:
 		ca_key_create(ca, res->host);
@@ -137,10 +138,10 @@ ca_opt(struct parse_result *res)
 		ca_key_delete(ca, res->host);
 		break;
 	case CA_KEY_INSTALL:
-		ca_key_install(ca, res->host);
+		ca_key_install(ca, res->host, res->path);
 		break;
 	case CA_KEY_IMPORT:
-		ca_key_import(ca, res->host, res->filename);
+		ca_key_import(ca, res->host, res->path);
 		break;
 	default:
 		break;
@@ -160,13 +161,17 @@ main(int argc, char *argv[])
 	int			 n;
 	int			 ch;
 	int			 v = 0;
+	int			 quiet = 0;
 	const char		*sock = IKED_SOCKET;
 
 	if ((env = calloc(1, sizeof(struct snmpd *))) == NULL)
 		err(1, "calloc");
 
-	while ((ch = getopt(argc, argv, "s:")) != -1) {
+	while ((ch = getopt(argc, argv, "qs:")) != -1) {
 		switch (ch) {
+		case 'q':
+			quiet = 1;
+			break;
 		case 's':
 			sock = optarg;
 			break;
@@ -182,12 +187,16 @@ main(int argc, char *argv[])
 	if ((res = parse(argc, argv)) == NULL)
 		exit(1);
 
+	res->quiet = quiet;
+
 	switch (res->action) {
 	case CA_CREATE:
 	case CA_DELETE:
 	case CA_INSTALL:
 	case CA_EXPORT:
 	case CA_CERT_CREATE:
+	case CA_CLIENT:
+	case CA_SERVER:
 	case CA_CERT_DELETE:
 	case CA_CERT_INSTALL:
 	case CA_CERT_EXPORT:
@@ -277,7 +286,7 @@ main(int argc, char *argv[])
 		break;
 	case LOAD:
 		imsg_compose(ibuf, IMSG_CTL_RELOAD, 0, 0, -1,
-		    res->filename, strlen(res->filename));
+		    res->path, strlen(res->path));
 		break;
 	case RELOAD:
 		imsg_compose(ibuf, IMSG_CTL_RELOAD, 0, 0, -1, NULL, 0);

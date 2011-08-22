@@ -1,4 +1,4 @@
-/*	$OpenBSD: buf.h,v 1.70 2010/06/30 02:26:58 matthew Exp $	*/
+/*	$OpenBSD: buf.h,v 1.74 2010/09/22 01:18:57 matthew Exp $	*/
 /*	$NetBSD: buf.h,v 1.25 1997/04/09 21:12:17 mycroft Exp $	*/
 
 /*
@@ -42,6 +42,7 @@
 #include <sys/queue.h>
 #include <sys/tree.h>
 #include <sys/mutex.h>
+#include <sys/workq.h>
 
 #define NOLIST ((struct buf *)0x87654321)
 
@@ -67,6 +68,8 @@ LIST_HEAD(workhead, worklist);
 #define BUFQ_DEFAULT	BUFQ_DISKSORT
 #define BUFQ_HOWMANY	2
 
+struct bufq_impl;
+
 struct bufq {
 	SLIST_ENTRY(bufq)	 bufq_entries;
 	struct mutex	 	 bufq_mtx;
@@ -74,51 +77,48 @@ struct bufq {
 	u_int			 bufq_outstanding;
 	int			 bufq_stop;
 	int			 bufq_type;
+	const struct bufq_impl	*bufq_impl;
 };
 
-struct buf	*bufq_disksort_dequeue(struct bufq *, int);
-void		 bufq_disksort_queue(struct bufq *, struct buf *);
-void		 bufq_disksort_requeue(struct bufq *, struct buf *);
-int		 bufq_disksort_init(struct bufq *);
+int		 bufq_init(struct bufq *, int);
+int		 bufq_switch(struct bufq *, int);
+void		 bufq_destroy(struct bufq *);
+
+void		 bufq_queue(struct bufq *, struct buf *);
+struct buf	*bufq_dequeue(struct bufq *);
+void		 bufq_requeue(struct bufq *, struct buf *);
+int		 bufq_peek(struct bufq *);
+void		 bufq_drain(struct bufq *);
+
+void		 bufq_done(struct bufq *, struct buf *);
+void		 bufq_quiesce(void);
+void		 bufq_restart(void);
+
+/* disksort */
 struct bufq_disksort {
 	struct buf	 *bqd_actf;
 	struct buf	**bqd_actb;
 };
 
-struct buf	*bufq_fifo_dequeue(struct bufq *, int);
-void		 bufq_fifo_queue(struct bufq *, struct buf *);
-void		 bufq_fifo_requeue(struct bufq *, struct buf *);
-int		 bufq_fifo_init(struct bufq *);
+/* fifo */
 SIMPLEQ_HEAD(bufq_fifo_head, buf);
 struct bufq_fifo {
 	SIMPLEQ_ENTRY(buf)	bqf_entries;
 };
 
+/* Abuse bufq_fifo, for swapping to regular files. */
+struct bufq_swapreg {
+	SIMPLEQ_ENTRY(buf)	bqf_entries;
+	struct workq_task	bqf_wqtask;
+
+};
+
+/* bufq link in struct buf */
 union bufq_data {
 	struct bufq_disksort	bufq_data_disksort;
 	struct bufq_fifo	bufq_data_fifo;
+	struct bufq_swapreg	bufq_swapreg;
 };
-
-extern struct buf *(*bufq_dequeuev[BUFQ_HOWMANY])(struct bufq *, int);
-extern void (*bufq_queuev[BUFQ_HOWMANY])(struct bufq *, struct buf *);
-extern void (*bufq_requeuev[BUFQ_HOWMANY])(struct bufq *, struct buf *);
-
-#define	BUFQ_QUEUE(_bufq, _bp)	 bufq_queue(_bufq, _bp)
-#define BUFQ_REQUEUE(_bufq, _bp) bufq_requeue(_bufq, _bp)
-#define	BUFQ_DEQUEUE(_bufq)		\
-	    bufq_dequeuev[(_bufq)->bufq_type](_bufq, 0)
-#define	BUFQ_PEEK(_bufq)		\
-	bufq_dequeuev[(_bufq)->bufq_type](_bufq, 1)
-
-struct bufq	*bufq_init(int);
-void		 bufq_queue(struct bufq *, struct buf *);
-void		 bufq_requeue(struct bufq *, struct buf *);
-void		 bufq_destroy(struct bufq *);
-void		 bufq_drain(struct bufq *);
-void		 bufq_done(struct bufq *, struct buf *);
-void		 bufq_quiesce(void);
-void		 bufq_restart(void);
-
 
 /*
  * These are currently used only by the soft dependency code, hence
@@ -301,8 +301,8 @@ void	buf_free_pages(struct buf *);
 
 
 void	minphys(struct buf *bp);
-int	physio(void (*strategy)(struct buf *), struct buf *bp, dev_t dev,
-	    int flags, void (*minphys)(struct buf *), struct uio *uio);
+int	physio(void (*strategy)(struct buf *), dev_t dev, int flags,
+	    void (*minphys)(struct buf *), struct uio *uio);
 void  brelvp(struct buf *);
 void  reassignbuf(struct buf *);
 void  bgetvp(struct vnode *, struct buf *);

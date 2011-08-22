@@ -1,4 +1,4 @@
-#	$OpenBSD: install.md,v 1.23 2010/06/26 23:16:41 krw Exp $
+#	$OpenBSD: install.md,v 1.26 2011/02/19 10:18:03 miod Exp $
 #
 #
 # Copyright (c) 1996 The NetBSD Foundation, Inc.
@@ -39,28 +39,27 @@ MDSETS="bsd.${IPARCH} bsd.rd.${IPARCH}"
 SANESETS="bsd.${IPARCH}"
 # Since we do not provide bsd.mp on IP27 yet, do not add bsd.mp.IP27 to the
 # sets, as this will cause a warning in sane_install()
-if ((NCPU > 1)) && ((IPARCH == 30)); then
+if ((NCPU > 1)) && [[ $IPARCH = IP30 ]]; then
 	MDSETS="${MDSETS} bsd.mp.${IPARCH}"
 	SANESETS="${SANESETS} bsd.mp.${IPARCH}"
 fi
 DEFAULTSETS=${MDSETS}
 
 md_installboot() {
-	cd /mnt
-	if [[ -f bsd.${IPARCH} ]]; then
-		mv bsd.${IPARCH} bsd
+	if [[ -f /mnt/bsd.${IPARCH} ]]; then
+		mv /mnt/bsd.${IPARCH} /mnt/bsd
 	fi
-	if [[ -f bsd.mp.${IPARCH} ]]; then
-		mv bsd.mp.${IPARCH} bsd.mp
+	if [[ -f /mnt/bsd.mp.${IPARCH} ]]; then
+		mv /mnt/bsd.mp.${IPARCH} /mnt/bsd.mp
 	fi
-	if [[ -f bsd.rd.${IPARCH} ]]; then
-		mv bsd.rd.${IPARCH} bsd.rd
+	if [[ -f /mnt/bsd.rd.${IPARCH} ]]; then
+		mv /mnt/bsd.rd.${IPARCH} /mnt/bsd.rd
 	fi
 
-	if [[ -f bsd.mp ]] && ((NCPU > 1)); then
+	if [[ -f /mnt/bsd.mp ]] && ((NCPU > 1)); then
 		echo "Multiprocessor machine; using bsd.mp instead of bsd."
-		mv bsd bsd.sp 2>/dev/null
-		mv bsd.mp bsd
+		mv /mnt/bsd /mnt/bsd.sp 2>/dev/null
+		mv /mnt/bsd.mp /mnt/bsd
 	fi
 }
 

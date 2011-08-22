@@ -1,4 +1,4 @@
-/*	$OpenBSD: xl.c,v 1.90 2010/08/06 02:45:53 deraadt Exp $	*/
+/*	$OpenBSD: xl.c,v 1.99 2010/09/22 08:49:14 claudio Exp $	*/
 
 /*
  * Copyright (c) 1997, 1998, 1999
@@ -153,7 +153,6 @@ void xl_stats_update(void *);
 int xl_encap(struct xl_softc *, struct xl_chain *,
     struct mbuf * );
 void xl_rxeof(struct xl_softc *);
-int xl_rx_resync(struct xl_softc *);
 void xl_txeof(struct xl_softc *);
 void xl_txeof_90xB(struct xl_softc *);
 void xl_txeoc(struct xl_softc *);
@@ -163,7 +162,6 @@ void xl_start_90xB(struct ifnet *);
 int xl_ioctl(struct ifnet *, u_long, caddr_t);
 void xl_freetxrx(struct xl_softc *);
 void xl_watchdog(struct ifnet *);
-void xl_shutdown(void *);
 int xl_ifmedia_upd(struct ifnet *);
 void xl_ifmedia_sts(struct ifnet *, struct ifmediareq *);
 
@@ -179,8 +177,8 @@ void xl_setmode(struct xl_softc *, int);
 void xl_iff(struct xl_softc *);
 void xl_iff_90x(struct xl_softc *);
 void xl_iff_905b(struct xl_softc *);
-void xl_reset(struct xl_softc *);
 int xl_list_rx_init(struct xl_softc *);
+void xl_fill_rx_ring(struct xl_softc *);
 int xl_list_tx_init(struct xl_softc *);
 int xl_list_tx_init_90xB(struct xl_softc *);
 void xl_wait(struct xl_softc *);
@@ -194,26 +192,32 @@ int xl_miibus_readreg(struct device *, int, int);
 void xl_miibus_writereg(struct device *, int, int, int);
 void xl_miibus_statchg(struct device *);
 
-void xl_power(int, void *);
-
-void
-xl_power(int why, void *arg)
+int
+xl_activate(struct device *self, int act)
 {
-	struct xl_softc *sc = arg;
-	struct ifnet *ifp;
-	int s;
+	struct xl_softc *sc = (struct xl_softc *)self;
+	struct ifnet	*ifp = &sc->sc_arpcom.ac_if;
+	int rv = 0;
 
-	s = splnet();
-	if (why != PWR_RESUME)
-		xl_stop(sc);
-	else {
-		ifp = &sc->sc_arpcom.ac_if;
-		if (ifp->if_flags & IFF_UP) {
+	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_SUSPEND:
+		if (ifp->if_flags & IFF_RUNNING) {
 			xl_reset(sc);
-			xl_init(sc);
+			xl_stop(sc);
 		}
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_RESUME:
+		xl_reset(sc);
+		rv = config_activate_children(self, act);
+		if (ifp->if_flags & IFF_UP)
+			xl_init(sc);
+		break;
 	}
-	splx(s);
+	return (rv);
 }
 
 /*
@@ -1071,8 +1075,6 @@ xl_list_rx_init(struct xl_softc *sc)
 	for (i = 0; i < XL_RX_LIST_CNT; i++) {
 		cd->xl_rx_chain[i].xl_ptr =
 			(struct xl_list_onefrag *)&ld->xl_rx_list[i];
-		if (xl_newbuf(sc, &cd->xl_rx_chain[i]) == ENOBUFS)
-			return(ENOBUFS);
 		if (i == (XL_RX_LIST_CNT - 1))
 			n = 0;
 		else
@@ -1083,10 +1085,29 @@ xl_list_rx_init(struct xl_softc *sc)
 		ld->xl_rx_list[i].xl_next = htole32(next);
 	}
 
-	cd->xl_rx_head = &cd->xl_rx_chain[0];
-
+	cd->xl_rx_prod = cd->xl_rx_cons = &cd->xl_rx_chain[0];
+	cd->xl_rx_cnt = 0;
+	xl_fill_rx_ring(sc);
 	return (0);
 }
+
+void
+xl_fill_rx_ring(struct xl_softc *sc)
+{  
+	struct xl_chain_data    *cd;
+	struct xl_list_data     *ld;
+
+	cd = &sc->xl_cdata;
+	ld = sc->xl_ldata;
+
+	while (cd->xl_rx_cnt < XL_RX_LIST_CNT) {
+		if (xl_newbuf(sc, cd->xl_rx_prod) == ENOBUFS)
+			break;
+		cd->xl_rx_prod = cd->xl_rx_prod->xl_next;
+		cd->xl_rx_cnt++;
+	}
+}
+
 
 /*
  * Initialize an RX descriptor and attach an MBUF cluster.
@@ -1097,15 +1118,10 @@ xl_newbuf(struct xl_softc *sc, struct xl_chain_onefrag *c)
 	struct mbuf	*m_new = NULL;
 	bus_dmamap_t	map;
 
-	MGETHDR(m_new, M_DONTWAIT, MT_DATA);
-	if (m_new == NULL)
+	m_new = MCLGETI(NULL, M_DONTWAIT, &sc->sc_arpcom.ac_if, MCLBYTES);
+	
+	if (!m_new)
 		return (ENOBUFS);
-
-	MCLGET(m_new, M_DONTWAIT);
-	if (!(m_new->m_flags & M_EXT)) {
-		m_freem(m_new);
-		return (ENOBUFS);
-	}
 
 	m_new->m_len = m_new->m_pkthdr.len = MCLBYTES;
 	if (bus_dmamap_load(sc->sc_dmat, sc->sc_rx_sparemap,
@@ -1145,32 +1161,6 @@ xl_newbuf(struct xl_softc *sc, struct xl_chain_onefrag *c)
 	return (0);
 }
 
-int
-xl_rx_resync(struct xl_softc *sc)
-{
-	struct xl_chain_onefrag *pos;
-	int i;
-
-	pos = sc->xl_cdata.xl_rx_head;
-
-	for (i = 0; i < XL_RX_LIST_CNT; i++) {
-		bus_dmamap_sync(sc->sc_dmat, sc->sc_listmap,
-		    ((caddr_t)pos->xl_ptr - sc->sc_listkva),
-		    sizeof(struct xl_list),
-		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
-
-		if (pos->xl_ptr->xl_status)
-			break;
-		pos = pos->xl_next;
-	}
-
-	if (i == XL_RX_LIST_CNT)
-		return (0);
-
-	sc->xl_cdata.xl_rx_head = pos;
-
-	return (EAGAIN);
-}
 
 /*
  * A frame has been uploaded: pass the resulting mbuf chain up to
@@ -1190,16 +1180,19 @@ xl_rxeof(struct xl_softc *sc)
 
 again:
 
-	while ((rxstat = letoh32(sc->xl_cdata.xl_rx_head->xl_ptr->xl_status))
-	    != 0) {
-		cur_rx = sc->xl_cdata.xl_rx_head;
-		sc->xl_cdata.xl_rx_head = cur_rx->xl_next;
-		total_len = rxstat & XL_RXSTAT_LENMASK;
-
-		bus_dmamap_sync(sc->sc_dmat, sc->sc_listmap,
+	while (sc->xl_cdata.xl_rx_cnt > 0) {
+		cur_rx = sc->xl_cdata.xl_rx_cons;
+		bus_dmamap_sync(sc->sc_dmat, sc->sc_listmap,                    
 		    ((caddr_t)cur_rx->xl_ptr - sc->sc_listkva),
 		    sizeof(struct xl_list),
 		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+		if ((rxstat = letoh32(sc->xl_cdata.xl_rx_cons->xl_ptr->xl_status)) == 0)
+			break;
+		m = cur_rx->xl_mbuf;  
+		cur_rx->xl_mbuf = NULL;
+		sc->xl_cdata.xl_rx_cons = cur_rx->xl_next;
+		sc->xl_cdata.xl_rx_cnt--;
+		total_len = rxstat & XL_RXSTAT_LENMASK;
 
 		/*
 		 * Since we have told the chip to allow large frames,
@@ -1219,6 +1212,7 @@ again:
 		if (rxstat & XL_RXSTAT_UP_ERROR) {
 			ifp->if_ierrors++;
 			cur_rx->xl_ptr->xl_status = htole32(0);
+			m_freem(m);
 			continue;
 		}
 
@@ -1232,22 +1226,7 @@ again:
 			    "packet dropped\n", sc->sc_dev.dv_xname);
 			ifp->if_ierrors++;
 			cur_rx->xl_ptr->xl_status = htole32(0);
-			continue;
-		}
-
-		/* No errors; receive the packet. */	
-		m = cur_rx->xl_mbuf;
-
-		/*
-		 * Try to conjure up a new mbuf cluster. If that
-		 * fails, it means we have an out of memory condition and
-		 * should leave the buffer in place and continue. This will
-		 * result in a lost packet, but there's little else we
-		 * can do in this situation.
-		 */
-		if (xl_newbuf(sc, cur_rx) == ENOBUFS) {
-			ifp->if_ierrors++;
-			cur_rx->xl_ptr->xl_status = htole32(0);
+			m_freem(m);
 			continue;
 		}
 
@@ -1281,7 +1260,7 @@ again:
 
 		ether_input_mbuf(ifp, m);
 	}
-
+	xl_fill_rx_ring(sc);
 	/*
 	 * Handle the 'end of channel' condition. When the upload
 	 * engine hits the end of the RX ring, it will stall. This
@@ -1298,13 +1277,11 @@ again:
 		CSR_READ_4(sc, XL_UPLIST_STATUS) & XL_PKTSTAT_UP_STALLED) {
 		CSR_WRITE_2(sc, XL_COMMAND, XL_CMD_UP_STALL);
 		xl_wait(sc);
-		CSR_WRITE_4(sc, XL_UPLIST_PTR,
-		    sc->sc_listmap->dm_segs[0].ds_addr +
-		    offsetof(struct xl_list_data, xl_rx_list[0]));
-		sc->xl_cdata.xl_rx_head = &sc->xl_cdata.xl_rx_chain[0];
 		CSR_WRITE_2(sc, XL_COMMAND, XL_CMD_UP_UNSTALL);
+		xl_fill_rx_ring(sc);
 		goto again;
 	}
+
 }
 
 /*
@@ -1509,16 +1486,9 @@ xl_intr(void *arg)
 		if (sc->intr_ack)
 			(*sc->intr_ack)(sc);
 
-		if (status & XL_STAT_UP_COMPLETE) {
-			int curpkts;
-
-			curpkts = ifp->if_ipackets;
+		if (status & XL_STAT_UP_COMPLETE)
 			xl_rxeof(sc);
-			if (curpkts == ifp->if_ipackets) {
-				while (xl_rx_resync(sc))
-					xl_rxeof(sc);
-			}
-		}
+
 
 		if (status & XL_STAT_DOWN_COMPLETE) {
 			if (sc->xl_type == XL_TYPE_905B)
@@ -2672,9 +2642,7 @@ xl_attach(struct xl_softc *sc)
 	 */
 	if_attach(ifp);
 	ether_ifattach(ifp);
-
-	sc->sc_sdhook = shutdownhook_establish(xl_shutdown, sc);
-	sc->sc_pwrhook = powerhook_establish(xl_power, sc);
+	m_clsetwms(ifp, MCLBYTES, 2, XL_RX_LIST_CNT - 1);
 }
 
 int
@@ -2695,24 +2663,10 @@ xl_detach(struct xl_softc *sc)
 	/* Delete all remaining media. */
 	ifmedia_delete_instance(&sc->sc_mii.mii_media, IFM_INST_ANY);
 
-	if (sc->sc_sdhook != NULL)
-		shutdownhook_disestablish(sc->sc_sdhook);
-	if (sc->sc_pwrhook != NULL)
-		powerhook_disestablish(sc->sc_pwrhook);
-
 	ether_ifdetach(ifp);
 	if_detach(ifp);
 
 	return (0);
-}
-
-void
-xl_shutdown(void *v)
-{
-	struct xl_softc	*sc = (struct xl_softc *)v;
-
-	xl_reset(sc);
-	xl_stop(sc);
 }
 
 struct cfdriver xl_cd = {

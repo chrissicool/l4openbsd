@@ -1,4 +1,4 @@
-/*	$OpenBSD: cd.c,v 1.181 2010/07/28 23:47:43 krw Exp $	*/
+/*	$OpenBSD: cd.c,v 1.197 2010/11/22 12:21:46 krw Exp $	*/
 /*	$NetBSD: cd.c,v 1.100 1997/04/02 02:29:30 mycroft Exp $	*/
 
 /*
@@ -108,13 +108,12 @@ struct cd_softc {
 #define CDF_WAITING	0x100
 	struct scsi_link *sc_link;	/* contains our targ, lun, etc. */
 	struct cd_parms {
-		u_int32_t blksize;
+		u_int32_t secsize;
 		daddr64_t disksize;	/* total number sectors */
-	} sc_params;
-	struct bufq	*sc_bufq;
+	} params;
+	struct bufq	sc_bufq;
 	struct scsi_xshandler sc_xsh;
 	struct timeout sc_timeout;
-	void *sc_cdpwrhook;		/* our power hook */
 };
 
 void	cdstart(struct scsi_xfer *);
@@ -146,8 +145,6 @@ int	dvd_read_bca(struct cd_softc *, union dvd_struct *);
 int	dvd_read_manufact(struct cd_softc *, union dvd_struct *);
 int	dvd_read_struct(struct cd_softc *, union dvd_struct *);
 
-void	cd_powerhook(int why, void *arg);
-
 #if defined(__macppc__)
 int	cd_eject(void);
 #endif
@@ -161,12 +158,14 @@ struct cfdriver cd_cd = {
 	NULL, "cd", DV_DISK
 };
 
-struct dkdriver cddkdriver = { cdstrategy };
-
 const struct scsi_inquiry_pattern cd_patterns[] = {
 	{T_CDROM, T_REMOV,
 	 "",         "",                 ""},
+	{T_CDROM, T_FIXED,
+	 "",         "",                 ""},
 	{T_WORM, T_REMOV,
+	 "",         "",                 ""},
+	{T_WORM, T_FIXED,
 	 "",         "",                 ""},
 	{T_DIRECT, T_REMOV,
 	 "NEC                 CD-ROM DRIVE:260", "", ""},
@@ -178,7 +177,7 @@ const struct scsi_inquiry_pattern cd_patterns[] = {
 
 #define cdlock(softc)   disk_lock(&(softc)->sc_dk)
 #define cdunlock(softc) disk_unlock(&(softc)->sc_dk)
-#define cdlookup(unit) (struct cd_softc *)device_lookup(&cd_cd, (unit))
+#define cdlookup(unit) (struct cd_softc *)disk_lookup(&cd_cd, (unit))
 
 int
 cdmatch(struct device *parent, void *match, void *aux)
@@ -217,9 +216,8 @@ cdattach(struct device *parent, struct device *self, void *aux)
 	/*
 	 * Initialize disk structures.
 	 */
-	sc->sc_dk.dk_driver = &cddkdriver;
 	sc->sc_dk.dk_name = sc->sc_dev.dv_xname;
-	sc->sc_bufq = bufq_init(BUFQ_DEFAULT);
+	bufq_init(&sc->sc_bufq, BUFQ_DEFAULT);
 
 	/*
 	 * Note if this device is ancient.  This is used in cdminphys().
@@ -234,12 +232,9 @@ cdattach(struct device *parent, struct device *self, void *aux)
 	timeout_set(&sc->sc_timeout, (void (*)(void *))scsi_xsh_add,
 	    &sc->sc_xsh);
 
-	if ((sc->sc_cdpwrhook = powerhook_establish(cd_powerhook, sc)) == NULL)
-		printf("%s: WARNING: unable to establish power hook\n",
-		    sc->sc_dev.dv_xname);
-
 	/* Attach disk. */
-	disk_attach(&sc->sc_dk);
+	sc->sc_dk.dk_flags = DKF_NOLABELREAD;
+	disk_attach(&sc->sc_dev, &sc->sc_dk);
 }
 
 
@@ -252,15 +247,23 @@ cdactivate(struct device *self, int act)
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
-
+	case DVACT_RESUME:
+		/*
+		 * When resuming, hardware may have forgotten we locked it. So if
+		 * there are any open partitions, lock the CD.
+		 */
+		if (sc->sc_dk.dk_openmask != 0)
+			scsi_prevent(sc->sc_link, PR_PREVENT,
+			    SCSI_IGNORE_ILLEGAL_REQUEST | SCSI_IGNORE_MEDIA_CHANGE |
+			    SCSI_SILENT | SCSI_AUTOCONF);
+		break;			
 	case DVACT_DEACTIVATE:
 		sc->sc_flags |= CDF_DYING;
-		bufq_drain(sc->sc_bufq);
+		scsi_xsh_del(&sc->sc_xsh);
 		break;
 	}
 	return (rv);
 }
-
 
 int
 cddetach(struct device *self, int flags)
@@ -268,7 +271,7 @@ cddetach(struct device *self, int flags)
 	struct cd_softc *sc = (struct cd_softc *)self;
 	int bmaj, cmaj, mn;
 
-	bufq_drain(sc->sc_bufq);
+	bufq_drain(&sc->sc_bufq);
 
 	/* Locate the lowest minor number to be detached. */
 	mn = DISKMINOR(self->dv_unit, 0);
@@ -280,12 +283,8 @@ cddetach(struct device *self, int flags)
 		if (cdevsw[cmaj].d_open == cdopen)
 			vdevgone(cmaj, mn, mn + MAXPARTITIONS - 1, VCHR);
 
-	/* Get rid of the power hook. */
-	if (sc->sc_cdpwrhook != NULL)
-		powerhook_disestablish(sc->sc_cdpwrhook);
-
 	/* Detach disk. */
-	bufq_destroy(sc->sc_bufq);
+	bufq_destroy(&sc->sc_bufq);
 	disk_detach(&sc->sc_dk);
 
 	return (0);
@@ -530,7 +529,7 @@ cdstrategy(struct buf *bp)
 		goto done;
 
 	/* Place it in the queue of disk activities for this disk. */
-	BUFQ_QUEUE(sc->sc_bufq, bp);	
+	bufq_queue(&sc->sc_bufq, bp);	
 
 	/*
 	 * Tell the device to get going on the transfer if it's
@@ -579,7 +578,7 @@ cdstart(struct scsi_xfer *xs)
 	struct buf *bp;
 	struct scsi_rw_big *cmd_big;
 	struct scsi_rw *cmd_small;
-	int blkno, nblks;
+	int secno, nsecs;
 	struct partition *p;
 	int read;
 
@@ -596,12 +595,12 @@ cdstart(struct scsi_xfer *xs)
 	 * re-opened
 	 */
 	if ((sc_link->flags & SDEV_MEDIA_LOADED) == 0) {
-		bufq_drain(sc->sc_bufq);
+		bufq_drain(&sc->sc_bufq);
 		scsi_xs_put(xs);
 		return;
 	}
 
-	bp = BUFQ_DEQUEUE(sc->sc_bufq);
+	bp = bufq_dequeue(&sc->sc_bufq);
 	if (bp == NULL) {
 		scsi_xs_put(xs);
  		return;
@@ -613,11 +612,11 @@ cdstart(struct scsi_xfer *xs)
 	 * First, translate the block to absolute and put it in terms
 	 * of the logical blocksize of the device.
 	 */
-	blkno =
+	secno =
 	    bp->b_blkno / (sc->sc_dk.dk_label->d_secsize / DEV_BSIZE);
 	p = &sc->sc_dk.dk_label->d_partitions[DISKPART(bp->b_dev)];
-	blkno += DL_GETPOFFSET(p);
-	nblks = howmany(bp->b_bcount, sc->sc_dk.dk_label->d_secsize);
+	secno += DL_GETPOFFSET(p);
+	nsecs = howmany(bp->b_bcount, sc->sc_dk.dk_label->d_secsize);
 
 	read = (bp->b_flags & B_READ);
 
@@ -627,16 +626,16 @@ cdstart(struct scsi_xfer *xs)
 	 */
 	if (!(sc_link->flags & SDEV_ATAPI) &&
 	    !(sc_link->quirks & SDEV_ONLYBIG) && 
-	    ((blkno & 0x1fffff) == blkno) &&
-	    ((nblks & 0xff) == nblks)) {
+	    ((secno & 0x1fffff) == secno) &&
+	    ((nsecs & 0xff) == nsecs)) {
 		/*
 		 * We can fit in a small cdb.
 		 */
 		cmd_small = (struct scsi_rw *)xs->cmd;
 		cmd_small->opcode = read ?
 		    READ_COMMAND : WRITE_COMMAND;
-		_lto3b(blkno, cmd_small->addr);
-		cmd_small->length = nblks & 0xff;
+		_lto3b(secno, cmd_small->addr);
+		cmd_small->length = nsecs & 0xff;
 		xs->cmdlen = sizeof(*cmd_small);
 	} else {
 		/*
@@ -645,8 +644,8 @@ cdstart(struct scsi_xfer *xs)
 		cmd_big = (struct scsi_rw_big *)xs->cmd;
 		cmd_big->opcode = read ?
 		    READ_BIG : WRITE_BIG;
-		_lto4b(blkno, cmd_big->addr);
-		_lto2b(nblks, cmd_big->length);
+		_lto4b(secno, cmd_big->addr);
+		_lto2b(nsecs, cmd_big->length);
 		xs->cmdlen = sizeof(*cmd_big);
 	}
 
@@ -665,7 +664,7 @@ cdstart(struct scsi_xfer *xs)
 
 	if (ISSET(sc->sc_flags, CDF_WAITING))
 		CLR(sc->sc_flags, CDF_WAITING);
-	else if (BUFQ_PEEK(sc->sc_bufq))
+	else if (bufq_peek(&sc->sc_bufq))
 		scsi_xsh_add(&sc->sc_xsh);
 }
 
@@ -686,7 +685,7 @@ cd_buf_done(struct scsi_xfer *xs)
 		/* The adapter is busy, requeue the buf and try it later. */
 		disk_unbusy(&sc->sc_dk, bp->b_bcount - xs->resid,
 		    bp->b_flags & B_READ);
-		BUFQ_REQUEUE(sc->sc_bufq, bp);
+		bufq_requeue(&sc->sc_bufq, bp);
 		scsi_xs_put(xs);
 		SET(sc->sc_flags, CDF_WAITING);
 		timeout_add(&sc->sc_timeout, 1);
@@ -775,14 +774,14 @@ int
 cdread(dev_t dev, struct uio *uio, int ioflag)
 {
 
-	return (physio(cdstrategy, NULL, dev, B_READ, cdminphys, uio));
+	return (physio(cdstrategy, dev, B_READ, cdminphys, uio));
 }
 
 int
 cdwrite(dev_t dev, struct uio *uio, int ioflag)
 {
 
-	return (physio(cdstrategy, NULL, dev, B_WRITE, cdminphys, uio));
+	return (physio(cdstrategy, dev, B_WRITE, cdminphys, uio));
 }
 
 /*
@@ -856,8 +855,12 @@ cdioctl(dev_t dev, u_long cmd, caddr_t addr, int flag, struct proc *p)
 		bcopy(lp, sc->sc_dk.dk_label, sizeof(*lp));
 		free(lp, M_TEMP);
 		break;
-	case DIOCGDINFO:
+
 	case DIOCGPDINFO:
+		cdgetdisklabel(dev, sc, (struct disklabel *)addr, 1);
+		break;
+
+	case DIOCGDINFO:
 		*(struct disklabel *)addr = *(sc->sc_dk.dk_label);
 		break;
 
@@ -1185,11 +1188,11 @@ cdgetdisklabel(dev_t dev, struct cd_softc *sc, struct disklabel *lp,
 
 	toc = malloc(sizeof(*toc), M_TEMP, M_WAITOK | M_ZERO);
 
-	lp->d_secsize = sc->sc_params.blksize;
+	lp->d_secsize = sc->params.secsize;
 	lp->d_ntracks = 1;
 	lp->d_nsectors = 100;
 	lp->d_secpercyl = 100;
-	lp->d_ncylinders = (sc->sc_params.disksize / 100) + 1;
+	lp->d_ncylinders = (sc->params.disksize / 100) + 1;
 
 	if (sc->sc_link->flags & SDEV_ATAPI) {
 		strncpy(lp->d_typename, "ATAPI CD-ROM", sizeof(lp->d_typename));
@@ -1200,7 +1203,7 @@ cdgetdisklabel(dev_t dev, struct cd_softc *sc, struct disklabel *lp,
 	}
 
 	strncpy(lp->d_packname, "fictitious", sizeof(lp->d_packname));
-	DL_SETDSIZE(lp, sc->sc_params.disksize);
+	DL_SETDSIZE(lp, sc->params.disksize);
 	lp->d_version = 1;
 
 	/* XXX - these values for BBSIZE and SBSIZE assume ffs */
@@ -1353,11 +1356,11 @@ cd_load_unload(struct cd_softc *sc, int options, int slot)
 	xs = scsi_xs_get(sc->sc_link, 0);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = LOAD_UNLOAD;
 	xs->cmdlen = sizeof(*cmd);
 	xs->timeout = 200000;
 
 	cmd = (struct scsi_load_unload *)xs->cmd;
+	cmd->opcode = LOAD_UNLOAD;
 	cmd->options = options;    /* ioctl uses ATAPI values */
 	cmd->slot = slot;
 
@@ -1409,7 +1412,7 @@ cd_set_pa_immed(struct cd_softc *sc, int flags)
  * Get scsi driver to send a "start playing" command
  */
 int
-cd_play(struct cd_softc *sc, int blkno, int nblks)
+cd_play(struct cd_softc *sc, int secno, int nsecs)
 {
 	struct scsi_play *cmd;
 	struct scsi_xfer *xs;
@@ -1418,13 +1421,13 @@ cd_play(struct cd_softc *sc, int blkno, int nblks)
 	xs = scsi_xs_get(sc->sc_link, 0);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = PLAY;
 	xs->cmdlen = sizeof(*cmd);
 	xs->timeout = 200000;
 
 	cmd = (struct scsi_play *)xs->cmd;
-	_lto4b(blkno, cmd->blk_addr);
-	_lto2b(nblks, cmd->xfer_len);
+	cmd->opcode = PLAY;
+	_lto4b(secno, cmd->blk_addr);
+	_lto2b(nsecs, cmd->xfer_len);
 
 	error = scsi_xs_sync(xs);
 	scsi_xs_put(xs);
@@ -1505,11 +1508,11 @@ cd_play_msf(struct cd_softc *sc, int startm, int starts, int startf, int endm,
 	xs = scsi_xs_get(sc->sc_link, 0);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = PLAY_MSF;
 	xs->cmdlen = sizeof(*cmd);
 	xs->timeout = 20000;
 
 	cmd = (struct scsi_play_msf *)xs->cmd;
+	cmd->opcode = PLAY_MSF;
 	cmd->start_m = startm;
 	cmd->start_s = starts;
 	cmd->start_f = startf;
@@ -1536,11 +1539,11 @@ cd_pause(struct cd_softc *sc, int go)
 	xs = scsi_xs_get(sc->sc_link, 0);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = PAUSE;
 	xs->cmdlen = sizeof(*cmd);
 	xs->timeout = 2000;
 
 	cmd = (struct scsi_pause *)xs->cmd;
+	cmd->opcode = PAUSE;
 	cmd->resume = go;
 
 	error = scsi_xs_sync(xs);
@@ -1584,13 +1587,13 @@ cd_read_subchannel(struct cd_softc *sc, int mode, int format, int track,
 	xs = scsi_xs_get(sc->sc_link, SCSI_DATA_IN | SCSI_SILENT);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = READ_SUBCHANNEL;
 	xs->cmdlen = sizeof(*cmd);
 	xs->data = (void *)data;
 	xs->datalen = len;
 	xs->timeout = 5000;
 
 	cmd = (struct scsi_read_subchannel *)xs->cmd;
+	cmd->opcode = READ_SUBCHANNEL;
 	if (mode == CD_MSF_FORMAT)
 		cmd->byte2 |= CD_MSF;
 	cmd->byte3 = SRS_SUBQ;
@@ -1619,7 +1622,6 @@ cd_read_toc(struct cd_softc *sc, int mode, int start, void *data, int len,
 	    SCSI_IGNORE_ILLEGAL_REQUEST);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = READ_TOC;
 	xs->cmdlen = sizeof(*cmd);
 	xs->data = data;
 	xs->datalen = len;
@@ -1628,6 +1630,7 @@ cd_read_toc(struct cd_softc *sc, int mode, int start, void *data, int len,
 	bzero(data, len);
 
 	cmd = (struct scsi_read_toc *)xs->cmd;
+	cmd->opcode = READ_TOC;
 
 	if (mode == CD_MSF_FORMAT)
 		cmd->byte2 |= CD_MSF;
@@ -1669,21 +1672,21 @@ int
 cd_get_parms(struct cd_softc *sc, int flags)
 {
 	/* Reasonable defaults for drives that don't support READ_CAPACITY */
-	sc->sc_params.blksize = 2048;
-	sc->sc_params.disksize = 400000;
+	sc->params.secsize = 2048;
+	sc->params.disksize = 400000;
 
 	if (sc->sc_link->quirks & ADEV_NOCAPACITY)
 		return (0);
 
-	sc->sc_params.disksize = scsi_size(sc->sc_link, flags,
-	    &sc->sc_params.blksize);
+	sc->params.disksize = scsi_size(sc->sc_link, flags,
+	    &sc->params.secsize);
 
-	if ((sc->sc_params.blksize < 512) ||
-	    ((sc->sc_params.blksize & 511) != 0))
-		sc->sc_params.blksize = 2048;	/* some drives lie ! */
+	if ((sc->params.secsize < 512) ||
+	    ((sc->params.secsize & 511) != 0))
+		sc->params.secsize = 2048;	/* some drives lie ! */
 
-	if (sc->sc_params.disksize < 100)
-		sc->sc_params.disksize = 400000;
+	if (sc->params.disksize < 100)
+		sc->params.disksize = 400000;
 
 	return (0);
 }
@@ -1697,7 +1700,7 @@ cdsize(dev_t dev)
 }
 
 int
-cddump(dev_t dev, daddr64_t blkno, caddr_t va, size_t size)
+cddump(dev_t dev, daddr64_t secno, caddr_t va, size_t size)
 {
 	/* Not implemented. */
 	return ENXIO;
@@ -1723,11 +1726,13 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 
 	bzero(buf, sizeof(buf));
 
+	cmd = xs->cmd;
+
 	switch (a->type) {
 	case DVD_LU_SEND_AGID:
-		xs->cmd->opcode = GPCMD_REPORT_KEY;
-		xs->cmd->bytes[8] = 8;
-		xs->cmd->bytes[9] = 0 | (0 << 6);
+		cmd->opcode = GPCMD_REPORT_KEY;
+		cmd->bytes[8] = 8;
+		cmd->bytes[9] = 0 | (0 << 6);
 		xs->datalen = 8;
 		xs->flags |= SCSI_DATA_IN;
 
@@ -1739,9 +1744,9 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_LU_SEND_CHALLENGE:
-		xs->cmd->opcode = GPCMD_REPORT_KEY;
-		xs->cmd->bytes[8] = 16;
-		xs->cmd->bytes[9] = 1 | (a->lsc.agid << 6);
+		cmd->opcode = GPCMD_REPORT_KEY;
+		cmd->bytes[8] = 16;
+		cmd->bytes[9] = 1 | (a->lsc.agid << 6);
 		xs->datalen = 16;
 		xs->flags |= SCSI_DATA_IN;
 
@@ -1752,9 +1757,9 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_LU_SEND_KEY1:
-		xs->cmd->opcode = GPCMD_REPORT_KEY;
-		xs->cmd->bytes[8] = 12;
-		xs->cmd->bytes[9] = 2 | (a->lsk.agid << 6);
+		cmd->opcode = GPCMD_REPORT_KEY;
+		cmd->bytes[8] = 12;
+		cmd->bytes[9] = 2 | (a->lsk.agid << 6);
 		xs->datalen = 12;
 		xs->flags |= SCSI_DATA_IN;
 
@@ -1766,10 +1771,10 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_LU_SEND_TITLE_KEY:
-		xs->cmd->opcode = GPCMD_REPORT_KEY;
-		_lto4b(a->lstk.lba, &xs->cmd->bytes[1]);
-		xs->cmd->bytes[8] = 12;
-		xs->cmd->bytes[9] = 4 | (a->lstk.agid << 6);
+		cmd->opcode = GPCMD_REPORT_KEY;
+		_lto4b(a->lstk.lba, &cmd->bytes[1]);
+		cmd->bytes[8] = 12;
+		cmd->bytes[9] = 4 | (a->lstk.agid << 6);
 		xs->datalen = 12;
 		xs->flags |= SCSI_DATA_IN;
 
@@ -1785,9 +1790,9 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_LU_SEND_ASF:
-		xs->cmd->opcode = GPCMD_REPORT_KEY;
-		xs->cmd->bytes[8] = 8;
-		xs->cmd->bytes[9] = 5 | (a->lsasf.agid << 6);
+		cmd->opcode = GPCMD_REPORT_KEY;
+		cmd->bytes[8] = 8;
+		cmd->bytes[9] = 5 | (a->lsasf.agid << 6);
 		xs->datalen = 8;
 		xs->flags |= SCSI_DATA_IN;
 
@@ -1799,9 +1804,9 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_HOST_SEND_CHALLENGE:
-		xs->cmd->opcode = GPCMD_SEND_KEY;
-		xs->cmd->bytes[8] = 16;
-		xs->cmd->bytes[9] = 1 | (a->hsc.agid << 6);
+		cmd->opcode = GPCMD_SEND_KEY;
+		cmd->bytes[8] = 16;
+		cmd->bytes[9] = 1 | (a->hsc.agid << 6);
 		buf[1] = 14;
 		dvd_copy_challenge(&buf[4], a->hsc.chal);
 		xs->datalen = 16;
@@ -1815,9 +1820,9 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_HOST_SEND_KEY2:
-		xs->cmd->opcode = GPCMD_SEND_KEY;
-		xs->cmd->bytes[8] = 12;
-		xs->cmd->bytes[9] = 3 | (a->hsk.agid << 6);
+		cmd->opcode = GPCMD_SEND_KEY;
+		cmd->bytes[8] = 12;
+		cmd->bytes[9] = 3 | (a->hsk.agid << 6);
 		buf[1] = 10;
 		dvd_copy_key(&buf[4], a->hsk.key);
 		xs->datalen = 12;
@@ -1833,8 +1838,8 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_INVALIDATE_AGID:
-		xs->cmd->opcode = GPCMD_REPORT_KEY;
-		xs->cmd->bytes[9] = 0x3f | (a->lsa.agid << 6);
+		cmd->opcode = GPCMD_REPORT_KEY;
+		cmd->bytes[9] = 0x3f | (a->lsa.agid << 6);
 		xs->data = NULL;
 
 		error = scsi_xs_sync(xs);
@@ -1843,9 +1848,9 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_LU_SEND_RPC_STATE:
-		xs->cmd->opcode = GPCMD_REPORT_KEY;
-		xs->cmd->bytes[8] = 8;
-		xs->cmd->bytes[9] = 8 | (0 << 6);
+		cmd->opcode = GPCMD_REPORT_KEY;
+		cmd->bytes[8] = 8;
+		cmd->bytes[9] = 8 | (0 << 6);
 		xs->datalen = 8;
 		xs->flags |= SCSI_DATA_IN;
 
@@ -1862,9 +1867,9 @@ dvd_auth(struct cd_softc *sc, union dvd_authinfo *a)
 		return (error);
 
 	case DVD_HOST_SEND_RPC_STATE:
-		xs->cmd->opcode = GPCMD_SEND_KEY;
-		xs->cmd->bytes[8] = 8;
-		xs->cmd->bytes[9] = 6 | (0 << 6);
+		cmd->opcode = GPCMD_SEND_KEY;
+		cmd->bytes[8] = 8;
+		cmd->bytes[9] = 6 | (0 << 6);
 		buf[1] = 6;
 		buf[4] = a->hrpcs.pdrc;
 		xs->datalen = 8;
@@ -1893,7 +1898,6 @@ dvd_read_physical(struct cd_softc *sc, union dvd_struct *s)
 	xs = scsi_xs_get(sc->sc_link, SCSI_DATA_IN);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
 	xs->cmdlen = sizeof(*cmd);
 	xs->data = buf;
 	xs->datalen = sizeof(buf);
@@ -1901,10 +1905,12 @@ dvd_read_physical(struct cd_softc *sc, union dvd_struct *s)
 
 	bzero(buf, sizeof(buf));
 
-	xs->cmd->bytes[6] = s->type;
-	_lto2b(sizeof(buf), &xs->cmd->bytes[7]);
+	cmd = xs->cmd;
+	cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
+	cmd->bytes[6] = s->type;
+	_lto2b(sizeof(buf), &cmd->bytes[7]);
 
-	xs->cmd->bytes[5] = s->physical.layer_num;
+	cmd->bytes[5] = s->physical.layer_num;
 
 	error = scsi_xs_sync(xs);
 	scsi_xs_put(xs);
@@ -1942,7 +1948,6 @@ dvd_read_copyright(struct cd_softc *sc, union dvd_struct *s)
 	xs = scsi_xs_get(sc->sc_link, SCSI_DATA_IN);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
 	xs->cmdlen = sizeof(*cmd);
 	xs->data = buf;
 	xs->datalen = sizeof(buf);
@@ -1950,10 +1955,12 @@ dvd_read_copyright(struct cd_softc *sc, union dvd_struct *s)
 
 	bzero(buf, sizeof(buf));
 
-	xs->cmd->bytes[6] = s->type;
-	_lto2b(sizeof(buf), &xs->cmd->bytes[7]);
+	cmd = xs->cmd;
+	cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
+	cmd->bytes[6] = s->type;
+	_lto2b(sizeof(buf), &cmd->bytes[7]);
 
-	xs->cmd->bytes[5] = s->copyright.layer_num;
+	cmd->bytes[5] = s->copyright.layer_num;
 
 	error = scsi_xs_sync(xs);
 	scsi_xs_put(xs);
@@ -1983,13 +1990,13 @@ dvd_read_disckey(struct cd_softc *sc, union dvd_struct *s)
 		free(buf, M_TEMP);
 		return (ENOMEM);
 	}
-	xs->cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
 	xs->cmdlen = sizeof(*cmd);
 	xs->data = (void *)buf;
 	xs->datalen = sizeof(*buf);
 	xs->timeout = 30000;
 
 	cmd = (struct scsi_read_dvd_structure *)xs->cmd;
+	cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
 	cmd->format = s->type;
 	cmd->agid = s->disckey.agid << 6;
 	_lto2b(sizeof(*buf), cmd->length);
@@ -2015,7 +2022,6 @@ dvd_read_bca(struct cd_softc *sc, union dvd_struct *s)
 	xs = scsi_xs_get(sc->sc_link, SCSI_DATA_IN);
 	if (xs == NULL)
 		return (ENOMEM);
-	xs->cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
 	xs->cmdlen = sizeof(*cmd);
 	xs->data = buf;
 	xs->datalen = sizeof(buf);
@@ -2023,8 +2029,10 @@ dvd_read_bca(struct cd_softc *sc, union dvd_struct *s)
 
 	bzero(buf, sizeof(buf));
 
-	xs->cmd->bytes[6] = s->type;
-	_lto2b(sizeof(buf), &xs->cmd->bytes[7]);
+	cmd = xs->cmd;
+	cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
+	cmd->bytes[6] = s->type;
+	_lto2b(sizeof(buf), &cmd->bytes[7]);
 
 	error = scsi_xs_sync(xs);
 	scsi_xs_put(xs);
@@ -2055,13 +2063,13 @@ dvd_read_manufact(struct cd_softc *sc, union dvd_struct *s)
 		free(buf, M_TEMP);
 		return (ENOMEM);
 	}
-	xs->cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
 	xs->cmdlen = sizeof(*cmd);
 	xs->data = (void *)buf;
 	xs->datalen = sizeof(*buf);
 	xs->timeout = 30000;
 
 	cmd = (struct scsi_read_dvd_structure *)xs->cmd;
+	cmd->opcode = GPCMD_READ_DVD_STRUCTURE;
 	cmd->format = s->type;
 	_lto2b(sizeof(*buf), cmd->length);
 
@@ -2098,21 +2106,6 @@ dvd_read_struct(struct cd_softc *sc, union dvd_struct *s)
 	default:
 		return (EINVAL);
 	}
-}
-
-void
-cd_powerhook(int why, void *arg)
-{
-	struct cd_softc *sc = arg;
-
-	/*
-	 * When resuming, hardware may have forgotten we locked it. So if
-	 * there are any open partitions, lock the CD.
-	 */
-	if (why == PWR_RESUME && sc->sc_dk.dk_openmask != 0)
-		scsi_prevent(sc->sc_link, PR_PREVENT,
-		    SCSI_IGNORE_ILLEGAL_REQUEST | SCSI_IGNORE_MEDIA_CHANGE |
-		    SCSI_SILENT);
 }
 
 int

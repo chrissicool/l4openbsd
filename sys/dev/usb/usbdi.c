@@ -1,4 +1,4 @@
-/*	$OpenBSD: usbdi.c,v 1.38 2010/03/05 17:28:54 mk Exp $ */
+/*	$OpenBSD: usbdi.c,v 1.43 2011/01/16 22:35:29 jakemsr Exp $ */
 /*	$NetBSD: usbdi.c,v 1.103 2002/09/27 15:37:38 provos Exp $	*/
 /*	$FreeBSD: src/sys/dev/usb/usbdi.c,v 1.28 1999/11/17 22:33:49 n_hibma Exp $	*/
 
@@ -71,15 +71,68 @@ struct rwlock usbpalock;
 void
 usbd_init(void)
 {
-	if (usbd_nbuses == 0)
+	if (usbd_nbuses == 0) {
 		rw_init(&usbpalock, "usbpalock");
+		usb_begin_tasks();
+	}
 	usbd_nbuses++;
 }
 
 void
 usbd_finish(void)
 {
-	--usbd_nbuses;
+	if (--usbd_nbuses == 0)
+		usb_end_tasks();
+}
+
+int
+usbd_is_dying(usbd_device_handle dev)
+{
+	return (dev->dying || dev->bus->dying);
+}
+
+void
+usbd_deactivate(usbd_device_handle dev)
+{
+	dev->dying = 1;
+}
+
+void
+usbd_ref_incr(usbd_device_handle dev)
+{
+	dev->ref_cnt++;
+}
+
+void
+usbd_ref_decr(usbd_device_handle dev)
+{
+	if (--dev->ref_cnt == 0 && dev->dying)
+		wakeup(&dev->ref_cnt);
+}
+
+void
+usbd_ref_wait(usbd_device_handle dev)
+{
+	while (dev->ref_cnt > 0)
+		tsleep(&dev->ref_cnt, PWAIT, "usbref", hz * 60);
+}
+
+int
+usbd_get_devcnt(usbd_device_handle dev)
+{
+	return (dev->ndevs);
+}
+
+void
+usbd_claim_iface(usbd_device_handle dev, int ifaceidx)
+{
+	dev->ifaces[ifaceidx].claimed = 1;
+}
+
+int
+usbd_iface_claimed(usbd_device_handle dev, int ifaceidx)
+{
+	return (dev->ifaces[ifaceidx].claimed);
 }
 
 static __inline int
@@ -265,6 +318,9 @@ usbd_transfer(usbd_xfer_handle xfer)
 	usbd_status err;
 	u_int size;
 	int s;
+
+	if (usbd_is_dying(pipe->device))
+		return (USBD_IOERROR);
 
 	DPRINTFN(5,("usbd_transfer: xfer=%p, flags=%d, pipe=%p, running=%d\n",
 	    xfer, xfer->flags, pipe, pipe->running));
@@ -918,6 +974,10 @@ usbd_do_request_flags_pipe(usbd_device_handle dev, usbd_pipe_handle pipe,
 		return (USBD_INVAL);
 	}
 #endif
+
+	/* If the bus is gone, don't go any further. */
+	if (usbd_is_dying(dev))
+		return (USBD_IOERROR);
 
 	xfer = usbd_alloc_xfer(dev);
 	if (xfer == NULL)

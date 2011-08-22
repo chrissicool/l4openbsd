@@ -1,10 +1,10 @@
-.TH "nsd\-patch" "8" "Apr 14, 2010" "NLnet Labs" "nsd 3.2.5"
+.TH "nsd\-patch" "8" "@date@" "NLnet Labs" "nsd @version@"
 .\" Copyright (c) 2001\-2008, NLnet Labs. All rights reserved.
 .\" See LICENSE for the license.
 .SH "NAME"
 .LP
 .B nsd\-patch
-\- NSD zone patcher version 3.2.5.
+\- NSD zone patcher version @version@.
 .SH "SYNOPSIS"
 .B nsd\-patch
 .RB [ \-c
@@ -28,7 +28,7 @@ difffile does not grow infinitely.
 .TP
 .B \-c\fI configfile
 Read specified configfile instead of the default
-.IR /etc/nsd/nsd.conf .
+.IR /etc/nsd.conf .
 .TP
 .B \-f
 Forces writing zone files. Also zones that have not changed are written
@@ -50,18 +50,18 @@ Skip writing zone files. No zones are written back to their zone files.
 Read specified difffile. Overrides the config file setting.
 .SH "FILES"
 .TP
-/var/db/nsd/nsd.db
+/var/nsd/db/nsd.db
 default
 .B NSD
 database
 .TP
-/etc/nsd/nsd.conf
+/etc/nsd.conf
 default
 .B NSD
 configuration file
 .SH "SEE ALSO"
 nsd(8), nsdc(8), nsd.conf(5), nsd-checkconf(8), nsd-notify(8), 
-nsd-xfer(8), zonec(8)
+nsd-xfer(8), nsd-zonec(8)
 .SH "AUTHORS"
 .LP
 .B NSD

@@ -1,4 +1,4 @@
-#	$OpenBSD: files.hppa64,v 1.11 2010/07/01 03:44:35 jsing Exp $
+#	$OpenBSD: files.hppa64,v 1.13 2011/01/02 13:08:36 jsing Exp $
 #
 # hppa64-specific configuration info
 
@@ -56,6 +56,11 @@ include	"dev/pcmcia/files.pcmcia"
 include "dev/usb/files.usb"
 
 #
+# Bluetooth
+#
+include "dev/bluetooth/files.bluetooth"
+
+#
 # Machine-independent 1-Wire drivers
 #
 include "dev/onewire/files.onewire"
@@ -105,13 +110,6 @@ major	{rd = 3}
 
 # PS/2 mouse
 include	"dev/pckbc/files.pckbc"
-
-#
-# Compatibility
-#
-#include	"compat/linux/files.linux"
-#include "compat/ossaudio/files.ossaudio"
-#file	arch/hppa64/hppa64/linux_machdep.c	compat_linux
 
 #
 # Non-device files

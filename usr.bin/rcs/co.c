@@ -1,4 +1,4 @@
-/*	$OpenBSD: co.c,v 1.113 2010/07/30 21:47:18 ray Exp $	*/
+/*	$OpenBSD: co.c,v 1.116 2010/12/03 19:44:58 chl Exp $	*/
 /*
  * Copyright (c) 2005 Joris Vink <joris@openbsd.org>
  * All rights reserved.
@@ -25,6 +25,7 @@
  */
 
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #include <err.h>
 #include <fcntl.h>
@@ -155,10 +156,6 @@ checkout_main(int argc, char **argv)
 
 	if ((username = getlogin()) == NULL)
 		err(1, "getlogin");
-
-	/* If -x flag was not given, use default. */
-	if (rcs_suffixes == NULL)
-		rcs_suffixes = RCS_DEFAULT_SUFFIX;
 
 	for (i = 0; i < argc; i++) {
 		fd = rcs_choosefile(argv[i], fpath, sizeof(fpath));
@@ -370,8 +367,8 @@ checkout_rev(RCSFILE *file, RCSNUM *frev, const char *dst, int flags,
 	/*
 	 * File inherits permissions from its ,v file
 	 */
-	if (file->rf_fd != -1) {
-		if (fstat(file->rf_fd, &st) == -1)
+	if (file->rf_file != NULL) {
+		if (fstat(fileno(file->rf_file), &st) == -1)
 			err(1, "%s", file->rf_path);
 		file->rf_mode = mode = st.st_mode;
 	} else {

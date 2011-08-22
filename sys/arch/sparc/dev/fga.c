@@ -1,4 +1,4 @@
-/*	$OpenBSD: fga.c,v 1.15 2006/02/22 22:32:12 miod Exp $	*/
+/*	$OpenBSD: fga.c,v 1.17 2010/11/11 17:46:58 miod Exp $	*/
 
 /*
  * Copyright (c) 1999 Jason L. Wright (jason@thought.net)
@@ -520,10 +520,9 @@ fga_intr_establish(sc, vec, level, ih, name)
 	/* setup vector handler */
 	if (sc->sc_vmevec == NULL) {
 		sc->sc_vmevec = (struct intrhand **)malloc(256 *
-		    sizeof(struct intrhand *), M_DEVBUF, M_NOWAIT);
+		    sizeof(struct intrhand *), M_DEVBUF, M_NOWAIT | M_ZERO);
 		if (sc->sc_vmevec == NULL)
 			panic("fga_addirq");
-		bzero(sc->sc_vmevec, 256 * sizeof(struct intrhand *));
 	}
 	if (sc->sc_vmevec[vec] == NULL)
 		sc->sc_vmevec[vec] = ih;
@@ -535,7 +534,7 @@ fga_intr_establish(sc, vec, level, ih, name)
 	}
 
 	ih->ih_vec = level;
-	evcount_attach(&ih->ih_count, name, &ih->ih_vec, &evcount_intr);
+	evcount_attach(&ih->ih_count, name, &ih->ih_vec);
 
 	/* setup hardware handler */
 	fga_hwintr_establish(sc, level_to_sint[level]);

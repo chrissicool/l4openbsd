@@ -1,4 +1,4 @@
-/*	$OpenBSD: uaudio.c,v 1.87 2010/07/31 02:52:16 jakemsr Exp $ */
+/*	$OpenBSD: uaudio.c,v 1.91 2011/01/25 20:03:36 jakemsr Exp $ */
 /*	$NetBSD: uaudio.c,v 1.90 2004/10/29 17:12:53 kent Exp $	*/
 
 /*
@@ -210,7 +210,6 @@ struct uaudio_softc {
 	struct device	 sc_dev;	/* base device */
 	usbd_device_handle sc_udev;	/* USB device */
 	int		 sc_ac_iface;	/* Audio Control interface */
-	usbd_interface_handle	sc_ac_ifaceh;
 	struct chan	 sc_playchan;	/* play channel */
 	struct chan	 sc_recchan;	/* record channel */
 	int		 sc_nullalt;
@@ -520,10 +519,9 @@ uaudio_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	sc->sc_ac_ifaceh = uaa->iface;
 	/* Pick up the AS interface. */
 	for (i = 0; i < uaa->nifaces; i++) {
-		if (uaa->ifaces[i] == NULL)
+		if (usbd_iface_claimed(sc->sc_udev, i))
 			continue;
 		id = usbd_get_interface_descriptor(uaa->ifaces[i]);
 		if (id == NULL)
@@ -537,7 +535,7 @@ uaudio_attach(struct device *parent, struct device *self, void *aux)
 			}
 		}
 		if (found)
-			uaa->ifaces[i] = NULL;
+			usbd_claim_iface(sc->sc_udev, i);
 	}
 
 	for (j = 0; j < sc->sc_nalts; j++) {
@@ -561,9 +559,6 @@ uaudio_attach(struct device *parent, struct device *self, void *aux)
 	printf(", %d mixer controls\n", sc->sc_nctls);
 
 	uaudio_create_encodings(sc);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	DPRINTF(("uaudio_attach: doing audio_attach_mi\n"));
 	sc->sc_audiodev = audio_attach_mi(&uaudio_hw_if, sc, &sc->sc_dev);
@@ -591,26 +586,21 @@ int
 uaudio_detach(struct device *self, int flags)
 {
 	struct uaudio_softc *sc = (struct uaudio_softc *)self;
-	struct chan *pchan = &sc->sc_playchan;
-	struct chan *rchan = &sc->sc_recchan;
-	int ms, rv = 0;
+	int rv = 0;
 
 	/*
-	 * sc_alts may be NULL if uaudio_identify_as() failed
+	 * sc_alts may be NULL if uaudio_identify_as() failed, in
+	 * which case uaudio_attach() didn't finish and there's
+	 * nothing to detach.
 	 */
 	if (sc->sc_alts == NULL)
-		return rv;
+		return (rv);
 
 	/* Wait for outstanding requests to complete. */
-	ms = max(sc->sc_alts[pchan->altidx].sc_busy ? pchan->reqms : 0,
-	    sc->sc_alts[rchan->altidx].sc_busy ? rchan->reqms : 0);
-	usbd_delay_ms(sc->sc_udev, UAUDIO_NCHANBUFS * ms);
+	uaudio_drain(sc);
 
 	if (sc->sc_audiodev != NULL)
 		rv = config_detach(sc->sc_audiodev, flags);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (rv);
 }
@@ -2237,11 +2227,13 @@ uaudio_drain(void *addr)
 	struct uaudio_softc *sc = addr;
 	struct chan *pchan = &sc->sc_playchan;
 	struct chan *rchan = &sc->sc_recchan;
-	int ms;
+	int ms = 0;
 
 	/* Wait for outstanding requests to complete. */
-	ms = max(sc->sc_alts[pchan->altidx].sc_busy ? pchan->reqms : 0,
-	    sc->sc_alts[rchan->altidx].sc_busy ? rchan->reqms : 0);
+	if (pchan->altidx != -1 && sc->sc_alts[pchan->altidx].sc_busy)
+		ms = max(ms, pchan->reqms);
+	if (rchan->altidx != -1 && sc->sc_alts[rchan->altidx].sc_busy)
+		ms = max(ms, rchan->reqms);
 	usbd_delay_ms(sc->sc_udev, UAUDIO_NCHANBUFS * ms);
 
 	return (0);
@@ -3272,7 +3264,7 @@ uaudio_chan_init(struct chan *ch, int mode, int altidx,
 		ch->nsync_frames = UAUDIO_MAX_FRAMES;
 	}
 	DPRINTF(("%s: residual sample fraction: %d/%d\n", __func__,
-	    ch->fraction, ch->usb_fps));
+	    ch->fraction, ch->frac_denom));
 }
 
 void

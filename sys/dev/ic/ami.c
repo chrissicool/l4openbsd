@@ -1,4 +1,4 @@
-/*	$OpenBSD: ami.c,v 1.212 2010/07/01 03:20:38 matthew Exp $	*/
+/*	$OpenBSD: ami.c,v 1.218 2011/02/22 02:30:08 dlg Exp $	*/
 
 /*
  * Copyright (c) 2001 Michael Shalayeff
@@ -492,11 +492,7 @@ ami_attach(struct ami_softc *sc)
 		sc->sc_maxcmds -= AMI_MAXIOCTLCMDS + AMI_MAXPROCS *
 		    AMI_MAXRAWCMDS * sc->sc_channels;
 
-		if (sc->sc_nunits)
-			sc->sc_link.openings =
-			    sc->sc_maxcmds / sc->sc_nunits;
-		else
-			sc->sc_link.openings = sc->sc_maxcmds;
+		sc->sc_link.openings = sc->sc_maxcmds;
 	}
 
 	ami_freemem(sc, am);
@@ -579,9 +575,13 @@ ami_attach(struct ami_softc *sc)
 	for (sc->sc_rawsoftcs = rsc;
 	     rsc < &sc->sc_rawsoftcs[sc->sc_channels]; rsc++) {
 
+		struct scsibus_softc *ptbus;
+		struct scsi_link *proclink;
+		struct device *procdev;
+
 		rsc->sc_softc = sc;
 		rsc->sc_channel = rsc - sc->sc_rawsoftcs;
-		rsc->sc_link.openings = AMI_MAXRAWCMDS;
+		rsc->sc_link.openings = sc->sc_maxcmds;
 		rsc->sc_link.adapter_softc = rsc;
 		rsc->sc_link.adapter = &ami_raw_switch;
 		rsc->sc_proctarget = -1;
@@ -593,7 +593,19 @@ ami_attach(struct ami_softc *sc)
 		bzero(&saa, sizeof(saa));
 		saa.saa_sc_link = &rsc->sc_link;
 
-		config_found(&sc->sc_dev, &saa, scsiprint);
+		ptbus = (struct scsibus_softc *)config_found(&sc->sc_dev,
+		    &saa, scsiprint);
+
+		if (ptbus == NULL || rsc->sc_proctarget == -1)
+			continue;
+
+		proclink = scsi_get_link(ptbus, rsc->sc_proctarget, 0);
+		if (proclink == NULL)
+			continue;
+
+		procdev = proclink->device_softc;
+		strlcpy(rsc->sc_procdev, procdev->dv_xname,
+		    sizeof(rsc->sc_procdev));
 	}
 
 	return (0);
@@ -1207,19 +1219,14 @@ ami_scsi_raw_cmd(struct scsi_xfer *xs)
 	struct ami_rawsoftc *rsc = link->adapter_softc;
 	struct ami_softc *sc = rsc->sc_softc;
 	u_int8_t channel = rsc->sc_channel, target = link->target;
-	struct device *dev = link->device_softc;
 	struct ami_ccb *ccb;
 
 	AMI_DPRINTF(AMI_D_CMD, ("ami_scsi_raw_cmd "));
 
-	if (!cold && target == rsc->sc_proctarget)
-		strlcpy(rsc->sc_procdev, dev->dv_xname,
-		    sizeof(rsc->sc_procdev));
-
 	if (xs->cmdlen > AMI_MAX_CDB) {
 		AMI_DPRINTF(AMI_D_CMD, ("CDB too big %p ", xs));
 		bzero(&xs->sense, sizeof(xs->sense));
-		xs->sense.error_code = SSD_ERRCODE_VALID | 0x70;
+		xs->sense.error_code = SSD_ERRCODE_VALID | SSD_ERRCODE_CURRENT;
 		xs->sense.flags = SKEY_ILLEGAL_REQUEST;
 		xs->sense.add_sense_code = 0x20; /* illcmd, 0x24 illfield */
 		xs->error = XS_SENSE;
@@ -1336,7 +1343,6 @@ ami_scsi_cmd(struct scsi_xfer *xs)
 		return;
 	}
 
-	error = 0;
 	xs->error = XS_NOERROR;
 
 	switch (xs->cmd->opcode) {
@@ -1379,7 +1385,7 @@ ami_scsi_cmd(struct scsi_xfer *xs)
 	case REQUEST_SENSE:
 		AMI_DPRINTF(AMI_D_CMD, ("REQUEST SENSE tgt %d ", target));
 		bzero(&sd, sizeof(sd));
-		sd.error_code = 0x70;
+		sd.error_code = SSD_ERRCODE_CURRENT;
 		sd.segment = 0;
 		sd.flags = SKEY_NO_SENSE;
 		*(u_int32_t*)sd.info = htole32(0);
@@ -1398,6 +1404,7 @@ ami_scsi_cmd(struct scsi_xfer *xs)
 		inq.version = 2;
 		inq.response_format = 2;
 		inq.additional_length = 32;
+		inq.flags |= SID_CmdQue;
 		strlcpy(inq.vendor, "AMI    ", sizeof(inq.vendor));
 		snprintf(inq.product, sizeof(inq.product),
 		    "Host drive  #%02d", target);
@@ -2005,8 +2012,8 @@ ami_disk(struct ami_softc *sc, struct bioc_disk *bd,
 		if (!ami_drv_inq(sc, ch, tg, 0x80, &vpdbuf)) {
 			bcopy(vpdbuf.serial, ser, sizeof ser - 1);
 			ser[sizeof ser - 1] = '\0';
-			if (vpdbuf.hdr.page_length < sizeof ser)
-				ser[vpdbuf.hdr.page_length] = '\0';
+			if (_2btol(vpdbuf.hdr.page_length) < sizeof ser)
+				ser[_2btol(vpdbuf.hdr.page_length)] = '\0';
 			strlcpy(bd->bd_serial, ser, sizeof(bd->bd_serial));
 		}
 
@@ -2251,8 +2258,9 @@ ami_ioctl_disk(struct ami_softc *sc, struct bioc_disk *bd)
 			if (!ami_drv_inq(sc, ch, tg, 0x80, &vpdbuf)) {
 				bcopy(vpdbuf.serial, ser, sizeof ser - 1);
 				ser[sizeof ser - 1] = '\0';
-				if (vpdbuf.hdr.page_length < sizeof ser)
-					ser[vpdbuf.hdr.page_length] = '\0';
+				if (_2btol(vpdbuf.hdr.page_length) < sizeof ser)
+					ser[_2btol(vpdbuf.hdr.page_length)] =
+					    '\0';
 				strlcpy(bd->bd_serial, ser,
 				    sizeof(bd->bd_serial));
 			}

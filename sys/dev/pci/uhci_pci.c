@@ -1,4 +1,4 @@
-/*	$OpenBSD: uhci_pci.c,v 1.29 2010/06/29 22:14:57 mlarkin Exp $	*/
+/*	$OpenBSD: uhci_pci.c,v 1.31 2010/12/14 16:13:16 jakemsr Exp $	*/
 /*	$NetBSD: uhci_pci.c,v 1.24 2002/10/02 16:51:58 thorpej Exp $	*/
 
 /*
@@ -182,7 +182,7 @@ uhci_pci_attach(struct device *parent, struct device *self, void *aux)
 	config_defer(self, uhci_pci_attach_deferred);
 	
 	/* Ignore interrupts for now */
-	sc->sc.sc_dying = 1;
+	sc->sc.sc_bus.dying = 1;
 
 	splx(s);
 
@@ -203,7 +203,7 @@ uhci_pci_attach_deferred(struct device *self)
 
 	s = splhardusb();
 	
-	sc->sc.sc_dying = 0;
+	sc->sc.sc_bus.dying = 0;
 	r = uhci_init(&sc->sc);
 	if (r != USBD_NORMAL_COMPLETION) {
 		printf("%s: init failed, error=%d\n", devname, r);
@@ -219,6 +219,7 @@ uhci_pci_attach_deferred(struct device *self)
 
 unmap_ret:
 	bus_space_unmap(sc->sc.iot, sc->sc.ioh, sc->sc.sc_size);
+	pci_intr_disestablish(sc->sc_pc, sc->sc_ih);
 	splx(s);
 }
 

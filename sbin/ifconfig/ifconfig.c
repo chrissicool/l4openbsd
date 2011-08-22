@@ -1,4 +1,4 @@
-/*	$OpenBSD: ifconfig.c,v 1.239 2010/07/03 04:44:51 guenther Exp $	*/
+/*	$OpenBSD: ifconfig.c,v 1.244 2011/03/01 09:37:31 claudio Exp $	*/
 /*	$NetBSD: ifconfig.c,v 1.40 1997/10/01 02:19:43 enami Exp $	*/
 
 /*
@@ -105,6 +105,7 @@
 #include <ifaddrs.h>
 
 #include "brconfig.h"
+#include "pbkdf2.h"
 
 struct	ifreq		ifr, ridreq;
 struct	in_aliasreq	in_addreq;
@@ -137,9 +138,6 @@ int	shownet80211chans;
 int	shownet80211nodes;
 
 void	notealias(const char *, int);
-void	notrailers(const char *, int);
-void	setifgroup(const char *, int);
-void	unsetifgroup(const char *, int);
 void	setifaddr(const char *, int);
 void	setifrtlabel(const char *, int);
 void	setiflladdr(const char *, int);
@@ -147,10 +145,6 @@ void	setifdstaddr(const char *, int);
 void	setifflags(const char *, int);
 void	setifxflags(const char *, int);
 void	setifbroadaddr(const char *, int);
-void	setifdesc(const char *, int);
-void	unsetifdesc(const char *, int);
-void	setifipdst(const char *, int);
-void	setifmetric(const char *, int);
 void	setifmtu(const char *, int);
 void	setifnwid(const char *, int);
 void	setifbssid(const char *, int);
@@ -160,11 +154,10 @@ void	setifwpaprotos(const char *, int);
 void	setifwpaakms(const char *, int);
 void	setifwpaciphers(const char *, int);
 void	setifwpagroupcipher(const char *, int);
-void	setifwpapsk(const char *, int);
+void	setifwpakey(const char *, int);
 void	setifchan(const char *, int);
 void	setifscan(const char *, int);
 void	setiftxpower(const char *, int);
-void	setifpowersave(const char *, int);
 void	setifnwflag(const char *, int);
 void	unsetifnwflag(const char *, int);
 void	setifnetmask(const char *, int);
@@ -200,6 +193,11 @@ void	setvlandev(const char *, int);
 void	unsetvlandev(const char *, int);
 void	mpe_status(void);
 void	vlan_status(void);
+void	setinstance(const char *, int);
+int	main(int, char *[]);
+int	prefix(void *val, int);
+
+#ifndef SMALL
 void	getifgroups(void);
 void	carp_status(void);
 void	setcarp_advbase(const char *,int);
@@ -239,17 +237,25 @@ void	settrunkport(const char *, int);
 void	unsettrunkport(const char *, int);
 void	settrunkproto(const char *, int);
 void	trunk_status(void);
+void	setifgroup(const char *, int);
+void	unsetifgroup(const char *, int);
 void	setifpriority(const char *, int);
-void	setinstance(const char *, int);
-int	main(int, char *[]);
-int	prefix(void *val, int);
-
-#ifndef SMALL
+void	setifpowersave(const char *, int);
+void	setifmetric(const char *, int);
+void	notrailers(const char *, int);
+void	setgroupattribs(char *, int, char *[]);
 void	pflow_status(void);
 void	setpflow_sender(const char *, int);
 void	unsetpflow_sender(const char *, int);
 void	setpflow_receiver(const char *, int);
 void	unsetpflow_receiver(const char *, int);
+void	list_cloners(void);
+void	setifipdst(const char *, int);
+void	setifdesc(const char *, int);
+void	unsetifdesc(const char *, int);
+int	printgroup(char *, int);
+#else
+void	setignore(const char *, int);
 #endif
 
 /*
@@ -286,8 +292,6 @@ const struct	cmd {
 } cmds[] = {
 	{ "up",		IFF_UP,		0,		setifflags } ,
 	{ "down",	-IFF_UP,	0,		setifflags },
-	{ "trailers",	-1,		0,		notrailers },
-	{ "-trailers",	1,		0,		notrailers },
 	{ "arp",	-IFF_NOARP,	0,		setifflags },
 	{ "-arp",	IFF_NOARP,	0,		setifflags },
 	{ "debug",	IFF_DEBUG,	0,		setifflags },
@@ -300,10 +304,7 @@ const struct	cmd {
 	{ "swabips",	EN_SWABIPS,	0,		setifflags },
 	{ "-swabips",	-EN_SWABIPS,	0,		setifflags },
 #endif /* notdef */
-	{ "group",	NEXTARG,	0,		setifgroup },
-	{ "-group",	NEXTARG,	0,		unsetifgroup },
 	{ "netmask",	NEXTARG,	0,		setifnetmask },
-	{ "metric",	NEXTARG,	0,		setifmetric },
 	{ "mtu",	NEXTARG,	0,		setifmtu },
 	{ "nwid",	NEXTARG,	0,		setifnwid },
 	{ "-nwid",	-1,		0,		setifnwid },
@@ -317,19 +318,17 @@ const struct	cmd {
 	{ "wpaciphers",	NEXTARG,	0,		setifwpaciphers },
 	{ "wpagroupcipher", NEXTARG,	0,		setifwpagroupcipher },
 	{ "wpaprotos",	NEXTARG,	0,		setifwpaprotos },
-	{ "wpapsk",	NEXTARG,	0,		setifwpapsk },
-	{ "-wpapsk",	-1,		0,		setifwpapsk },
+	{ "wpakey",	NEXTARG,	0,		setifwpakey },
+	{ "-wpakey",	-1,		0,		setifwpakey },
+/*XXX delete these two after the 4.9 release */
+/*XXX*/	{ "wpapsk",     NEXTARG,        0,              setifwpakey },
+/*XXX*/	{ "-wpapsk",    -1,             0,              setifwpakey },
 	{ "chan",	NEXTARG0,	0,		setifchan },
 	{ "-chan",	-1,		0,		setifchan },
 	{ "scan",	NEXTARG0,	0,		setifscan },
-	{ "powersave",	NEXTARG0,	0,		setifpowersave },
-	{ "-powersave",	-1,		0,		setifpowersave },
 	{ "broadcast",	NEXTARG,	0,		setifbroadaddr },
-	{ "ipdst",	NEXTARG,	0,		setifipdst },
 	{ "prefixlen",  NEXTARG,	0,		setifprefixlen},
-	{ "priority",	NEXTARG,	0,		setifpriority },
 	{ "vlan",	NEXTARG,	0,		setvlantag },
-	{ "vlanprio",	NEXTARG,	0,		setvlanprio },
 	{ "vlandev",	NEXTARG,	0,		setvlandev },
 	{ "-vlandev",	1,		0,		unsetvlandev },
 #ifdef INET6
@@ -344,8 +343,17 @@ const struct	cmd {
 	{ "-autoconfprivacy",	-IFXF_INET6_PRIVACY,	0,	setifxflags },
 #endif /*INET6*/
 #ifndef SMALL
+	{ "group",	NEXTARG,	0,		setifgroup },
+	{ "-group",	NEXTARG,	0,		unsetifgroup },
+	{ "trailers",	-1,		0,		notrailers },
+	{ "-trailers",	1,		0,		notrailers },
+	{ "metric",	NEXTARG,	0,		setifmetric },
+	{ "powersave",	NEXTARG0,	0,		setifpowersave },
+	{ "-powersave",	-1,		0,		setifpowersave },
+	{ "priority",	NEXTARG,	0,		setifpriority },
 	{ "rtlabel",	NEXTARG,	0,		setifrtlabel },
 	{ "-rtlabel",	-1,		0,		setifrtlabel },
+	{ "rdomain",	NEXTARG,	0,		setinstance },
 	{ "range",	NEXTARG,	0,		setatrange },
 	{ "phase",	NEXTARG,	0,		setatphase },
 	{ "mpls",	IFXF_MPLS,	0,		setifxflags },
@@ -357,6 +365,7 @@ const struct	cmd {
 	{ "-carppeer",	1,		0,		unsetcarppeer },
 	{ "pass",	NEXTARG,	0,		setcarp_passwd },
 	{ "vhid",	NEXTARG,	0,		setcarp_vhid },
+	{ "vlanprio",	NEXTARG,	0,		setvlanprio },
 	{ "state",	NEXTARG,	0,		setcarp_state },
 	{ "carpdev",	NEXTARG,	0,		setcarpdev },
 	{ "carpnodes",	NEXTARG,	0,		setcarp_nodes },
@@ -397,7 +406,6 @@ const struct	cmd {
 	{ "-peerflag",	NEXTARG,	0,		unsetsppppeerflag },
 	{ "nwflag",	NEXTARG,	0,		setifnwflag },
 	{ "-nwflag",	NEXTARG,	0,		unsetifnwflag },
-	{ "rdomain",	NEXTARG,	0,		setinstance },
 	{ "flowsrc",	NEXTARG,	0,		setpflow_sender },
 	{ "-flowsrc",	1,		0,		unsetpflow_sender },
 	{ "flowdst", 	NEXTARG,	0,		setpflow_receiver },
@@ -441,6 +449,7 @@ const struct	cmd {
 	{ "timeout",	NEXTARG,	0,		bridge_timeout },
 	{ "holdcnt",	NEXTARG,	0,		bridge_holdcnt },
 	{ "spanpriority", NEXTARG,	0,		bridge_priority },
+	{ "ipdst",	NEXTARG,	0,		setifipdst },
 #if 0
 	/* XXX `rule` special-cased below */
 	{ "rule",	0,		0,		bridge_rule },
@@ -448,6 +457,23 @@ const struct	cmd {
 	{ "rules",	NEXTARG,	0,		bridge_rules },
 	{ "rulefile",	NEXTARG,	0,		bridge_rulefile },
 	{ "flushrule",	NEXTARG,	0,		bridge_flushrule },
+	{ "description", NEXTARG,	0,		setifdesc },
+	{ "descr",	NEXTARG,	0,		setifdesc },
+	{ "-description", 1,		0,		unsetifdesc },
+	{ "-descr",	1,		0,		unsetifdesc },
+#else /* SMALL */
+	{ "group",	NEXTARG,	0,		setignore },
+	{ "powersave",	NEXTARG0,	0,		setignore },
+	{ "priority",	NEXTARG,	0,		setignore },
+	{ "rtlabel",	NEXTARG,	0,		setignore },
+	{ "mpls",	IFXF_MPLS,	0,		setignore },
+	{ "vlanprio",	NEXTARG,	0,		setignore },
+	{ "txpower",	NEXTARG,	0,		setignore },
+	{ "nwflag",	NEXTARG,	0,		setignore },
+	{ "rdomain",	NEXTARG,	0,		setignore },
+	{ "-inet6",	IFXF_NOINET6,	0,		setignore } ,
+	{ "description", NEXTARG,	0,		setignore },
+	{ "descr",	NEXTARG,	0,		setignore },
 #endif /* SMALL */
 #if 0
 	/* XXX `create' special-cased below */
@@ -467,10 +493,6 @@ const struct	cmd {
 	{ "instance",	NEXTARG,	A_MEDIAINST,	setmediainst },
 	{ "inst",	NEXTARG,	A_MEDIAINST,	setmediainst },
 	{ "lladdr",	NEXTARG,	0,		setiflladdr },
-	{ "description", NEXTARG,	0,		setifdesc },
-	{ "descr",	NEXTARG,	0,		setifdesc },
-	{ "-description", 1,		0,		unsetifdesc },
-	{ "-descr",	1,		0,		unsetifdesc },
 	{ NULL, /*src*/	0,		0,		setifaddr },
 	{ NULL, /*dst*/	0,		0,		setifdstaddr },
 	{ NULL, /*illegal*/0,		0,		NULL },
@@ -478,9 +500,7 @@ const struct	cmd {
 
 int	getinfo(struct ifreq *, int);
 void	getsock(int);
-int	printgroup(char *, int);
 void	printgroupattribs(char *);
-void	setgroupattribs(char *, int, char *[]);
 void	printif(char *, int);
 void	printb_status(unsigned short, char *);
 const char *get_linkstate(int, int);
@@ -489,7 +509,6 @@ void	usage(int);
 const char *get_string(const char *, const char *, u_int8_t *, int *);
 void	print_string(const u_int8_t *, int);
 char	*sec2str(time_t);
-void	list_cloners(void);
 
 const char *get_media_type_string(int);
 const char *get_media_subtype_string(int);
@@ -557,8 +576,10 @@ main(int argc, char *argv[])
 {
 	const struct afswtch *rafp = NULL;
 	int create = 0;
+#ifndef SMALL
 	int Cflag = 0;
 	int gflag = 0;
+#endif
 	int i;
 	int noprint = 0;
 
@@ -583,6 +604,7 @@ main(int argc, char *argv[])
 				ifaliases = 1;
 				nomore = 1;
 				break;
+#ifndef SMALL
 			case 'g':
 				gflag = 1;
 				break;
@@ -590,6 +612,7 @@ main(int argc, char *argv[])
 				Cflag = 1;
 				nomore = 1;
 				break;
+#endif
 			default:
 				usage(1);
 				break;
@@ -616,6 +639,7 @@ main(int argc, char *argv[])
 		rafp = afp;
 		af = ifr.ifr_addr.sa_family = rafp->af_af;
 	}
+#ifndef SMALL
 	if (Cflag) {
 		if (argc > 0 || aflag)
 			usage(1);
@@ -629,6 +653,7 @@ main(int argc, char *argv[])
 			setgroupattribs(name, argc, argv);
 		exit(0);
 	}
+#endif
 	(void) strlcpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
 
 #ifdef INET6
@@ -808,13 +833,16 @@ getinfo(struct ifreq *ifr, int create)
 		mtu = 0;
 	else
 		mtu = ifr->ifr_mtu;
+#ifndef SMALL
 	if (ioctl(s, SIOCGIFRDOMAIN, (caddr_t)ifr) < 0)
 		rdomainid = 0;
 	else
 		rdomainid = ifr->ifr_rdomainid;
+#endif
 	return (0);
 }
 
+#ifndef SMALL
 int
 printgroup(char *groupname, int ifaliases)
 {
@@ -897,6 +925,7 @@ setgroupattribs(char *groupname, int argc, char *argv[])
 	if (ioctl(s, SIOCSIFGATTR, (caddr_t)&ifgr) == -1)
 		err(1, "SIOCSIFGATTR");
 }
+#endif /* SMALL */
 
 void
 printif(char *ifname, int ifaliases)
@@ -915,9 +944,11 @@ printif(char *ifname, int ifaliases)
 		if ((oname = strdup(ifname)) == NULL)
 			err(1, "strdup");
 		nlen = strlen(oname);
+#ifndef SMALL
 		if (nlen && !isdigit(oname[nlen - 1]))	/* is it a group? */
 			if (printgroup(oname, ifaliases) != -1)
 				return;
+#endif
 	}
 
 	if (getifaddrs(&ifap) != 0)
@@ -1021,6 +1052,7 @@ clone_destroy(const char *addr, int param)
 		err(1, "SIOCIFDESTROY");
 }
 
+#ifndef SMALL
 void
 list_cloners(void)
 {
@@ -1060,6 +1092,7 @@ list_cloners(void)
 	putchar('\n');
 	free(buf);
 }
+#endif
 
 #define RIDADDR 0
 #define ADDR	1
@@ -1110,6 +1143,7 @@ setifbroadaddr(const char *addr, int ignored)
 	(*afp->af_getaddr)(addr, DSTADDR);
 }
 
+#ifndef SMALL
 /* ARGSUSED */
 void
 setifdesc(const char *val, int ignored)
@@ -1137,6 +1171,7 @@ setifipdst(const char *addr, int ignored)
 	clearaddr = 0;
 	newaddr = 0;
 }
+#endif
 
 #define rqtosa(x) (&(((struct ifreq *)(afp->x))->ifr_addr))
 /*ARGSUSED*/
@@ -1154,12 +1189,14 @@ notealias(const char *addr, int param)
 		clearaddr = 0;
 }
 
+#ifndef SMALL
 /*ARGSUSED*/
 void
 notrailers(const char *vname, int value)
 {
 	printf("Note: trailers are no longer sent, but always received\n");
 }
+#endif
 
 /*ARGSUSED*/
 void
@@ -1303,6 +1340,7 @@ setia6eui64(const char *cmd, int val)
 }
 #endif /* INET6 */
 
+#ifndef SMALL
 /* ARGSUSED */
 void
 setifmetric(const char *val, int ignored)
@@ -1317,6 +1355,7 @@ setifmetric(const char *val, int ignored)
 	if (ioctl(s, SIOCSIFMETRIC, (caddr_t)&ifr) < 0)
 		warn("SIOCSIFMETRIC");
 }
+#endif
 
 /* ARGSUSED */
 void
@@ -1333,6 +1372,7 @@ setifmtu(const char *val, int d)
 		warn("SIOCSIFMTU");
 }
 
+#ifndef SMALL
 /* ARGSUSED */
 void
 setifgroup(const char *group_name, int dummy)
@@ -1370,15 +1410,14 @@ unsetifgroup(const char *group_name, int dummy)
 	if (ioctl(s, SIOCDIFGROUP, (caddr_t)&ifgr) == -1)
 		err(1, "SIOCDIFGROUP");
 }
+#endif
 
 const char *
 get_string(const char *val, const char *sep, u_int8_t *buf, int *lenp)
 {
-	int len, hexstr;
-	u_int8_t *p;
+	int len = *lenp, hexstr;
+	u_int8_t *p = buf;
 
-	len = *lenp;
-	p = buf;
 	hexstr = (val[0] == '0' && tolower((u_char)val[1]) == 'x');
 	if (hexstr)
 		val += 2;
@@ -1426,11 +1465,8 @@ get_string(const char *val, const char *sep, u_int8_t *buf, int *lenp)
 void
 print_string(const u_int8_t *buf, int len)
 {
-	int i;
-	int hasspc;
+	int i = 0, hasspc = 0;
 
-	i = 0;
-	hasspc = 0;
 	if (len < 2 || buf[0] != '0' || tolower(buf[1]) != 'x') {
 		for (; i < len; i++) {
 			/* Only print 7-bit ASCII keys */
@@ -1564,6 +1600,7 @@ setifwpa(const char *val, int d)
 {
 	struct ieee80211_wpaparams wpa;
 
+	memset(&wpa, 0, sizeof(wpa));
 	(void)strlcpy(wpa.i_name, name, sizeof(wpa.i_name));
 	if (ioctl(s, SIOCG80211WPAPARMS, (caddr_t)&wpa) < 0)
 		err(1, "SIOCG80211WPAPARMS");
@@ -1594,6 +1631,7 @@ setifwpaprotos(const char *val, int d)
 	}
 	free(optlist);
 
+	memset(&wpa, 0, sizeof(wpa));
 	(void)strlcpy(wpa.i_name, name, sizeof(wpa.i_name));
 	if (ioctl(s, SIOCG80211WPAPARMS, (caddr_t)&wpa) < 0)
 		err(1, "SIOCG80211WPAPARMS");
@@ -1624,6 +1662,7 @@ setifwpaakms(const char *val, int d)
 	}
 	free(optlist);
 
+	memset(&wpa, 0, sizeof(wpa));
 	(void)strlcpy(wpa.i_name, name, sizeof(wpa.i_name));
 	if (ioctl(s, SIOCG80211WPAPARMS, (caddr_t)&wpa) < 0)
 		err(1, "SIOCG80211WPAPARMS");
@@ -1675,6 +1714,7 @@ setifwpaciphers(const char *val, int d)
 	}
 	free(optlist);
 
+	memset(&wpa, 0, sizeof(wpa));
 	(void)strlcpy(wpa.i_name, name, sizeof(wpa.i_name));
 	if (ioctl(s, SIOCG80211WPAPARMS, (caddr_t)&wpa) < 0)
 		err(1, "SIOCG80211WPAPARMS");
@@ -1694,6 +1734,7 @@ setifwpagroupcipher(const char *val, int d)
 	if (cipher == IEEE80211_WPA_CIPHER_NONE)
 		errx(1, "wpagroupcipher: unknown cipher: %s", val);
 
+	memset(&wpa, 0, sizeof(wpa));
 	(void)strlcpy(wpa.i_name, name, sizeof(wpa.i_name));
 	if (ioctl(s, SIOCG80211WPAPARMS, (caddr_t)&wpa) < 0)
 		err(1, "SIOCG80211WPAPARMS");
@@ -1703,18 +1744,40 @@ setifwpagroupcipher(const char *val, int d)
 }
 
 void
-setifwpapsk(const char *val, int d)
+setifwpakey(const char *val, int d)
 {
+	struct ieee80211_wpaparams wpa;
 	struct ieee80211_wpapsk psk;
-	int len;
+	struct ieee80211_nwid nwid;
+	int passlen;
 
+	memset(&psk, 0, sizeof(psk));
 	if (d != -1) {
-		len = sizeof(psk.i_psk);
-		val = get_string(val, NULL, psk.i_psk, &len);
-		if (val == NULL)
-			errx(1, "wpapsk: invalid pre-shared key");
-		if (len != sizeof(psk.i_psk))
-			errx(1, "wpapsk: bad pre-shared key length");
+		memset(&ifr, 0, sizeof(ifr));
+		ifr.ifr_data = (caddr_t)&nwid;
+		strlcpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
+		if (ioctl(s, SIOCG80211NWID, (caddr_t)&ifr))
+			err(1, "SIOCG80211NWID");
+
+		passlen = strlen(val);
+		if (passlen == 2 + 2 * sizeof(psk.i_psk) &&
+		    val[0] == '0' && val[1] == 'x') {
+			/* Parse a WPA hex key (must be full-length) */
+			passlen = sizeof(psk.i_psk);
+			val = get_string(val, NULL, psk.i_psk, &passlen);
+			if (val == NULL || passlen != sizeof(psk.i_psk))
+				errx(1, "wpakey: invalid pre-shared key");
+		} else {
+			/* Parse a WPA passphrase */ 
+			if (passlen < 8 || passlen > 63)
+				errx(1, "wpakey: passphrase must be between "
+				    "8 and 63 characters");
+			if (nwid.i_len == 0)
+				errx(1, "wpakey: nwid not set");
+			if (pkcs5_pbkdf2(val, passlen, nwid.i_nwid, nwid.i_len,
+			    psk.i_psk, sizeof(psk.i_psk), 4096) != 0)
+				errx(1, "wpakey: passphrase hashing failed");
+		}
 		psk.i_enabled = 1;
 	} else
 		psk.i_enabled = 0;
@@ -1722,6 +1785,15 @@ setifwpapsk(const char *val, int d)
 	(void)strlcpy(psk.i_name, name, sizeof(psk.i_name));
 	if (ioctl(s, SIOCS80211WPAPSK, (caddr_t)&psk) < 0)
 		err(1, "SIOCS80211WPAPSK");
+
+	/* And ... automatically enable or disable WPA */
+	memset(&wpa, 0, sizeof(wpa));
+	(void)strlcpy(wpa.i_name, name, sizeof(wpa.i_name));
+	if (ioctl(s, SIOCG80211WPAPARMS, (caddr_t)&wpa) < 0)
+		err(1, "SIOCG80211WPAPARMS");
+	wpa.i_enabled = psk.i_enabled;
+	if (ioctl(s, SIOCS80211WPAPARMS, (caddr_t)&wpa) < 0)
+		err(1, "SIOCS80211WPAPARMS");
 }
 
 void
@@ -1818,7 +1890,6 @@ unsetifnwflag(const char *val, int d)
 {
 	setifnwflag(val, 1);
 }
-#endif
 
 /* ARGSUSED */
 void
@@ -1843,6 +1914,7 @@ setifpowersave(const char *val, int d)
 	if (ioctl(s, SIOCS80211POWER, (caddr_t)&power) == -1)
 		warn("SIOCS80211POWER");
 }
+#endif
 
 void
 print_cipherset(u_int32_t cipherset)
@@ -2010,7 +2082,7 @@ ieee80211_status(void)
 	}
 
 	if (ipsk == 0 && psk.i_enabled) {
-		fputs(" wpapsk ", stdout);
+		fputs(" wpakey ", stdout);
 		if (psk.i_enabled == 2)
 			fputs("<not displayed>", stdout);
 		else
@@ -2449,9 +2521,7 @@ get_ts_map(int ts_flag, int ts_start, int ts_stop)
 	}
 	return map;
 }
-#endif /* SMALL */
 
-#ifndef SMALL
 void
 timeslot_status(void)
 {
@@ -2671,16 +2741,20 @@ phys_status(int force)
 	printf("\tphysical address inet%s %s --> %s", ver,
 	    psrcaddr, pdstaddr);
 
+#ifndef SMALL
 	if (ioctl(s, SIOCGLIFPHYRTABLE, (caddr_t)&ifr) == 0 &&
 	    (rdomainid != 0 || ifr.ifr_rdomainid != 0))
 		printf(" rdomain %d", ifr.ifr_rdomainid);
+#endif
 	printf("\n");
 }
 
+#ifndef SMALL
 const int ifm_status_valid_list[] = IFM_STATUS_VALID_LIST;
 
 const struct ifmedia_status_description ifm_status_descriptions[] =
 	IFM_STATUS_DESCRIPTIONS;
+#endif
 
 const struct if_status_description if_status_descriptions[] =
 	LINK_STATE_DESCRIPTIONS;
@@ -2708,12 +2782,12 @@ status(int link, struct sockaddr_dl *sdl, int ls)
 {
 	const struct afswtch *p = afp;
 	struct ifmediareq ifmr;
-	struct ifreq ifrdesc;
 #ifndef SMALL
+	struct ifreq ifrdesc;
 	struct ifkalivereq ikardesc;
+	char ifdescr[IFDESCRSIZE];
 #endif
 	int *media_list, i;
-	char ifdescr[IFDESCRSIZE];
 
 	printf("%s: ", name);
 	printb("flags", flags | (xflags << 16), IFFBITS);
@@ -2729,6 +2803,7 @@ status(int link, struct sockaddr_dl *sdl, int ls)
 		(void)printf("\tlladdr %s\n", ether_ntoa(
 		    (struct ether_addr *)LLADDR(sdl)));
 
+#ifndef SMALL
 	(void) memset(&ifrdesc, 0, sizeof(ifrdesc));
 	(void) strlcpy(ifrdesc.ifr_name, name, sizeof(ifrdesc.ifr_name));
 	ifrdesc.ifr_data = (caddr_t)&ifdescr;
@@ -2736,7 +2811,6 @@ status(int link, struct sockaddr_dl *sdl, int ls)
 	    strlen(ifrdesc.ifr_data))
 		printf("\tdescription: %s\n", ifrdesc.ifr_data);
 
-#ifndef SMALL
 	if (!is_bridge(name) && ioctl(s, SIOCGIFPRIORITY, &ifrdesc) == 0)
 		printf("\tpriority: %d\n", ifrdesc.ifr_metric);
 	(void) memset(&ikardesc, 0, sizeof(ikardesc));
@@ -2756,8 +2830,8 @@ status(int link, struct sockaddr_dl *sdl, int ls)
 	trunk_status();
 	mpe_status();
 	pflow_status();
-#endif
 	getifgroups();
+#endif
 
 	(void) memset(&ifmr, 0, sizeof(ifmr));
 	(void) strlcpy(ifmr.ifm_name, name, sizeof(ifmr.ifm_name));
@@ -2795,6 +2869,9 @@ status(int link, struct sockaddr_dl *sdl, int ls)
 	}
 	putchar('\n');
 
+#ifdef SMALL
+	printf("\tstatus: %s\n", get_linkstate(sdl->sdl_type, ls));
+#else
 	if (ifmr.ifm_status & IFM_AVALID) {
 		const struct ifmedia_status_description *ifms;
 		int bitno, found = 0;
@@ -2825,7 +2902,7 @@ status(int link, struct sockaddr_dl *sdl, int ls)
 			printf("unknown");
 		putchar('\n');
 	}
-
+#endif
 	ieee80211_status();
 
 	if (showmediaflag) {
@@ -3316,7 +3393,7 @@ setvlantag(const char *val, int d)
 	struct vlanreq vreq;
 	const char *errmsg = NULL;
 
-	__tag = tag = strtonum(val, 0, 65535, &errmsg);
+	__tag = tag = strtonum(val, 0, 4095, &errmsg);
 	if (errmsg)
 		errx(1, "vlan tag %s: %s", val, errmsg);
 	__have_tag = 1;
@@ -3333,6 +3410,7 @@ setvlantag(const char *val, int d)
 		err(1, "SIOCSETVLAN");
 }
 
+#ifndef SMALL
 /* ARGSUSED */
 void
 setvlanprio(const char *val, int d)
@@ -3356,6 +3434,7 @@ setvlanprio(const char *val, int d)
 	if (ioctl(s, SIOCSETVLANPRIO, (caddr_t)&ifr) == -1)
 		err(1, "SIOCSETVLANPRIO");
 }
+#endif
 
 /* ARGSUSED */
 void
@@ -3376,7 +3455,7 @@ setvlandev(const char *val, int d)
 
 	if (!__have_tag && vreq.vlr_tag == 0) {
 		skip = strcspn(ifr.ifr_name, "0123456789");
-		tag = strtonum(ifr.ifr_name + skip, 1, 4095, &estr);
+		tag = strtonum(ifr.ifr_name + skip, 0, 4095, &estr);
 		if (estr != NULL)
 			errx(1, "invalid vlan tag and device specification");
 		vreq.vlr_tag = tag;
@@ -3883,7 +3962,6 @@ pfsync_status(void)
 	}
 }
 
-#ifndef SMALL
 void
 pflow_status(void)
 {
@@ -3998,7 +4076,6 @@ unsetpflow_receiver(const char *val, int d)
 	if (ioctl(s, SIOCSETPFLOW, (caddr_t)&ifr) == -1)
 		err(1, "SIOCSETPFLOW");
 }
-#endif /* SMALL */
 
 void
 pppoe_status(void)
@@ -4470,12 +4547,10 @@ unsetkeepalive(const char *val, int d)
 	if (ioctl(s, SIOCSETKALIVE, (caddr_t)&ikar) < 0)
 		warn("SIOCSETKALIVE");
 }
-#endif /* SMALL */
 
 void
 setifpriority(const char *id, int param)
 {
-#ifndef SMALL
 	const char *errmsg = NULL;
 	int prio;
 
@@ -4487,8 +4562,8 @@ setifpriority(const char *id, int param)
 	ifr.ifr_metric = prio;
 	if (ioctl(s, SIOCSIFPRIORITY, (caddr_t)&ifr) < 0)
 		warn("SIOCSIFPRIORITY");
-#endif
 }
+#endif
 
 #define SIN(x) ((struct sockaddr_in *) &(x))
 struct sockaddr_in *sintab[] = {
@@ -4719,6 +4794,7 @@ usage(int value)
 	exit(value);
 }
 
+#ifndef SMALL
 void
 getifgroups(void)
 {
@@ -4761,6 +4837,7 @@ getifgroups(void)
 
 	free(ifgr.ifgr_groups);
 }
+#endif
 
 #ifdef INET6
 char *
@@ -4841,7 +4918,7 @@ setinstance(const char *id, int param)
 	const char *errmsg = NULL;
 	int rdomainid;
 
-	rdomainid = strtonum(id, 0, 128, &errmsg);
+	rdomainid = strtonum(id, 0, RT_TABLEID_MAX, &errmsg);
 	if (errmsg)
 		errx(1, "rdomain %s: %s", id, errmsg);
 
@@ -4849,5 +4926,13 @@ setinstance(const char *id, int param)
 	ifr.ifr_rdomainid = rdomainid;
 	if (ioctl(s, SIOCSIFRDOMAIN, (caddr_t)&ifr) < 0)
 		warn("SIOCSIFRDOMAIN");
+}
+#endif
+
+#ifdef SMALL
+void
+setignore(const char *id, int param)
+{
+	/* just digest the command */
 }
 #endif

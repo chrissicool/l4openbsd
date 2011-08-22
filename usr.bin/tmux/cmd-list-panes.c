@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-list-panes.c,v 1.4 2009/12/03 22:50:10 nicm Exp $ */
+/* $OpenBSD: cmd-list-panes.c,v 1.7 2011/01/04 00:42:46 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -30,19 +30,18 @@ int	cmd_list_panes_exec(struct cmd *, struct cmd_ctx *);
 
 const struct cmd_entry cmd_list_panes_entry = {
 	"list-panes", "lsp",
+	"t:", 0, 0,
 	CMD_TARGET_WINDOW_USAGE,
-	0, "",
-	cmd_target_init,
-	cmd_target_parse,
-	cmd_list_panes_exec,
-	cmd_target_free,
-	cmd_target_print
+	0,
+	NULL,
+	NULL,
+	cmd_list_panes_exec
 };
 
 int
 cmd_list_panes_exec(struct cmd *self, struct cmd_ctx *ctx)
 {
-	struct cmd_target_data	*data = self->data;
+	struct args		*args = self->args;
 	struct winlink		*wl;
 	struct window_pane	*wp;
 	struct grid		*gd;
@@ -50,7 +49,7 @@ cmd_list_panes_exec(struct cmd *self, struct cmd_ctx *ctx)
 	u_int			 i, n;
 	unsigned long long	 size;
 
-	if ((wl = cmd_find_window(ctx, data->target, NULL)) == NULL)
+	if ((wl = cmd_find_window(ctx, args_get(args, 't'), NULL)) == NULL)
 		return (-1);
 
 	n = 0;
@@ -65,8 +64,10 @@ cmd_list_panes_exec(struct cmd *self, struct cmd_ctx *ctx)
 		}
 		size += gd->hsize * sizeof *gd->linedata;
 
-		ctx->print(ctx, "%u: [%ux%u] [history %u/%u, %llu bytes]",
-		    n, wp->sx, wp->sy, gd->hsize, gd->hlimit, size);
+		ctx->print(ctx, "%u: [%ux%u] [history %u/%u, %llu bytes]%s%s",
+		    n, wp->sx, wp->sy, gd->hsize, gd->hlimit, size,
+		    wp == wp->window->active ? " (active)" : "",
+		    wp->fd == -1 ? " (dead)" : "");
 		n++;
 	}
 

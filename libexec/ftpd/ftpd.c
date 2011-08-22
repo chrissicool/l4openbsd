@@ -1,4 +1,4 @@
-/*	$OpenBSD: ftpd.c,v 1.191 2010/08/01 16:53:57 tobias Exp $	*/
+/*	$OpenBSD: ftpd.c,v 1.193 2011/02/09 21:13:31 millert Exp $	*/
 /*	$NetBSD: ftpd.c,v 1.15 1995/06/03 22:46:47 mycroft Exp $	*/
 
 /*
@@ -172,9 +172,6 @@ static	volatile sig_atomic_t recvurg;
 int	allow_severity = LOG_INFO;
 int	deny_severity = LOG_NOTICE;
 #endif	/* TCPWRAPPERS */
-
-char	*ident = NULL;
-
 
 int epsvall = 0;
 
@@ -441,6 +438,13 @@ main(int argc, char *argv[])
 			    res->ai_protocol);
 			if (fds[n] < 0)
 				continue;
+
+			if (setsockopt(fds[n], SOL_SOCKET, SO_KEEPALIVE,
+			    &on, sizeof(on)) < 0) {
+				close(fds[n]);
+				fds[n] = -1;
+				continue;
+			}
 
 			if (setsockopt(fds[n], SOL_SOCKET, SO_REUSEADDR,
 			    &on, sizeof(on)) < 0) {
@@ -1109,11 +1113,6 @@ pass(char *passwd)
 	if (motd != NULL)
 		free(motd);
 	if (guest) {
-		if (ident != NULL)
-			free(ident);
-		ident = strdup(passwd);
-		if (ident == NULL)
-			fatal("Ran out of memory.");
 		reply(230, "Guest login ok, access restrictions apply.");
 #ifdef HASSETPROCTITLE
 		snprintf(proctitle, sizeof(proctitle),
@@ -2248,7 +2247,7 @@ void
 passive(void)
 {
 	socklen_t len;
-	int on;
+	int on = 1;
 	u_char *p, *a;
 
 	if (pw == NULL) {
@@ -2271,6 +2270,10 @@ passive(void)
 		perror_reply(425, "Can't open passive connection");
 		return;
 	}
+
+	if (setsockopt(pdata, SOL_SOCKET, SO_KEEPALIVE,
+	    &on, sizeof(on)) < 0)
+		goto pasv_error;
 
 	on = IP_PORTRANGE_HIGH;
 	if (setsockopt(pdata, IPPROTO_IP, IP_PORTRANGE,
@@ -2336,7 +2339,7 @@ void
 long_passive(char *cmd, int pf)
 {
 	socklen_t len;
-	int on;
+	int on = 1;
 	u_char *p, *a;
 
 	if (!logged_in) {
@@ -2374,6 +2377,10 @@ long_passive(char *cmd, int pf)
 		perror_reply(425, "Can't open passive connection");
 		return;
 	}
+
+	if (setsockopt(pdata, SOL_SOCKET, SO_KEEPALIVE,
+	    &on, sizeof(on)) < 0)
+		goto pasv_error;
 
 	switch (ctrl_addr.su_family) {
 	case AF_INET:

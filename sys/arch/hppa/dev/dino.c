@@ -1,4 +1,4 @@
-/*	$OpenBSD: dino.c,v 1.27 2010/04/29 13:48:29 jsing Exp $	*/
+/*	$OpenBSD: dino.c,v 1.30 2011/01/01 15:20:19 kettenis Exp $	*/
 
 /*
  * Copyright (c) 2003-2005 Michael Shalayeff
@@ -160,6 +160,7 @@ void	dino_attach_hook(struct device *, struct device *,
 int	dino_maxdevs(void *, int);
 pcitag_t dino_make_tag(void *, int, int, int);
 void	dino_decompose_tag(void *, pcitag_t, int *, int *, int *);
+int	dino_conf_size(void *, pcitag_t);
 pcireg_t dino_conf_read(void *, pcitag_t, int);
 void	dino_conf_write(void *, pcitag_t, int, pcireg_t);
 int	dino_intr_map(struct pci_attach_args *, pci_intr_handle_t *);
@@ -312,9 +313,18 @@ dino_make_tag(void *v, int bus, int dev, int func)
 void
 dino_decompose_tag(void *v, pcitag_t tag, int *bus, int *dev, int *func)
 {
-	*bus = (tag >> 16) & 0xff;
-	*dev = (tag >> 11) & 0x1f;
-	*func= (tag >>  8) & 0x07;
+	if (bus)
+		*bus = (tag >> 16) & 0xff;
+	if (dev)
+		*dev = (tag >> 11) & 0x1f;
+	if (func)
+		*func= (tag >>  8) & 0x07;
+}
+
+int
+dino_conf_size(void *v, pcitag_t tag)
+{
+	return PCI_CONFIG_SPACE_SIZE;
 }
 
 pcireg_t
@@ -639,7 +649,7 @@ dino_alloc_parent(struct device *self, struct pci_attach_args *pa, int io)
 		return (NULL);
 
 	extent_free(ex, start, size, EX_NOWAIT);
-	return rbus_new_root_share(tag, ex, start, size, 0);
+	return rbus_new_root_share(tag, ex, start, size);
 }
 #endif
 
@@ -1639,7 +1649,7 @@ const struct hppa_bus_dma_tag dino_dmat = {
 const struct hppa_pci_chipset_tag dino_pc = {
 	NULL,
 	dino_attach_hook, dino_maxdevs, dino_make_tag, dino_decompose_tag,
-	dino_conf_read, dino_conf_write,
+	dino_conf_size, dino_conf_read, dino_conf_write,
 	dino_intr_map, dino_intr_string,
 	dino_intr_establish, dino_intr_disestablish,
 #if NCARDBUS > 0

@@ -880,6 +880,7 @@ extern const struct mips_rtx_cost_data *mips_cost;
 #define SUBTARGET_CPP_SPEC ""
 #endif
 
+#undef CPP_SPEC
 #define CPP_SPEC "%(subtarget_cpp_spec)"
 
 /* This macro defines names of additional specifications to put in the specs
@@ -1127,6 +1128,8 @@ extern const struct mips_rtx_cost_data *mips_cost;
 	|| TREE_CODE (TYPE) == UNION_TYPE				\
 	|| TREE_CODE (TYPE) == RECORD_TYPE)) ? BITS_PER_WORD : (ALIGN))
 
+/* Make local arrays of chars word-aligned for the same reasons.  */
+#define LOCAL_ALIGNMENT(TYPE, ALIGN) DATA_ALIGNMENT (TYPE, ALIGN)
 
 #define PAD_VARARGS_DOWN \
   (FUNCTION_ARG_PADDING (TYPE_MODE (type), type) == downward)

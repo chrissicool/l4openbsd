@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.16 2010/07/03 03:59:16 krw Exp $	*/
+/*	$OpenBSD: conf.c,v 1.19 2011/01/14 19:04:08 jasper Exp $	*/
 
 /*
  * Copyright (c) 1994-1998 Mark Brinicombe.
@@ -39,7 +39,7 @@
  * Character and Block Device configuration
  * Console configuration
  *
- * Defines the structures cdevsw and constab
+ * Defines the structures [bc]devsw
  *
  * Created      : 17/09/94
  */
@@ -74,15 +74,6 @@
 #include "pty.h"
 #include "tun.h"
 #include "ksyms.h"
-
-/*
- * APM interface
- */
-#ifdef CONF_HAVE_APM
-#include "apm.h"
-#else
-#define NAPM	0
-#endif
 
 /*
  * Disk/Filesystem pseudo-devices
@@ -270,12 +261,7 @@ cdev_decl(nnpfs_dev);
 #include "hotplug.h"
 #include "scif.h"
 #include "vscsi.h"
-
-#ifdef CONF_HAVE_GPIO
-#include "gpio.h"
-#else
-#define	NGPIO 0
-#endif
+#include "pppx.h"
 
 struct cdevsw cdevsw[] = {
 	cdev_cn_init(1,cn),			/*  0: virtual console */
@@ -291,7 +277,7 @@ struct cdevsw cdevsw[] = {
 	cdev_lkm_dummy(),			/* 10: */
 	cdev_tty_init(NSCIF,scif),		/* 11: scif */
 	cdev_tty_init(NCOM,com),		/* 12: serial port */
-	cdev_gpio_init(NGPIO,gpio),     	/* 13: GPIO interface */
+	cdev_lkm_dummy(),			/* 13: */
 	cdev_lkm_dummy(),			/* 14: */
 	cdev_lkm_dummy(),			/* 15: */
 	cdev_disk_init(NWD,wd),			/* 16: ST506/ESDI/IDE disk */
@@ -312,7 +298,7 @@ struct cdevsw cdevsw[] = {
 	cdev_lkm_dummy(),			/* 31: */
 	cdev_lkm_dummy(),			/* 32: */
 	cdev_tun_init(NTUN,tun),		/* 33: network tunnel */
-	cdev_apm_init(NAPM,apm),		/* 34: APM interface */
+	cdev_lkm_dummy(),			/* 34: */
 	cdev_lkm_init(NLKM,lkm),		/* 35: loadable module driver */
 	cdev_audio_init(NAUDIO,audio),		/* 36: generic audio I/O */
 	cdev_hotplug_init(NHOTPLUG,hotplug),	/* 37: devices hot plugging*/
@@ -388,10 +374,11 @@ struct cdevsw cdevsw[] = {
 	cdev_vscsi_init(NVSCSI,vscsi),		/* 99: vscsi */
 	cdev_bthub_init(NBTHUB,bthub),		/* 100: bthub */
 	cdev_disk_init(1,diskmap),		/* 101: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),		/* 102: pppx */
 };
 
-int nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
-int nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+int nblkdev = nitems(bdevsw);
+int nchrdev = nitems(cdevsw);
 
 int mem_no = 2; 	/* major device number of memory special file */
 
@@ -503,7 +490,7 @@ int chrtoblktbl[] = {
     /* 70 */	    NODEV,
     /* 71 */	    71,			/* raid */
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);
 
 
 dev_t

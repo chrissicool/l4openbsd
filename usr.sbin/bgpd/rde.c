@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde.c,v 1.297 2010/07/14 09:00:08 claudio Exp $ */
+/*	$OpenBSD: rde.c,v 1.307 2011/02/15 12:26:37 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -18,6 +18,8 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include <errno.h>
 #include <ifaddrs.h>
@@ -156,6 +158,7 @@ pid_t
 rde_main(int pipe_m2r[2], int pipe_s2r[2], int pipe_m2s[2], int pipe_s2rctl[2],
     int debug)
 {
+	struct rlimit		 rl;
 	pid_t			 pid;
 	struct passwd		*pw;
 	struct pollfd		*pfd = NULL;
@@ -184,6 +187,12 @@ rde_main(int pipe_m2r[2], int pipe_s2r[2], int pipe_m2s[2], int pipe_s2rctl[2],
 
 	setproctitle("route decision engine");
 	bgpd_process = PROC_RDE;
+
+	if (getrlimit(RLIMIT_DATA, &rl) == -1)
+		fatal("getrlimit");
+	rl.rlim_cur = rl.rlim_max;
+	if (setrlimit(RLIMIT_DATA, &rl) == -1)
+		fatal("setrlimit");
 
 	if (setgroups(1, &pw->pw_gid) ||
 	    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
@@ -227,7 +236,7 @@ rde_main(int pipe_m2r[2], int pipe_s2r[2], int pipe_m2s[2], int pipe_s2rctl[2],
 	if (rdomains_l == NULL)
 		fatal(NULL);
 	SIMPLEQ_INIT(rdomains_l);
-	if ((conf = malloc(sizeof(struct bgpd_config))) == NULL)
+	if ((conf = calloc(1, sizeof(struct bgpd_config))) == NULL)
 		fatal(NULL);
 	log_info("route decision engine ready");
 
@@ -849,6 +858,7 @@ rde_update_dispatch(struct imsg *imsg)
 	u_int16_t		 attrpath_len;
 	u_int16_t		 nlri_len;
 	u_int8_t		 aid, prefixlen, safi, subtype;
+	u_int32_t		 fas;
 
 	peer = peer_get(imsg->hdr.peerid);
 	if (peer == NULL)	/* unknown peer, cannot happen */
@@ -908,15 +918,17 @@ rde_update_dispatch(struct imsg *imsg)
 
 		/* enforce remote AS if requested */
 		if (asp->flags & F_ATTR_ASPATH &&
-		    peer->conf.enforce_as == ENFORCE_AS_ON)
-			if (peer->conf.remote_as !=
-			    aspath_neighbor(asp->aspath)) {
-				log_peer_warnx(&peer->conf, "bad path, "
-				    "enforce remote-as enabled");
-				rde_update_err(peer, ERR_UPDATE, ERR_UPD_ASPATH,
+		    peer->conf.enforce_as == ENFORCE_AS_ON) {
+			fas = aspath_neighbor(asp->aspath);
+			if (peer->conf.remote_as != fas) {
+			    log_peer_warnx(&peer->conf, "bad path, "
+				"starting with %s, "
+				"enforce neighbor-as enabled", log_as(fas));
+			    rde_update_err(peer, ERR_UPDATE, ERR_UPD_ASPATH,
 				    NULL, 0);
-				goto done;
+			    goto done;
 			}
+		}
 
 		rde_reflector(peer, asp);
 	}
@@ -1337,6 +1349,7 @@ rde_attr_parse(u_char *p, u_int16_t len, struct rde_peer *peer,
 	struct bgpd_addr nexthop;
 	u_char		*op = p, *npath;
 	u_int32_t	 tmp32;
+	int		 err;
 	u_int16_t	 attr_len, nlen;
 	u_int16_t	 plen = 0;
 	u_int8_t	 flags;
@@ -1371,6 +1384,7 @@ bad_len:
 	switch (type) {
 	case ATTR_UNDEF:
 		/* ignore and drop path attributes with a type code of 0 */
+		plen += attr_len;
 		break;
 	case ATTR_ORIGIN:
 		if (attr_len != 1)
@@ -1396,7 +1410,17 @@ bad_flags:
 	case ATTR_ASPATH:
 		if (!CHECK_FLAGS(flags, ATTR_WELL_KNOWN, 0))
 			goto bad_flags;
-		if (aspath_verify(p, attr_len, rde_as4byte(peer)) != 0) {
+		err = aspath_verify(p, attr_len, rde_as4byte(peer));
+		if (err == AS_ERR_SOFT) {
+			/*
+			 * soft errors like unexpected segment types are
+			 * not considered fatal and the path is just
+			 * marked invalid.
+			 */
+			a->flags |= F_ATTR_PARSE_ERR;
+			log_peer_warnx(&peer->conf, "bad ASPATH, "
+			    "path invalidated and prefix withdrawn");
+		} else if (err != 0) {
 			rde_update_err(peer, ERR_UPDATE, ERR_UPD_ASPATH,
 			    NULL, 0);
 			return (-1);
@@ -1489,6 +1513,8 @@ bad_flags:
 			 */
 			if ((flags & ATTR_PARTIAL) == 0)
 				goto bad_len;
+			log_peer_warnx(&peer->conf, "bad AGGREGATOR, "
+			    "partial attribute ignored");
 			plen += attr_len;
 			break;
 		}
@@ -1509,7 +1535,7 @@ bad_flags:
 		/* 4-byte ready server take the default route */
 		goto optattr;
 	case ATTR_COMMUNITIES:
-		if ((attr_len & 0x3) != 0) {
+		if (attr_len % 4 != 0) {
 			/*
 			 * mark update as bad and withdraw all routes as per
 			 * draft-ietf-idr-optional-transitive-00.txt
@@ -1517,15 +1543,16 @@ bad_flags:
 			 */
 			if ((flags & ATTR_PARTIAL) == 0)
 				goto bad_len;
-			else
-				a->flags |= F_ATTR_PARSE_ERR;
+			a->flags |= F_ATTR_PARSE_ERR;
+			log_peer_warnx(&peer->conf, "bad COMMUNITIES, "
+			    "path invalidated and prefix withdrawn");
 		}
 		if (!CHECK_FLAGS(flags, ATTR_OPTIONAL|ATTR_TRANSITIVE,
 		    ATTR_PARTIAL))
 			goto bad_flags;
 		goto optattr;
 	case ATTR_EXT_COMMUNITIES:
-		if ((attr_len & 0x7) != 0) {
+		if (attr_len % 8 != 0) {
 			/*
 			 * mark update as bad and withdraw all routes as per
 			 * draft-ietf-idr-optional-transitive-00.txt
@@ -1533,8 +1560,9 @@ bad_flags:
 			 */
 			if ((flags & ATTR_PARTIAL) == 0)
 				goto bad_len;
-			else
-				a->flags |= F_ATTR_PARSE_ERR;
+			a->flags |= F_ATTR_PARSE_ERR;
+			log_peer_warnx(&peer->conf, "bad EXT_COMMUNITIES, "
+			    "path invalidated and prefix withdrawn");
 		}
 		if (!CHECK_FLAGS(flags, ATTR_OPTIONAL|ATTR_TRANSITIVE,
 		    ATTR_PARTIAL))
@@ -1547,7 +1575,7 @@ bad_flags:
 			goto bad_flags;
 		goto optattr;
 	case ATTR_CLUSTER_LIST:
-		if ((attr_len & 0x3) != 0)
+		if (attr_len % 4 != 0)
 			goto bad_len;
 		if (!CHECK_FLAGS(flags, ATTR_OPTIONAL, 0))
 			goto bad_flags;
@@ -1585,7 +1613,8 @@ bad_flags:
 			/* see ATTR_AGGREGATOR ... */
 			if ((flags & ATTR_PARTIAL) == 0)
 				goto bad_len;
-			/* we should add a warning here */
+			log_peer_warnx(&peer->conf, "bad AS4_AGGREGATOR, "
+			    "partial attribute ignored");
 			plen += attr_len;
 			break;
 		}
@@ -1598,7 +1627,7 @@ bad_flags:
 		if (!CHECK_FLAGS(flags, ATTR_OPTIONAL|ATTR_TRANSITIVE,
 		    ATTR_PARTIAL))
 			goto bad_flags;
-		if (aspath_verify(p, attr_len, 1) != 0) {
+		if ((err = aspath_verify(p, attr_len, 1)) != 0) {
 			/*
 			 * XXX RFC does not specify how to handle errors.
 			 * XXX Instead of dropping the session because of a
@@ -1608,9 +1637,12 @@ bad_flags:
 			 * XXX or redistribution.
 			 * XXX We follow draft-ietf-idr-optional-transitive
 			 * XXX by looking at the partial bit.
+			 * XXX Consider soft errors similar to a partial attr.
 			 */
-			if (flags & ATTR_PARTIAL) {
+			if (flags & ATTR_PARTIAL || err == AS_ERR_SOFT) {
 				a->flags |= F_ATTR_PARSE_ERR;
+				log_peer_warnx(&peer->conf, "bad AS4_PATH, "
+				    "path invalidated and prefix withdrawn");
 				goto optattr;
 			} else {
 				rde_update_err(peer, ERR_UPDATE, ERR_UPD_ASPATH,
@@ -1703,7 +1735,7 @@ rde_get_mp_nexthop(u_char *data, u_int16_t len, u_int8_t aid,
 		/*
 		 * Neither RFC4364 nor RFC3107 specify the format of the
 		 * nexthop in an explicit way. The quality of RFC went down
-		 * the toilet the larger the the number got. 
+		 * the toilet the larger the the number got.
 		 * RFC4364 is very confusing about VPN-IPv4 address and the
 		 * VPN-IPv4 prefix that carries also a MPLS label.
 		 * So the nexthop is a 12-byte address with a 64bit RD and
@@ -1940,10 +1972,16 @@ rde_as4byte_fixup(struct rde_peer *peer, struct rde_aspath *a)
 
 	if (rde_as4byte(peer)) {
 		/* NEW session using 4-byte ASNs */
-		if (nasp)
+		if (nasp) {
+			log_peer_warnx(&peer->conf, "uses 4-byte ASN "
+			    "but sent AS4_PATH attribute.");
 			attr_free(a, nasp);
-		if (naggr)
+		}
+		if (naggr) {
+			log_peer_warnx(&peer->conf, "uses 4-byte ASN "
+			    "but sent AS4_AGGREGATOR attribute.");
 			attr_free(a, naggr);
+		}
 		return;
 	}
 	/* OLD session using 2-byte ASNs */
@@ -2150,11 +2188,11 @@ rde_dump_filter(struct prefix *p, struct ctl_show_rib_request *req)
 {
 	struct rde_peer		*peer;
 
-	if (req->flags & F_CTL_ADJ_IN || 
+	if (req->flags & F_CTL_ADJ_IN ||
 	    !(req->flags & (F_CTL_ADJ_IN|F_CTL_ADJ_OUT))) {
 		if (req->peerid && req->peerid != p->aspath->peer->conf.id)
 			return;
-		if (req->type == IMSG_CTL_SHOW_RIB_AS && 
+		if (req->type == IMSG_CTL_SHOW_RIB_AS &&
 		    !aspath_match(p->aspath->aspath, req->as.type, req->as.as))
 			return;
 		if (req->type == IMSG_CTL_SHOW_RIB_COMMUNITY &&
@@ -2700,7 +2738,7 @@ rde_up_dump_upcall(struct rib_entry *re, void *ptr)
 	struct rde_peer		*peer = ptr;
 
 	if (re->ribid != peer->ribid)
-		fatalx("King Bula: monsterous evil horror.");
+		fatalx("King Bula: monstrous evil horror.");
 	if (re->active == NULL)
 		return;
 	up_generate_updates(rules_l, peer, re->active, NULL);
@@ -2713,7 +2751,7 @@ rde_generate_updates(u_int16_t ribid, struct prefix *new, struct prefix *old)
 
 	/*
 	 * If old is != NULL we know it was active and should be removed.
-	 * If new is != NULL we know it is reachable and then we should 
+	 * If new is != NULL we know it is reachable and then we should
 	 * generate an update.
 	 */
 	if (old == NULL && new == NULL)
@@ -2846,7 +2884,7 @@ rde_update6_queue_runner(u_int8_t aid)
 				b = queue_buf + r;
 				break;
 			}
-				
+
 			/* finally send message to SE */
 			if (imsg_compose(ibuf_se, IMSG_UPDATE, peer->conf.id,
 			    0, -1, b, len) == -1)

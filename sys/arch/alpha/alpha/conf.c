@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.63 2010/07/03 03:59:16 krw Exp $	*/
+/*	$OpenBSD: conf.c,v 1.66 2011/01/14 19:04:08 jasper Exp $	*/
 /*	$NetBSD: conf.c,v 1.16 1996/10/18 21:26:57 cgd Exp $	*/
 
 /*-
@@ -77,7 +77,7 @@ struct bdevsw	bdevsw[] =
 	bdev_lkm_dummy(),		/* 15 */
 	bdev_disk_init(NRAID,raid),	/* 16 */
 };
-int	nblkdev = sizeof (bdevsw) / sizeof (bdevsw[0]);
+int	nblkdev = nitems(bdevsw);
 
 #define	mmread  mmrw
 #define	mmwrite mmrw
@@ -124,7 +124,9 @@ cdev_decl(nnpfs_dev);
 #include "uhid.h"
 #include "ugen.h"
 #include "ulpt.h"
+#include "urio.h"
 #include "ucom.h"
+#include "uscanner.h"
 #include "pf.h"
 #ifdef USER_PCICONF
 #include "pci.h"
@@ -135,6 +137,7 @@ cdev_decl(pci);
 #include "systrace.h"
 #include "hotplug.h"
 #include "vscsi.h"
+#include "pppx.h"
 
 struct cdevsw	cdevsw[] =
 {
@@ -210,8 +213,11 @@ struct cdevsw	cdevsw[] =
 	cdev_vscsi_init(NVSCSI, vscsi),	/* 61: vscsi */
 	cdev_bthub_init(NBTHUB, bthub), /* 62: bthub */
 	cdev_disk_init(1,diskmap),	/* 63: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 64: pppx */
+	cdev_urio_init(NURIO,urio),	/* 65: USB Diamond Rio 500 */
+	cdev_usbdev_init(NUSCANNER,uscanner),	/* 66: USB scanners */
 };
-int	nchrdev = sizeof (cdevsw) / sizeof (cdevsw[0]);
+int	nchrdev = nitems(cdevsw);
 
 int	mem_no = 2; 	/* major device number of memory special file */
 
@@ -310,4 +316,4 @@ int chrtoblktbl[] = {
 	/* 50 */	NODEV,
 	/* 51 */	NODEV,
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);

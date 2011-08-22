@@ -1,4 +1,4 @@
-/*	$OpenBSD: rt2860.c,v 1.57 2010/08/04 19:48:33 damien Exp $	*/
+/*	$OpenBSD: rt2860.c,v 1.65 2010/10/23 14:24:54 damien Exp $	*/
 
 /*-
  * Copyright (c) 2007-2010 Damien Bergamini <damien.bergamini@free.fr>
@@ -66,8 +66,6 @@
 #include <dev/pci/pcidevs.h>
 
 #include <dev/rndvar.h>
-
-#define RAL_DEBUG
 
 #ifdef RAL_DEBUG
 #define DPRINTF(x)	do { if (rt2860_debug > 0) printf x; } while (0)
@@ -166,7 +164,6 @@ void		rt2860_switch_chan(struct rt2860_softc *,
 int		rt2860_setup_beacon(struct rt2860_softc *);
 #endif
 void		rt2860_enable_tsf_sync(struct rt2860_softc *);
-void		rt2860_power(int, void *);
 
 static const struct {
 	uint32_t	reg;
@@ -227,11 +224,7 @@ rt2860_attach(void *xsc, int id)
 	}
 	sc->mac_ver = tmp >> 16;
 	sc->mac_rev = tmp & 0xffff;
-#ifdef RAL_DEBUG
-	/* temporarily enable debug for >=RT3071 */
-	if (sc->mac_ver >= 0x3071)
-		rt2860_debug = 10;
-#endif
+
 	if (sc->mac_ver != 0x2860 &&
 	    (id == PCI_PRODUCT_RALINK_RT2890 ||
 	     id == PCI_PRODUCT_RALINK_RT2790 ||
@@ -276,12 +269,6 @@ rt2860_attach(void *xsc, int id)
 		mountroothook_establish(rt2860_attachhook, sc);
 	else
 		rt2860_attachhook(sc);
-
-	sc->sc_powerhook = powerhook_establish(rt2860_power, sc);
-	if (sc->sc_powerhook == NULL) {
-		printf("%s: WARNING: unable to establish power hook\n",
-		    sc->sc_dev.dv_xname);
-	}
 
 	return 0;
 
@@ -357,7 +344,6 @@ rt2860_attachhook(void *xsc)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = rt2860_init;
 	ifp->if_ioctl = rt2860_ioctl;
 	ifp->if_start = rt2860_start;
 	ifp->if_watchdog = rt2860_watchdog;
@@ -405,9 +391,6 @@ rt2860_detach(void *xsc)
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
 	int qid;
 
-	if (sc->sc_powerhook != NULL)
-		powerhook_disestablish(sc->sc_powerhook);
-
 	ieee80211_ifdetach(ifp);	/* free all nodes */
 	if_detach(ifp);
 
@@ -429,15 +412,17 @@ rt2860_suspend(void *xsc)
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
 
 	if (ifp->if_flags & IFF_RUNNING)
-		rt2860_stop(ifp, 0);
+		rt2860_stop(ifp, 1);
 }
 
 void
 rt2860_resume(void *xsc)
 {
 	struct rt2860_softc *sc = xsc;
+	struct ifnet *ifp = &sc->sc_ic.ic_if;
 
-	rt2860_power(PWR_RESUME, sc);
+	if (ifp->if_flags & IFF_UP)
+		rt2860_init(ifp);
 }
 
 int
@@ -1030,7 +1015,8 @@ rt3090_efuse_read_2(struct rt2860_softc *sc, uint16_t addr)
 	tmp |= (addr & ~0xf) << RT3070_EFSROM_AIN_SHIFT | RT3070_EFSROM_KICK;
 	RAL_WRITE(sc, RT3070_EFUSE_CTRL, tmp);
 	for (ntries = 0; ntries < 500; ntries++) {
-		if (!(RAL_READ(sc, RT3070_EFUSE_CTRL) & RT3070_EFSROM_KICK))
+		tmp = RAL_READ(sc, RT3070_EFUSE_CTRL);
+		if (!(tmp & RT3070_EFSROM_KICK))
 			break;
 		DELAY(2);
 	}
@@ -2017,7 +2003,8 @@ rt3090_rf_read(struct rt2860_softc *sc, uint8_t reg)
 	RAL_WRITE(sc, RT3070_RF_CSR_CFG, tmp);
 
 	for (ntries = 0; ntries < 100; ntries++) {
-		if (!(RAL_READ(sc, RT3070_RF_CSR_CFG) & RT3070_RF_KICK))
+		tmp = RAL_READ(sc, RT3070_RF_CSR_CFG);
+		if (!(tmp & RT3070_RF_KICK))
 			break;
 		DELAY(1);
 	}
@@ -3861,30 +3848,4 @@ rt2860_enable_tsf_sync(struct rt2860_softc *sc)
 #endif
 
 	RAL_WRITE(sc, RT2860_BCN_TIME_CFG, tmp);
-}
-
-void
-rt2860_power(int why, void *arg)
-{
-	struct rt2860_softc *sc = arg;
-	struct ifnet *ifp = &sc->sc_ic.ic_if;
-	int s;
-
-	s = splnet();
-	switch (why) {
-	case PWR_SUSPEND:
-	case PWR_STANDBY:
-		rt2860_stop(ifp, 0);
-		if (sc->sc_power != NULL)
-			(*sc->sc_power)(sc, why);
-		break;
-	case PWR_RESUME:
-		if (ifp->if_flags & IFF_UP) {
-			rt2860_init(ifp);
-			if (sc->sc_power != NULL)
-				(*sc->sc_power)(sc, why);
-		}
-		break;
-	}
-	splx(s);
 }

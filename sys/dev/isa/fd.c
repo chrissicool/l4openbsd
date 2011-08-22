@@ -1,4 +1,4 @@
-/*	$OpenBSD: fd.c,v 1.85 2010/05/18 04:41:14 dlg Exp $	*/
+/*	$OpenBSD: fd.c,v 1.90 2010/11/18 21:13:19 miod Exp $	*/
 /*	$NetBSD: fd.c,v 1.90 1996/05/12 23:12:03 mycroft Exp $	*/
 
 /*-
@@ -49,7 +49,6 @@
 #include <sys/ioctl.h>
 #include <sys/device.h>
 #include <sys/disklabel.h>
-#include <sys/dkstat.h>
 #include <sys/disk.h>
 #include <sys/buf.h>
 #include <sys/malloc.h>
@@ -145,8 +144,6 @@ int fd_get_parms(struct fd_softc *);
 void fdstrategy(struct buf *);
 void fdstart(struct fd_softc *);
 int fdintr(struct fdc_softc *);
-
-struct dkdriver fddkdriver = { fdstrategy };
 
 void fd_set_motor(struct fdc_softc *fdc, int reset);
 void fd_motor_off(void *arg);
@@ -305,9 +302,9 @@ fdattach(parent, self, aux)
 	/*
 	 * Initialize and attach the disk structure.
 	 */
+	fd->sc_dk.dk_flags = DKF_NOLABELREAD;
 	fd->sc_dk.dk_name = fd->sc_dev.dv_xname;
-	fd->sc_dk.dk_driver = &fddkdriver;
-	disk_attach(&fd->sc_dk);
+	disk_attach(&fd->sc_dev, &fd->sc_dk);
 
 	/* Needed to power off if the motor is on when we halt. */
 	fd->sc_sdhook = shutdownhook_establish(fd_motor_off, fd);
@@ -501,7 +498,7 @@ fdread(dev, uio, flags)
 	int flags;
 {
 
-	return (physio(fdstrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(fdstrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -511,7 +508,7 @@ fdwrite(dev, uio, flags)
 	int flags;
 {
 
-	return (physio(fdstrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(fdstrategy, dev, B_WRITE, minphys, uio));
 }
 
 void

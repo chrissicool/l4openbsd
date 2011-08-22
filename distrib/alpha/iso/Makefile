@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile,v 1.6 2009/04/17 03:58:54 deraadt Exp $
+#	$OpenBSD: Makefile,v 1.8 2010/10/18 05:40:47 deraadt Exp $
 
 TOP=	${.CURDIR}/..
 
@@ -10,7 +10,7 @@ RELDIR?=	/home/rel-${MACHINE}
 
 BASE=		${RELDIR}/base${OSrev}.tgz ${RELDIR}/comp${OSrev}.tgz \
 		${RELDIR}/etc${OSrev}.tgz ${RELDIR}/game${OSrev}.tgz \
-		${RELDIR}/man${OSrev}.tgz ${RELDIR}/misc${OSrev}.tgz \
+		${RELDIR}/man${OSrev}.tgz \
 		${RELDIR}/bsd ${RELDIR}/bsd.rd \
 		${RELDIR}/INSTALL.${MACHINE}
 XBASE=		${RELXDIR}/xbase${OSrev}.tgz ${RELXDIR}/xetc${OSrev}.tgz \
@@ -45,7 +45,6 @@ ${CDROM}: ${BASE} ${XBASE}
 	    -s `cat log | grep -v 'Name' | egrep "/cd-dir/${OSREV}/${MACHINE}/boot$$" | cut -d' ' -f1` \
 	    -e `cat log | grep -v 'Name' | egrep "/cd-dir/${OSREV}/${MACHINE}/boot$$" | cut -d' ' -f2` \
 	    /mnt/${OSREV}/${MACHINE}/boot /usr/mdec/bootxx /dev/rsvnd0c
-	#disklabel -w svnd0 fakecdrom "OpenBSD/${MACHINE}   "
 	umount /mnt
 	vnconfig -u svnd0
 

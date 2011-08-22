@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-capture-pane.c,v 1.3 2010/01/20 18:30:20 nicm Exp $ */
+/* $OpenBSD: cmd-capture-pane.c,v 1.6 2011/01/04 00:42:46 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Jonathan Alvarado <radobobo@users.sourceforge.net>
@@ -18,6 +18,7 @@
 
 #include <sys/types.h>
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "tmux.h"
@@ -30,27 +31,26 @@ int	cmd_capture_pane_exec(struct cmd *, struct cmd_ctx *);
 
 const struct cmd_entry cmd_capture_pane_entry = {
 	"capture-pane", "capturep",
-	CMD_BUFFER_PANE_USAGE,
-	0, "",
-	cmd_buffer_init,
-	cmd_buffer_parse,
-	cmd_capture_pane_exec,
-	cmd_buffer_free,
-	cmd_buffer_print
+	"b:t:", 0, 0,
+	"[-b buffer-index] [-t target-pane]",
+	0,
+	NULL,
+	NULL,
+	cmd_capture_pane_exec
 };
 
 int
 cmd_capture_pane_exec(struct cmd *self, struct cmd_ctx *ctx)
 {
-	struct cmd_buffer_data	*data = self->data;
+	struct args		*args = self->args;
 	struct window_pane	*wp;
-	char 			*buf, *line;
+	char 			*buf, *line, *cause;
 	struct screen		*s;
-	struct session		*sess;
+	int			 buffer;
 	u_int			 i, limit;
 	size_t         		 len, linelen;
 
-	if (cmd_find_pane(ctx, data->target, &sess, &wp) == NULL)
+	if (cmd_find_pane(ctx, args_get(args, 't'), NULL, &wp) == NULL)
 		return (-1);
 	s = &wp->base;
 
@@ -69,15 +69,25 @@ cmd_capture_pane_exec(struct cmd *self, struct cmd_ctx *ctx)
 	       xfree(line);
 	}
 
-	limit = options_get_number(&sess->options, "buffer-limit");
-	if (data->buffer == -1) {
-		paste_add(&sess->buffers, buf, len, limit);
+	limit = options_get_number(&global_options, "buffer-limit");
+
+	if (!args_has(args, 'b')) {
+		paste_add(&global_buffers, buf, len, limit);
 		return (0);
 	}
-	if (paste_replace(&sess->buffers, data->buffer, buf, len) != 0) {
-		ctx->error(ctx, "no buffer %d", data->buffer);
+
+	buffer = args_strtonum(args, 'b', 0, INT_MAX, &cause);
+	if (cause != NULL) {
+		ctx->error(ctx, "buffer %s", cause);
+		xfree(cause);
+		return (-1);
+	}
+
+	if (paste_replace(&global_buffers, buffer, buf, len) != 0) {
+		ctx->error(ctx, "no buffer %d", buffer);
 		xfree(buf);
 		return (-1);
 	}
+
 	return (0);
 }

@@ -1,4 +1,4 @@
-/*	$OpenBSD: ccd.c,v 1.90 2010/05/18 04:41:14 dlg Exp $	*/
+/*	$OpenBSD: ccd.c,v 1.92 2010/09/22 01:18:57 matthew Exp $	*/
 /*	$NetBSD: ccd.c,v 1.33 1996/05/05 04:21:14 thorpej Exp $	*/
 
 /*-
@@ -978,7 +978,7 @@ ccdread(dev_t dev, struct uio *uio, int flags)
 	 * in particular, for raw I/O.  Underlying devices might have some
 	 * non-obvious limits, because of the copy to user-space.
 	 */
-	return (physio(ccdstrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(ccdstrategy, dev, B_READ, minphys, uio));
 }
 
 /* ARGSUSED */
@@ -1002,7 +1002,7 @@ ccdwrite(dev_t dev, struct uio *uio, int flags)
 	 * in particular, for raw I/O.  Underlying devices might have some
 	 * non-obvious limits, because of the copy to user-space.
 	 */
-	return (physio(ccdstrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(ccdstrategy, dev, B_WRITE, minphys, uio));
 }
 
 int
@@ -1118,7 +1118,7 @@ ccdioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 
 		/* Attach the disk. */
 		cs->sc_dkdev.dk_name = cs->sc_xname;
-		disk_attach(&cs->sc_dkdev);
+		disk_attach(NULL, &cs->sc_dkdev);
 
 		/* Try and read the disklabel. */
 		ccdgetdisklabel(dev, cs, cs->sc_dkdev.dk_label, 0);

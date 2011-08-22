@@ -1,4 +1,4 @@
-/*	$OpenBSD: timer.c,v 1.2 2010/06/14 08:10:32 reyk Exp $	*/
+/*	$OpenBSD: timer.c,v 1.4 2011/01/26 17:07:59 reyk Exp $	*/
 
 /*
  * Copyright (c) 2010 Reyk Floeter <reyk@vantronix.net>
@@ -55,6 +55,9 @@ timer_register_initiator(struct iked *env,
 
 	timer_unregister_initiator(env);
 
+	if (env->sc_passive)
+		return;
+
 	tmr = &timer_initiator;
 	gettimeofday(&tmr->tmr_first, NULL);
 	gettimeofday(&tmr->tmr_last, NULL);
@@ -91,10 +94,10 @@ timer_initiator_cb(int fd, short event, void *arg)
 
 	gettimeofday(&tmr->tmr_last, NULL);
 
-	RB_FOREACH(pol, iked_policies, &env->sc_policies) {
+	TAILQ_FOREACH(pol, &env->sc_policies, pol_entry) {
 		if ((pol->pol_flags & IKED_POLICY_ACTIVE) == 0)
 			continue;
-		if (sa_peer_lookup(pol, &pol->pol_peer) != NULL) {
+		if (sa_peer_lookup(pol, &pol->pol_peer.addr) != NULL) {
 			log_debug("%s: \"%s\" is already active",
 			    __func__, pol->pol_name);
 			continue;

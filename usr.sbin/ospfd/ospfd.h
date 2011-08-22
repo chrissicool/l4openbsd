@@ -1,4 +1,4 @@
-/*	$OpenBSD: ospfd.h,v 1.87 2010/02/19 10:35:52 dlg Exp $ */
+/*	$OpenBSD: ospfd.h,v 1.89 2011/01/12 15:07:46 claudio Exp $ */
 
 /*
  * Copyright (c) 2004 Esben Norby <norby@openbsd.org>
@@ -59,6 +59,7 @@
 #define	F_REJECT		0x0040
 #define	F_BLACKHOLE		0x0080
 #define	F_REDISTRIBUTED		0x0100
+#define	F_FORCED_NEXTHOP	0x0200
 
 struct imsgev {
 	struct imsgbuf		 ibuf;
@@ -389,16 +390,12 @@ struct kroute {
 	struct in_addr	prefix;
 	struct in_addr	nexthop;
 	u_int32_t	ext_tag;
+	u_int32_t	metric;
 	u_int16_t	flags;
 	u_int16_t	rtlabel;
 	u_short		ifindex;
 	u_int8_t	prefixlen;
 	u_int8_t	priority;
-};
-
-struct rroute {
-	struct kroute	kr;
-	u_int32_t	metric;
 };
 
 struct kif_addr {
@@ -505,6 +502,7 @@ struct ctl_sum {
 	u_int32_t		 spf_hold_time;
 	u_int32_t		 num_ext_lsa;
 	u_int32_t		 num_area;
+	u_int32_t		 ext_lsa_cksum;
 	time_t			 uptime;
 	u_int8_t		 rfc1583compat;
 };
@@ -515,6 +513,7 @@ struct ctl_sum_area {
 	u_int32_t		 num_adj_nbr;
 	u_int32_t		 num_spf_calc;
 	u_int32_t		 num_lsa;
+	u_int32_t		 lsa_cksum;
 };
 
 struct demote_msg {

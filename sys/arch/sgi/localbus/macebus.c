@@ -1,4 +1,4 @@
-/*	$OpenBSD: macebus.c,v 1.56 2009/11/25 17:39:51 syuu Exp $ */
+/*	$OpenBSD: macebus.c,v 1.58 2010/09/20 06:33:47 matthew Exp $ */
 
 /*
  * Copyright (c) 2000-2004 Opsycon AB  (www.opsycon.se)
@@ -118,7 +118,8 @@ bus_space_t macebus_tag = {
 	mace_read_raw_4, mace_write_raw_4,
 	mace_read_raw_8, mace_write_raw_8,
 	mace_space_map, mace_space_unmap, mace_space_region,
-	mace_space_vaddr
+	mace_space_vaddr,
+	NULL
 };
 
 bus_space_t crimebus_tag = {
@@ -132,7 +133,8 @@ bus_space_t crimebus_tag = {
 	mace_read_raw_4, mace_write_raw_4,
 	mace_read_raw_8, mace_write_raw_8,
 	mace_space_map, mace_space_unmap, mace_space_region,
-	mace_space_vaddr
+	mace_space_vaddr,
+	NULL
 };
 
 bus_space_handle_t crime_h;
@@ -498,8 +500,7 @@ macebus_intr_establish(int irq, uint32_t mace_irqmask, int type, int level,
 	ih->ih.ih_level = level;
 	ih->ih.ih_irq = irq;
 	ih->mace_irqmask = mace_irqmask;
-	evcount_attach(&ih->ih.ih_count, ih_what, (void *)&ih->ih.ih_irq,
-	    &evcount_intr);
+	evcount_attach(&ih->ih.ih_count, ih_what, &ih->ih.ih_irq);
 
 	s = splhigh();
 

@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.53 2010/07/10 19:32:24 miod Exp $	*/
+/*	$OpenBSD: conf.c,v 1.56 2011/01/14 19:04:08 jasper Exp $	*/
 /*	$NetBSD: conf.c,v 1.40 1996/04/11 19:20:03 thorpej Exp $ */
 
 /*
@@ -122,12 +122,14 @@ struct bdevsw	bdevsw[] =
 	bdev_disk_init(NRAID,raid),	/* 25: RAIDframe disk driver */
 	bdev_disk_init(NPRESTO,presto),	/* 26: Prestoserve NVRAM */
 };
-int	nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
+int	nblkdev = nitems(bdevsw);
 
 #include "pf.h"
 #include "systrace.h"
 #include "tctrl.h"
 #include "vscsi.h"
+#include "pppx.h"
+#include "hotplug.h"
 
 struct cdevsw	cdevsw[] =
 {
@@ -268,8 +270,10 @@ struct cdevsw	cdevsw[] =
 	cdev_ptm_init(NPTY,ptm),	/* 125: pseudo-tty ptm device */
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 128: vscsi */
 	cdev_disk_init(1,diskmap),	/* 129: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 130: pppx */
+	cdev_hotplug_init(NHOTPLUG,hotplug),	/* 131: devices hot plugging */
 };
-int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+int	nchrdev = nitems(cdevsw);
 
 int	mem_no = 3; 	/* major device number of memory special file */
 
@@ -438,4 +442,4 @@ int chrtoblktbl[] = {
 	/*122 */	NODEV,
 	/*123 */	25,
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);

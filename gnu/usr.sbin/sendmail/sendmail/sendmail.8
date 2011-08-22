@@ -1,3 +1,5 @@
+.\"	$OpenBSD: sendmail.8,v 1.33 2010/10/18 14:42:16 jmc Exp $
+.\"
 .\" Copyright (c) 1998-2003 Sendmail, Inc. and its suppliers.
 .\"	All rights reserved.
 .\" Copyright (c) 1983, 1997 Eric P. Allman.  All rights reserved.
@@ -11,7 +13,7 @@
 .\"
 .\"     $Sendmail: sendmail.8,v 8.58 2007/08/02 05:42:33 ca Exp $
 .\"
-.Dd August 2, 2007
+.Dd $Mdocdate: October 18 2010 $
 .Dt SENDMAIL 8
 .Os
 .Sh NAME
@@ -557,9 +559,9 @@ It may be necessary to quote the name
 to keep
 .Nm
 from suppressing the blanks from between arguments.
-For example, a common alias is:
+For example:
 .Bd -literal -offset indent
-msgs: "|/usr/bin/msgs -s"
+eric: "|/usr/bin/vacation -a allman eric"
 .Ed
 .Pp
 Aliases may also have the syntax
@@ -576,6 +578,45 @@ would read
 .Pa /usr/local/lib/poets.list
 for the list of addresses making up the group.
 .Pp
+If invoked as
+.Nm newaliases ,
+.Nm
+will rebuild the alias database.
+If invoked as
+.Nm mailq ,
+.Nm
+will print the contents of the mail queue.
+If invoked as
+.Nm hoststat ,
+.Nm
+will print the persistent host status database.
+If invoked as
+.Nm purgestat ,
+.Nm
+will purge expired entries from the persistent host status database.
+.Sh FILES
+Except for the file
+.Pa /etc/mail/sendmail.cf
+itself the following pathnames are all specified in
+.Pa /etc/mail/sendmail.cf .
+Thus,
+these values are only approximations.
+.Pp
+.Bl -tag -width /etc/mail/sendmail.cf -compact
+.It Pa /etc/mail/aliases
+raw data for alias names
+.It Pa /etc/mail/aliases.db
+data base of alias names
+.It Pa /etc/mail/sendmail.cf
+configuration file
+.It Pa /etc/mail/sendmail.hf
+help file
+.It Pa /var/log/sendmail.st
+collected statistics
+.It Pa /var/spool/mqueue/*
+temp files
+.El
+.Sh EXIT STATUS
 .Nm
 returns an exit status
 describing what it did.
@@ -605,62 +646,6 @@ Host name not recognized.
 Message could not be sent immediately,
 but was queued.
 .El
-.Pp
-If invoked as
-.Nm newaliases ,
-.Nm
-will rebuild the alias database.
-If invoked as
-.Nm mailq ,
-.Nm
-will print the contents of the mail queue.
-If invoked as
-.Nm hoststat ,
-.Nm
-will print the persistent host status database.
-If invoked as
-.Nm purgestat ,
-.Nm
-will purge expired entries from the persistent host status database.
-.Sh NOTES
-.Nm
-often gets blamed for many problems
-that are actually the result of other problems,
-such as overly permissive modes on directories.
-For this reason,
-.Nm
-checks the modes on system directories and files
-to determine if they can be trusted.
-Although these checks can be turned off
-and your system security reduced by setting the
-.Li DontBlameSendmail
-option,
-the permission problems should be fixed.
-For more information, see:
-.Pp
-.Pa http://www.sendmail.org/tips/DontBlameSendmail.html
-.Sh FILES
-Except for the file
-.Pa /etc/mail/sendmail.cf
-itself the following pathnames are all specified in
-.Pa /etc/mail/sendmail.cf .
-Thus,
-these values are only approximations.
-.Pp
-.Bl -tag -width /etc/mail/sendmail.cf -compact
-.It Pa /etc/mail/aliases
-raw data for alias names
-.It Pa /etc/mail/aliases.db
-data base of alias names
-.It Pa /etc/mail/sendmail.cf
-configuration file
-.It Pa /etc/mail/sendmail.hf
-help file
-.It Pa /var/log/sendmail.st
-collected statistics
-.It Pa /var/spool/mqueue/*
-temp files
-.El
 .Sh SEE ALSO
 .Xr mail 1 ,
 .Xr syslog 3 ,
@@ -678,9 +663,6 @@ temp files
 DARPA Internet Request For Comments
 RFC 819, RFC 821, RFC 2822.
 .Pp
-"Sendmail Installation and Operation Guide",
-.Pa /usr/share/doc/smm/08.sendmailop/ .
-.Pp
 "Filtering Mail with Sendmail",
 .br
 .Pa /usr/share/doc/html/milter/index.html .
@@ -691,3 +673,20 @@ The
 .Nm
 command appeared in
 .Bx 4.2 .
+.Sh CAVEATS
+.Nm
+often gets blamed for many problems
+that are actually the result of other problems,
+such as overly permissive modes on directories.
+For this reason,
+.Nm
+checks the modes on system directories and files
+to determine if they can be trusted.
+Although these checks can be turned off
+and your system security reduced by setting the
+.Li DontBlameSendmail
+option,
+the permission problems should be fixed.
+For more information, see:
+.Pp
+.Pa http://www.sendmail.org/tips/DontBlameSendmail.html

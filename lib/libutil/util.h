@@ -1,4 +1,4 @@
-/*	$OpenBSD: util.h,v 1.27 2006/06/14 02:14:25 krw Exp $	*/
+/*	$OpenBSD: util.h,v 1.29 2010/12/17 19:35:34 millert Exp $	*/
 /*	$NetBSD: util.h,v 1.2 1996/05/16 07:00:22 thorpej Exp $	*/
 
 /*-
@@ -86,7 +86,7 @@ void	login(struct utmp *);
 int	login_tty(int);
 int	logout(const char *);
 void	logwtmp(const char *, const char *, const char *);
-int	opendev(char *, int, int, char **);
+int	opendev(const char *, int, int, char **);
 int	pidfile(const char *);
 void	pw_setdir(const char *);
 char   *pw_file(const char *);
@@ -114,6 +114,7 @@ int	uu_lock_txfr(const char *_ttyname, pid_t _pid);
 int     uu_unlock(const char *_ttyname);
 int	fmt_scaled(long long number, char *result);
 int	scan_scaled(char *scaled, long long *result);
+int	isduid(const char *, int);
 __END_DECLS
 
 #endif /* !_UTIL_H_ */

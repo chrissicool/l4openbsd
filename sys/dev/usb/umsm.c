@@ -1,4 +1,4 @@
-/*	$OpenBSD: umsm.c,v 1.66 2010/06/26 00:34:19 yuo Exp $	*/
+/*	$OpenBSD: umsm.c,v 1.72 2011/02/01 18:31:11 dcoppa Exp $	*/
 
 /*
  * Copyright (c) 2008 Yojiro UO <yuo@nui.org>
@@ -125,12 +125,14 @@ static const struct umsm_type umsm_devs[] = {
 	{{ USB_VENDOR_ANYDATA,	USB_PRODUCT_ANYDATA_ADU_500A }, 0},
 	{{ USB_VENDOR_ANYDATA,  USB_PRODUCT_ANYDATA_ADU_E100H }, 0},
 
+	{{ USB_VENDOR_DELL,	USB_PRODUCT_DELL_EU870D }, 0},
 	{{ USB_VENDOR_DELL,	USB_PRODUCT_DELL_U740 }, 0},
 	{{ USB_VENDOR_DELL,	USB_PRODUCT_DELL_W5500 }, 0},
 
 	{{ USB_VENDOR_HUAWEI,	USB_PRODUCT_HUAWEI_E161 }, DEV_UMASS5},
 	{{ USB_VENDOR_HUAWEI,	USB_PRODUCT_HUAWEI_E180 }, DEV_HUAWEI},
 	{{ USB_VENDOR_HUAWEI,	USB_PRODUCT_HUAWEI_E182 }, DEV_UMASS5},
+	{{ USB_VENDOR_HUAWEI,	USB_PRODUCT_HUAWEI_E1820 }, DEV_UMASS5},
 	{{ USB_VENDOR_HUAWEI,	USB_PRODUCT_HUAWEI_E220 }, DEV_HUAWEI},
 	{{ USB_VENDOR_HUAWEI,	USB_PRODUCT_HUAWEI_E510 }, DEV_HUAWEI},
 	{{ USB_VENDOR_HUAWEI,	USB_PRODUCT_HUAWEI_E618 }, DEV_HUAWEI},
@@ -156,6 +158,7 @@ static const struct umsm_type umsm_devs[] = {
 	{{ USB_VENDOR_ZTE, USB_PRODUCT_ZTE_UMASS_INSTALLER2 }, DEV_UMASS6},
 	{{ USB_VENDOR_ZTE, USB_PRODUCT_ZTE_UMASS_INSTALLER }, DEV_UMASS4},
 	{{ USB_VENDOR_ZTE, USB_PRODUCT_ZTE_K3565Z }, 0},
+	{{ USB_VENDOR_ZTE, USB_PRODUCT_ZTE_MF112 }, DEV_UMASS4},
 	{{ USB_VENDOR_ZTE, USB_PRODUCT_ZTE_MF633 }, 0},
 	{{ USB_VENDOR_ZTE, USB_PRODUCT_ZTE_MF637 }, 0},
 
@@ -214,6 +217,7 @@ static const struct umsm_type umsm_devs[] = {
 	{{ USB_VENDOR_SIERRA, USB_PRODUCT_SIERRA_AIRCARD_875 }, 0},
 	{{ USB_VENDOR_SIERRA, USB_PRODUCT_SIERRA_MC8780 }, 0},
 	{{ USB_VENDOR_SIERRA, USB_PRODUCT_SIERRA_MC8781 }, 0},
+	{{ USB_VENDOR_SIERRA, USB_PRODUCT_SIERRA_MC8790 }, 0},
 	{{ USB_VENDOR_SIERRA, USB_PRODUCT_SIERRA_AC880 }, 0},
 	{{ USB_VENDOR_SIERRA, USB_PRODUCT_SIERRA_AC881 }, 0},
 	{{ USB_VENDOR_SIERRA, USB_PRODUCT_SIERRA_AC880E }, 0},
@@ -226,6 +230,8 @@ static const struct umsm_type umsm_devs[] = {
 
 	{{ USB_VENDOR_TCTMOBILE, USB_PRODUCT_TCTMOBILE_UMASS }, DEV_UMASS3},
 	{{ USB_VENDOR_TCTMOBILE, USB_PRODUCT_TCTMOBILE_UMSM }, 0},
+
+	{{ USB_VENDOR_TOSHIBA, USB_PRODUCT_TOSHIBA_HSDPA }, 0},
 
 	{{ USB_VENDOR_HP, USB_PRODUCT_HP_HS2300 }, 0},
 
@@ -381,9 +387,6 @@ umsm_attach(struct device *parent, struct device *self, void *aux)
 	uca.info = NULL;
 	uca.portno = UCOM_UNK_PORTNO;
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
-	
 	sc->sc_subdev = config_found_sm(self, &uca, ucomprint, ucomsubmatch);
 }
 
@@ -406,9 +409,6 @@ umsm_detach(struct device *self, int flags)
 		rv = config_detach(sc->sc_subdev, flags);
 		sc->sc_subdev = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (rv);
 }

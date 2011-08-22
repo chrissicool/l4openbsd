@@ -1,4 +1,4 @@
-/*	$OpenBSD: rcsutil.c,v 1.35 2010/07/28 09:07:11 ray Exp $	*/
+/*	$OpenBSD: rcsutil.c,v 1.38 2010/12/06 22:52:55 chl Exp $	*/
 /*
  * Copyright (c) 2005, 2006 Joris Vink <joris@openbsd.org>
  * Copyright (c) 2006 Xavier Santolaria <xsa@openbsd.org>
@@ -28,6 +28,7 @@
  */
 
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #include <ctype.h>
 #include <err.h>
@@ -50,7 +51,10 @@ rcs_get_mtime(RCSFILE *file)
 	struct stat st;
 	time_t mtime;
 
-	if (fstat(file->rf_fd, &st) == -1) {
+	if (file->rf_file == NULL)
+		return (-1);
+
+	if (fstat(fileno(file->rf_file), &st) == -1) {
 		warn("%s", file->rf_path);
 		return (-1);
 	}
@@ -70,13 +74,13 @@ rcs_set_mtime(RCSFILE *file, time_t mtime)
 {
 	static struct timeval tv[2];
 
-	if (mtime == -1)
+	if (file->rf_file == NULL || mtime == -1)
 		return;
 
 	tv[0].tv_sec = mtime;
 	tv[1].tv_sec = tv[0].tv_sec;
 
-	if (futimes(file->rf_fd, tv) == -1)
+	if (futimes(fileno(file->rf_file), tv) == -1)
 		err(1, "utimes");
 }
 
@@ -152,10 +156,6 @@ rcs_choosefile(const char *filename, char *out, size_t len)
 	struct stat sb;
 	char *p, *ext, name[MAXPATHLEN], *next, *ptr, rcsdir[MAXPATHLEN],
 	    *suffixes, rcspath[MAXPATHLEN];
-
-	/* If -x flag was not given, use default. */
-	if (rcs_suffixes == NULL)
-		rcs_suffixes = RCS_DEFAULT_SUFFIX;
 
 	fd = -1;
 

@@ -1,4 +1,4 @@
-.\"	$OpenBSD: mktemp.3,v 1.44 2010/03/22 20:18:12 schwarze Exp $
+.\"	$OpenBSD: mktemp.3,v 1.48 2011/01/10 22:37:45 jmc Exp $
 .\"
 .\" Copyright (c) 1989, 1991, 1993
 .\"	The Regents of the University of California.  All rights reserved.
@@ -27,7 +27,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.Dd $Mdocdate: March 22 2010 $
+.Dd $Mdocdate: January 10 2011 $
 .Dt MKTEMP 3
 .Os
 .Sh NAME
@@ -61,6 +61,9 @@ depends on the number of Xs provided; six Xs will result in
 .Fn mktemp
 testing roughly 62 ** 6 combinations.
 At least 6 Xs should be used, though 10 is much better.
+Some
+.No non- Ns Bx
+implementations return an error if fewer than 6 Xs are used.
 .Pp
 The
 .Fn mktemp
@@ -72,12 +75,12 @@ does not actually create the temporary file there is a window of
 opportunity during which another process can open the file instead.
 Because of this race condition,
 .Fn mktemp
-should not be used in new code.
+should not be used where
+.Fn mkstemp
+can be used instead.
 .Fn mktemp
 was marked as a legacy interface in
-.St -p1003.1-2001
-and may be removed in a future release of
-.Ox .
+.St -p1003.1-2001 .
 .Pp
 The
 .Fn mkstemp
@@ -248,7 +251,6 @@ to any value specified by the
 function.
 .Sh SEE ALSO
 .Xr chmod 2 ,
-.Xr getpid 2 ,
 .Xr lstat 2 ,
 .Xr mkdir 2 ,
 .Xr open 2 ,
@@ -257,23 +259,19 @@ function.
 .Xr tmpnam 3
 .Sh STANDARDS
 The
-.Fn mktemp
+.Fn mkdtemp
 and
 .Fn mkstemp
 functions conform to the
-.St -xpg4 ,
-but
-.Fn mktemp
-is marked as legacy.
+.St -p1003.1-2008
+specification.
 The ability to specify more than six Xs and setting
 .Xr errno 2
-in case of errors are extensions to this standard.
+in case of errors are extensions to that standard.
 .Pp
 The
-.Fn mkdtemp
-and
 .Fn mkstemps
-functions are non-standard and should not be used if portability is required.
+function is non-standard and should not be used if portability is required.
 .Sh HISTORY
 A
 .Fn mktemp

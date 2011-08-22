@@ -1,4 +1,4 @@
-/*	$OpenBSD: subr_xxx.c,v 1.9 2005/12/09 09:09:52 jsg Exp $	*/
+/*	$OpenBSD: subr_xxx.c,v 1.12 2010/09/28 20:27:56 miod Exp $	*/
 /*	$NetBSD: subr_xxx.c,v 1.10 1996/02/04 02:16:51 christos Exp $	*/
 
 /*
@@ -151,4 +151,18 @@ blktochr(dev_t dev)
 		if (blkmaj == chrtoblktbl[i])
 			return (makedev(i, minor(dev)));
 	return (NODEV);
+}
+
+/*
+ * Check that we're in a context where it's okay to sleep.
+ */
+void
+assertwaitok(void)
+{
+	splassert(IPL_NONE);
+#ifdef DIAGNOSTIC
+	if (curcpu()->ci_mutex_level != 0)
+		panic("assertwaitok: non-zero mutex count: %d",
+		    curcpu()->ci_mutex_level);
+#endif
 }

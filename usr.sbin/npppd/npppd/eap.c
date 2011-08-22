@@ -1,4 +1,4 @@
-/* $OpenBSD: eap.c,v 1.4 2010/08/02 09:29:53 jsg Exp $ */
+/* $OpenBSD: eap.c,v 1.6 2011/01/20 23:12:33 jasper Exp $ */
 
 /*-
  * Copyright (c) 2009 Internet Initiative Japan Inc.
@@ -34,7 +34,7 @@
  *	    RADIUS (Remote Authentication Dial In User Service) Support For
  *	    Extensible Authentication Protocol (EAP). B. Aboba, P. Calhoun.
  */
-/* $Id: eap.c,v 1.4 2010/08/02 09:29:53 jsg Exp $ */
+/* $Id: eap.c,v 1.6 2011/01/20 23:12:33 jasper Exp $ */
 
 /* FIXME: This must be rewritten. */
 
@@ -236,7 +236,7 @@ eap_input(eap *_this, unsigned char *pktp, int len){
 	if (code == EAP_FAILURE) {
 		/* discard */
 		eap_log(_this, LOG_NOTICE,
-		    "Recieved unexpected packet from peer (code = %d)", code);
+		    "Received unexpected packet from peer (code = %d)", code);
 		return;
 	}
 
@@ -292,11 +292,11 @@ eap_input(eap *_this, unsigned char *pktp, int len){
          * discard
          */
 	eap_log(_this, LOG_DEBUG,
-	    "recieve eap length = %d, "
+	    "receive eap length = %d, "
 	    "eap info: code = %d, id = %d, length = %d, type = %d, "
 	    "name length = %d",
 	    len, code, id, length, type, _this->name_len );
-        eap_log(_this, LOG_NOTICE, "Recieved unexpected eap packet from peer");
+        eap_log(_this, LOG_NOTICE, "Received unexpected eap packet from peer");
 	return;
 }
 
@@ -894,10 +894,10 @@ get_mppe_keys(eap *_this, RADIUS_PACKET *pkt, const char *secret) {
 		eap_log(_this, LOG_ERR, "no mppe_recv_key");
 		return 1;
 	}
-	DecryptKeyFromRadius(_this->ppp->mppe.send.master_key,
+	mschap_radiuskey(_this->ppp->mppe.send.master_key,
 	    sendkey.salt, _this->authenticator, secret);
 
-	DecryptKeyFromRadius(_this->ppp->mppe.recv.master_key,
+	mschap_radiuskey(_this->ppp->mppe.recv.master_key,
 	    recvkey.salt, _this->authenticator, secret);
 
 	return 0;

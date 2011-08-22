@@ -1,4 +1,4 @@
-/* 	$OpenBSD: isp.c,v 1.49 2010/02/20 12:39:41 sobrado Exp $ */
+/* 	$OpenBSD: isp.c,v 1.51 2010/12/31 19:26:00 kettenis Exp $ */
 /*	$FreeBSD: src/sys/dev/isp/isp.c,v 1.150 2008/12/15 21:42:38 marius Exp $*/
 /*-
  *  Copyright (c) 1997-2007 by Matthew Jacob
@@ -4059,6 +4059,18 @@ isp_start(XS_T *xs)
 	}
 
 	/*
+	 * The firmware on the 1020/1020A doesn't seem to implement
+	 * extended commands.  Bail out early since we don't seem to
+	 * be able to recover from issuing a command that isn't
+	 * implemented.
+	 */
+
+	if (XS_CDBLEN(xs) > 12 && isp->isp_type < ISP_HA_SCSI_1040) {
+		XS_SETERR(xs, HBA_BOTCH);
+		return (CMD_COMPLETE);
+	}
+
+	/*
 	 * Translate the target to device handle as appropriate, checking
 	 * for correct device state as well.
 	 */
@@ -6162,8 +6174,8 @@ isp_mbox_continue(struct ispsoftc *isp)
 	ptr = isp->isp_mbxworkp;
 	switch (isp->isp_lastmbxcmd) {
 	case MBOX_WRITE_RAM_WORD:
-		mbs.param[1] = isp->isp_mbxwrk1++;;
-		mbs.param[2] = *ptr++;;
+		mbs.param[1] = isp->isp_mbxwrk1++;
+		mbs.param[2] = *ptr++;
 		break;
 	case MBOX_READ_RAM_WORD:
 		*ptr++ = isp->isp_mboxtmp[2];
@@ -6173,7 +6185,7 @@ isp_mbox_continue(struct ispsoftc *isp)
 		offset = isp->isp_mbxwrk1;
 		offset |= isp->isp_mbxwrk8 << 16;
 
-		mbs.param[2] = *ptr++;;
+		mbs.param[2] = *ptr++;
 		mbs.param[1] = offset;
 		mbs.param[8] = offset >> 16;
 		isp->isp_mbxwrk1 = ++offset;

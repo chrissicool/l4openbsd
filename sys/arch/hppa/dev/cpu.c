@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpu.c,v 1.37 2010/06/26 23:33:32 jsing Exp $	*/
+/*	$OpenBSD: cpu.c,v 1.39 2011/01/02 20:41:22 kettenis Exp $	*/
 
 /*
  * Copyright (c) 1998-2003 Michael Shalayeff
@@ -29,6 +29,7 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/device.h>
+#include <sys/proc.h>
 #include <sys/reboot.h>
 
 #include <uvm/uvm_extern.h>
@@ -269,4 +270,23 @@ cpu_hatch(void)
 	SCHED_LOCK(s);
 	cpu_switchto(NULL, sched_chooseproc());
 }
+
+void
+cpu_unidle(struct cpu_info *ci)
+{
+	if (ci != curcpu())
+		hppa_ipi_send(ci, HPPA_IPI_NOP);
+}
 #endif
+
+void
+need_resched(struct cpu_info *ci)
+{
+	ci->ci_want_resched = 1;
+
+	/* There's a risk we'll be called before the idle threads start */
+	if (ci->ci_curproc) {
+		setsoftast(ci->ci_curproc);
+		cpu_unidle(ci);
+	}
+}

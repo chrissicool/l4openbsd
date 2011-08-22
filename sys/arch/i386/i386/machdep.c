@@ -1,4 +1,4 @@
-/*	$OpenBSD: machdep.c,v 1.481 2010/08/05 21:10:09 deraadt Exp $	*/
+/*	$OpenBSD: machdep.c,v 1.487 2011/01/27 21:27:44 jsg Exp $	*/
 /*	$NetBSD: machdep.c,v 1.214 1996/11/10 03:16:17 thorpej Exp $	*/
 
 /*-
@@ -2093,6 +2093,9 @@ p3_get_bus_clock(struct cpu_info *ci)
 		case 3:
 			bus_clock = BUS166;
 			break;
+		case 2:
+			bus_clock = BUS200;
+			break;
 		default:
 			printf("%s: unknown Atom FSB_FREQ value %d",
 			    ci->ci_dev.dv_xname, bus);
@@ -2125,9 +2128,11 @@ p3_get_bus_clock(struct cpu_info *ci)
 			goto print_msr;
 		}
 		break;
-	case 0x1a: /* Core i7 */
-	case 0x1e: /* Core i5 */
-	case 0x25: /* Core i3 */
+	case 0x1a: /* Core i7, Xeon 3500/5500 */
+	case 0x1e: /* Core i5/i7, Xeon 3400 */
+	case 0x25: /* Core i3/i5, Xeon 3400 */
+	case 0x2c: /* Core i7, Xeon 3600/5600 */
+	case 0x2e: /* Xeon 6500/7500 */
 		break;
 	default: 
 		printf("%s: unknown i686 model 0x%x, can't get bus clock",
@@ -2431,6 +2436,9 @@ struct pcb dumppcb;
 void
 boot(int howto)
 {
+	if (howto & RB_POWERDOWN)
+		lid_suspend = 0;
+
 	if (cold) {
 		/*
 		 * If the system is cold, just halt, unless the user
@@ -3368,8 +3376,7 @@ need_resched(struct cpu_info *ci)
 	/* There's a risk we'll be called before the idle threads start */
 	if (ci->ci_curproc) {
 		aston(ci->ci_curproc);
-		if (ci != curcpu())
-			cpu_unidle(ci);
+		cpu_unidle(ci);
 	}
 }
 

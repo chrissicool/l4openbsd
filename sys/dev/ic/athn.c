@@ -1,4 +1,4 @@
-/*	$OpenBSD: athn.c,v 1.58 2010/08/02 19:28:31 kettenis Exp $	*/
+/*	$OpenBSD: athn.c,v 1.71 2011/01/08 15:05:24 damien Exp $	*/
 
 /*-
  * Copyright (c) 2009 Damien Bergamini <damien.bergamini@free.fr>
@@ -21,6 +21,7 @@
  * Driver for Atheros 802.11a/g/n chipsets.
  */
 
+#include "athn_usb.h"
 #include "bpfilter.h"
 
 #include <sys/param.h>
@@ -71,6 +72,7 @@ void		athn_get_chanlist(struct athn_softc *);
 const char *	athn_get_mac_name(struct athn_softc *);
 const char *	athn_get_rf_name(struct athn_softc *);
 void		athn_led_init(struct athn_softc *);
+void		athn_set_led(struct athn_softc *, int);
 void		athn_btcoex_init(struct athn_softc *);
 void		athn_btcoex_enable(struct athn_softc *);
 void		athn_btcoex_disable(struct athn_softc *);
@@ -120,7 +122,7 @@ void		athn_enable_interrupts(struct athn_softc *);
 void		athn_disable_interrupts(struct athn_softc *);
 void		athn_init_qos(struct athn_softc *);
 int		athn_hw_reset(struct athn_softc *, struct ieee80211_channel *,
-		    struct ieee80211_channel *);
+		    struct ieee80211_channel *, int);
 struct		ieee80211_node *athn_node_alloc(struct ieee80211com *);
 void		athn_newassoc(struct ieee80211com *, struct ieee80211_node *,
 		    int);
@@ -157,6 +159,7 @@ int		ar9285_init_calib(struct athn_softc *,
 		    struct ieee80211_channel *, struct ieee80211_channel *);
 int		ar9003_init_calib(struct athn_softc *);
 void		ar9285_pa_calib(struct athn_softc *);
+void		ar9271_pa_calib(struct athn_softc *);
 void		ar9287_1_3_enable_async_fifo(struct athn_softc *);
 void		ar9287_1_3_setup_async_fifo(struct athn_softc *);
 void		ar9003_reset_txsring(struct athn_softc *);
@@ -172,13 +175,16 @@ athn_attach(struct athn_softc *sc)
 	struct ifnet *ifp = &ic->ic_if;
 	int error;
 
+	/* Read hardware revision. */
+	athn_get_chipid(sc);
+
 	if ((error = athn_reset_power_on(sc)) != 0) {
-		printf(": could not reset chip\n");
+		printf("%s: could not reset chip\n", sc->sc_dev.dv_xname);
 		return (error);
 	}
 
 	if ((error = athn_set_power_awake(sc)) != 0) {
-		printf(": could not wakeup chip\n");
+		printf("%s: could not wakeup chip\n", sc->sc_dev.dv_xname);
 		return (error);
 	}
 
@@ -188,28 +194,35 @@ athn_attach(struct athn_softc *sc)
 		error = ar9280_attach(sc);
 	else if (AR_SREV_9285(sc))
 		error = ar9285_attach(sc);
+#if NATHN_USB > 0
+	else if (AR_SREV_9271(sc))
+		error = ar9285_attach(sc);
+#endif
 	else if (AR_SREV_9287(sc))
 		error = ar9287_attach(sc);
-	else if (AR_SREV_9380(sc))
+	else if (AR_SREV_9380(sc) || AR_SREV_9485(sc))
 		error = ar9380_attach(sc);
+	else
+		error = ENOTSUP;
 	if (error != 0) {
-		printf(": could not attach chip\n");
+		printf("%s: could not attach chip\n", sc->sc_dev.dv_xname);
 		return (error);
 	}
-	printf(", address %s\n", ether_sprintf(ic->ic_myaddr));
 
 	/* We can put the chip in sleep state now. */
 	athn_set_power_sleep(sc);
 
-	error = sc->ops.dma_alloc(sc);
-	if (error != 0) {
-		printf("%s: could not allocate DMA resources\n",
-		    sc->sc_dev.dv_xname);
-		return (error);
+	if (!(sc->flags & ATHN_FLAG_USB)) {
+		error = sc->ops.dma_alloc(sc);
+		if (error != 0) {
+			printf("%s: could not allocate DMA resources\n",
+			    sc->sc_dev.dv_xname);
+			return (error);
+		}
+		/* Steal one Tx buffer for beacons. */
+		sc->bcnbuf = SIMPLEQ_FIRST(&sc->txbufs);
+		SIMPLEQ_REMOVE_HEAD(&sc->txbufs, bf_list);
 	}
-	/* Steal one Tx buffer for beacons. */
-	sc->bcnbuf = SIMPLEQ_FIRST(&sc->txbufs);
-	SIMPLEQ_REMOVE_HEAD(&sc->txbufs, bf_list);
 
 	if (sc->flags & ATHN_FLAG_RFSILENT) {
 		DPRINTF(("found RF switch connected to GPIO pin %d\n",
@@ -241,14 +254,16 @@ athn_attach(struct athn_softc *sc)
 	    ((sc->rxchainmask >> 0) & 1);
 
 	if (AR_SINGLE_CHIP(sc)) {
-		printf("%s: %s rev %d (%dT%dR), ROM rev %d\n",
+		printf("%s: %s rev %d (%dT%dR), ROM rev %d, address %s\n",
 		    sc->sc_dev.dv_xname, athn_get_mac_name(sc), sc->mac_rev,
-		    sc->ntxchains, sc->nrxchains, sc->eep_rev);
+		    sc->ntxchains, sc->nrxchains, sc->eep_rev,
+		    ether_sprintf(ic->ic_myaddr));
 	} else {
-		printf("%s: MAC %s rev %d, RF %s (%dT%dR), ROM rev %d\n",
+		printf("%s: MAC %s rev %d, RF %s (%dT%dR), ROM rev %d, "
+		    "address %s\n",
 		    sc->sc_dev.dv_xname, athn_get_mac_name(sc), sc->mac_rev,
 		    athn_get_rf_name(sc), sc->ntxchains, sc->nrxchains,
-		    sc->eep_rev);
+		    sc->eep_rev, ether_sprintf(ic->ic_myaddr));
 	}
 
 	timeout_set(&sc->scan_to, athn_next_scan, sc);
@@ -283,7 +298,7 @@ athn_attach(struct athn_softc *sc)
 		    IEEE80211_HTCAP_CBW20_40 |
 		    IEEE80211_HTCAP_SGI40 |
 		    IEEE80211_HTCAP_DSSSCCK40;
-		if (AR_SREV_9287_10_OR_LATER(sc))
+		if (AR_SREV_9271(sc) || AR_SREV_9287_10_OR_LATER(sc))
 			ic->ic_htcaps |= IEEE80211_HTCAP_SGI20;
 		if (AR_SREV_9380_10_OR_LATER(sc))
 			ic->ic_htcaps |= IEEE80211_HTCAP_LDPC;
@@ -322,7 +337,7 @@ athn_attach(struct athn_softc *sc)
 		    ieee80211_std_rateset_11a;
 	}
 
-	/* Get the list of auhtorized/supported channels. */
+	/* Get the list of authorized/supported channels. */
 	athn_get_chanlist(sc);
 
 	/* IBSS channel undefined for now. */
@@ -330,7 +345,6 @@ athn_attach(struct athn_softc *sc)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = athn_init;
 	ifp->if_ioctl = athn_ioctl;
 	ifp->if_start = athn_start;
 	ifp->if_watchdog = athn_watchdog;
@@ -369,12 +383,13 @@ athn_detach(struct athn_softc *sc)
 	timeout_del(&sc->scan_to);
 	timeout_del(&sc->calib_to);
 
-	for (qid = 0; qid < ATHN_QID_COUNT; qid++)
-		athn_tx_reclaim(sc, qid);
+	if (!(sc->flags & ATHN_FLAG_USB)) {
+		for (qid = 0; qid < ATHN_QID_COUNT; qid++)
+			athn_tx_reclaim(sc, qid);
 
-	/* Free Tx/Rx DMA resources. */
-	sc->ops.dma_free(sc);
-
+		/* Free Tx/Rx DMA resources. */
+		sc->ops.dma_free(sc);
+	}
 	/* Free ROM copy. */
 	if (sc->eep != NULL)
 		free(sc->eep, M_DEVBUF);
@@ -445,6 +460,7 @@ athn_rx_start(struct athn_softc *sc)
 	/* Want Compressed Block Ack Requests. */
 	rfilt |= AR_RX_FILTER_COMPR_BAR;
 #endif
+	rfilt |= AR_RX_FILTER_BEACON;
 	if (ic->ic_opmode != IEEE80211_M_STA) {
 		rfilt |= AR_RX_FILTER_PROBEREQ;
 		if (ic->ic_opmode == IEEE80211_M_MONITOR)
@@ -454,9 +470,7 @@ athn_rx_start(struct athn_softc *sc)
 		    ic->ic_opmode == IEEE80211_M_HOSTAP)
 			rfilt |= AR_RX_FILTER_PSPOLL;
 #endif
-		rfilt |= AR_RX_FILTER_BEACON;
-	} else
-		rfilt |= AR_RX_FILTER_BEACON; /* XXX AR_RX_FILTER_MYBEACON */
+	}
 	athn_set_rxfilter(sc, rfilt);
 
 	/* Set BSSID mask. */
@@ -484,6 +498,7 @@ athn_rx_start(struct athn_softc *sc)
 
 	/* Start PCU Rx. */
 	AR_CLRBITS(sc, AR_DIAG_SW, AR_DIAG_RX_DIS | AR_DIAG_RX_ABORT);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -504,6 +519,7 @@ athn_set_rxfilter(struct athn_softc *sc, uint32_t rfilt)
 	AR_WRITE(sc, AR_PHY_ERR, 0);
 	AR_CLRBITS(sc, AR_RXCFG, AR_RXCFG_ZLFDMA);
 #endif
+	AR_WRITE_BARRIER(sc);
 }
 
 int
@@ -552,16 +568,20 @@ athn_get_mac_name(struct athn_softc *sc)
 		return ("AR9280");
 	case AR_SREV_VERSION_9285:
 		return ("AR9285");
+	case AR_SREV_VERSION_9271:
+		return ("AR9271");
 	case AR_SREV_VERSION_9287:
 		return ("AR9287");
 	case AR_SREV_VERSION_9380:
 		return ("AR9380");
+	case AR_SREV_VERSION_9485:
+		return ("AR9485");
 	}
 	return ("unknown");
 }
 
 /*
- * Return RF chip name (not for single-chip solutions.)
+ * Return RF chip name (not for single-chip solutions).
  */
 const char *
 athn_get_rf_name(struct athn_softc *sc)
@@ -590,13 +610,13 @@ athn_reset_power_on(struct athn_softc *sc)
 	AR_WRITE(sc, AR_RTC_FORCE_WAKE,
 	    AR_RTC_FORCE_WAKE_EN | AR_RTC_FORCE_WAKE_ON_INT);
 
-	/* XXX on first call, we do not know the chip id yet. */
 	if (!AR_SREV_9380_10_OR_LATER(sc)) {
 		/* Make sure no DMA is active by doing an AHB reset. */
 		AR_WRITE(sc, AR_RC, AR_RC_AHB);
 	}
 	/* RTC reset and clear. */
 	AR_WRITE(sc, AR_RTC_RESET, 0);
+	AR_WRITE_BARRIER(sc);
 	DELAY(2);
 	if (!AR_SREV_9380_10_OR_LATER(sc))
 		AR_WRITE(sc, AR_RC, 0);
@@ -613,10 +633,6 @@ athn_reset_power_on(struct athn_softc *sc)
 		DPRINTF(("RTC not waking up\n"));
 		return (ETIMEDOUT);
 	}
-
-	/* Read hardware revision. */
-	athn_get_chipid(sc);
-
 	return (athn_reset(sc, 0));
 }
 
@@ -639,6 +655,7 @@ athn_reset(struct athn_softc *sc, int cold)
 
 	AR_WRITE(sc, AR_RTC_RC, AR_RTC_RC_MAC_WARM |
 	    (cold ? AR_RTC_RC_MAC_COLD : 0));
+	AR_WRITE_BARRIER(sc);
 	DELAY(50);
 	AR_WRITE(sc, AR_RTC_RC, 0);
 	for (ntries = 0; ntries < 1000; ntries++) {
@@ -652,6 +669,7 @@ athn_reset(struct athn_softc *sc, int cold)
 		return (ETIMEDOUT);
 	}
 	AR_WRITE(sc, AR_RC, 0);
+	AR_WRITE_BARRIER(sc);
 	return (0);
 }
 
@@ -669,6 +687,7 @@ athn_set_power_awake(struct athn_softc *sc)
 			athn_init_pll(sc, NULL);
 	}
 	AR_SETBITS(sc, AR_RTC_FORCE_WAKE, AR_RTC_FORCE_WAKE_EN);
+	AR_WRITE_BARRIER(sc);
 	DELAY(50);	/* Give chip the chance to awake. */
 
 	/* Poll until RTC is ON. */
@@ -685,6 +704,7 @@ athn_set_power_awake(struct athn_softc *sc)
 	}
 
 	AR_CLRBITS(sc, AR_STA_ID1, AR_STA_ID1_PWR_SAV);
+	AR_WRITE_BARRIER(sc);
 	return (0);
 }
 
@@ -700,8 +720,9 @@ athn_set_power_sleep(struct athn_softc *sc)
 	 * NB: Clearing RTC_RESET_EN when setting the chip to sleep mode
 	 * results in high power consumption on AR5416 chipsets.
 	 */
-	if (!AR_SREV_5416(sc))
+	if (!AR_SREV_5416(sc) && !AR_SREV_9271(sc))
 		AR_CLRBITS(sc, AR_RTC_RESET, AR_RTC_RESET_EN);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -710,6 +731,8 @@ athn_init_pll(struct athn_softc *sc, const struct ieee80211_channel *c)
 	uint32_t pll;
 
 	if (AR_SREV_9380_10_OR_LATER(sc)) {
+		if (AR_SREV_9485(sc))
+			AR_WRITE(sc, AR_RTC_PLL_CONTROL2, 0x886666);
 		pll = SM(AR_RTC_9160_PLL_REFDIV, 0x5);
 		pll |= SM(AR_RTC_9160_PLL_DIV, 0x2c);
 	} else if (AR_SREV_9280_10_OR_LATER(sc)) {
@@ -738,8 +761,16 @@ athn_init_pll(struct athn_softc *sc, const struct ieee80211_channel *c)
 	}
 	DPRINTFN(5, ("AR_RTC_PLL_CONTROL=0x%08x\n", pll));
 	AR_WRITE(sc, AR_RTC_PLL_CONTROL, pll);
+	if (AR_SREV_9271(sc)) {
+		/* Switch core clock to 117MHz. */
+		AR_WRITE_BARRIER(sc);
+		DELAY(500);
+		AR_WRITE(sc, 0x50050, 0x304);
+	}
+	AR_WRITE_BARRIER(sc);
 	DELAY(100);
 	AR_WRITE(sc, AR_RTC_SLEEP_CLK, AR_RTC_FORCE_DERIVED_CLK);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -751,6 +782,7 @@ athn_write_serdes(struct athn_softc *sc, const uint32_t val[9])
 	for (i = 0; i < 288 / 32; i++)
 		AR_WRITE(sc, AR_PCIE_SERDES, val[i]);
 	AR_WRITE(sc, AR_PCIE_SERDES2, 0);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -768,6 +800,7 @@ athn_config_pcie(struct athn_softc *sc)
 #else
 	AR_WRITE(sc, AR_WA, ATHN_PCIE_WAEN);
 #endif
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -833,7 +866,7 @@ athn_switch_chan(struct athn_softc *sc, struct ieee80211_channel *c,
 		athn_tx_reclaim(sc, qid);
 
 	/* Stop Rx. */
-	AR_SETBITS(sc, AR_DIAG_SW, AR_DIAG_RX_DIS);
+	AR_SETBITS(sc, AR_DIAG_SW, AR_DIAG_RX_DIS | AR_DIAG_RX_ABORT);
 	AR_WRITE(sc, AR_MIBC, AR_MIBC_FMC);
 	AR_WRITE(sc, AR_MIBC, AR_MIBC_CMC);
 	AR_WRITE(sc, AR_FILT_OFDM, 0);
@@ -843,8 +876,10 @@ athn_switch_chan(struct athn_softc *sc, struct ieee80211_channel *c,
 	if (error != 0)
 		goto reset;
 
-	/* AR9280 always needs a full reset. */
-/*	if (AR_SREV_9280(sc))*/
+#ifdef notyet
+	/* AR9280 needs a full reset. */
+	if (AR_SREV_9280(sc))
+#endif
 		goto reset;
 
 	/* If band or bandwidth changes, we need to do a full reset. */
@@ -861,7 +896,7 @@ athn_switch_chan(struct athn_softc *sc, struct ieee80211_channel *c,
 	if (error != 0) {
  reset:		/* Error found, try a full reset. */
 		DPRINTFN(3, ("needs a full reset\n"));
-		error = athn_hw_reset(sc, c, extc);
+		error = athn_hw_reset(sc, c, extc, 0);
 		if (error != 0)	/* Hopeless case. */
 			return (error);
 	}
@@ -911,6 +946,8 @@ athn_reset_key(struct athn_softc *sc, int entry)
 
 	AR_WRITE(sc, AR_KEYTABLE_MAC0(entry), 0);
 	AR_WRITE(sc, AR_KEYTABLE_MAC1(entry), 0);
+
+	AR_WRITE_BARRIER(sc);
 }
 
 int
@@ -989,6 +1026,7 @@ athn_set_key(struct ieee80211com *ic, struct ieee80211_node *ni,
 		lo = hi = 0;
 	AR_WRITE(sc, AR_KEYTABLE_MAC0(entry), lo);
 	AR_WRITE(sc, AR_KEYTABLE_MAC1(entry), hi | AR_KEYTABLE_VALID);
+	AR_WRITE_BARRIER(sc);
 	return (0);
 }
 
@@ -1024,7 +1062,16 @@ athn_led_init(struct athn_softc *sc)
 
 	ops->gpio_config_output(sc, sc->led_pin, AR_GPIO_OUTPUT_MUX_AS_OUTPUT);
 	/* LED off, active low. */
-	ops->gpio_write(sc, sc->led_pin, 1);
+	athn_set_led(sc, 0);
+}
+
+void
+athn_set_led(struct athn_softc *sc, int on)
+{
+	struct athn_ops *ops = &sc->ops;
+
+	sc->led_state = on;
+	ops->gpio_write(sc, sc->led_pin, !sc->led_state);
 }
 
 #ifdef ATHN_BT_COEXISTENCE
@@ -1046,6 +1093,7 @@ athn_btcoex_init(struct athn_softc *sc)
 		reg = RW(reg, AR_GPIO_INPUT_MUX1_BT_ACTIVE,
 		    AR_GPIO_BTACTIVE_PIN);
 		AR_WRITE(sc, AR_GPIO_INPUT_MUX1, reg);
+		AR_WRITE_BARRIER(sc);
 
 		ops->gpio_config_input(sc, AR_GPIO_BTACTIVE_PIN);
 	} else {	/* 3-wire. */
@@ -1059,6 +1107,7 @@ athn_btcoex_init(struct athn_softc *sc)
 		reg = RW(reg, AR_GPIO_INPUT_MUX1_BT_PRIORITY,
 		    AR_GPIO_BTPRIORITY_PIN);
 		AR_WRITE(sc, AR_GPIO_INPUT_MUX1, reg);
+		AR_WRITE_BARRIER(sc);
 
 		ops->gpio_config_input(sc, AR_GPIO_BTACTIVE_PIN);
 		ops->gpio_config_input(sc, AR_GPIO_BTPRIORITY_PIN);
@@ -1088,6 +1137,7 @@ athn_btcoex_enable(struct athn_softc *sc)
 
 		AR_SETBITS(sc, AR_QUIET1, AR_QUIET1_QUIET_ACK_CTS_ENABLE);
 		AR_CLRBITS(sc, AR_PCU_MISC, AR_PCU_BT_ANT_PREVENT_RX);
+		AR_WRITE_BARRIER(sc);
 
 		ops->gpio_config_output(sc, AR_GPIO_WLANACTIVE_PIN,
 		    AR_GPIO_OUTPUT_MUX_AS_RX_CLEAR_EXTERNAL);
@@ -1100,6 +1150,7 @@ athn_btcoex_enable(struct athn_softc *sc)
 	reg &= ~(0x3 << (AR_GPIO_WLANACTIVE_PIN * 2));
 	reg |= 0x2 << (AR_GPIO_WLANACTIVE_PIN * 2);
 	AR_WRITE(sc, AR_GPIO_PDPU, reg);
+	AR_WRITE_BARRIER(sc);
 
 	/* Disable PCIe Active State Power Management (ASPM). */
 	if (sc->sc_disable_aspm != NULL)
@@ -1125,6 +1176,7 @@ athn_btcoex_disable(struct athn_softc *sc)
 		AR_WRITE(sc, AR_BT_COEX_MODE2, 0);
 		/* XXX Stop periodic timer. */
 	}
+	AR_WRITE_BARRIER(sc);
 	/* XXX Restore ASPM setting? */
 }
 #endif
@@ -1141,17 +1193,37 @@ athn_iter_func(void *arg, struct ieee80211_node *ni)
 void
 athn_calib_to(void *arg)
 {
+	extern int ticks;
 	struct athn_softc *sc = arg;
+	struct athn_ops *ops = &sc->ops;
 	struct ieee80211com *ic = &sc->sc_ic;
 	int s;
 
 	s = splnet();
+
+	/* Do periodic (every 4 minutes) PA calibration. */
+	if (AR_SREV_9285_11_OR_LATER(sc) &&
+	    !AR_SREV_9380_10_OR_LATER(sc) &&
+	    ticks >= sc->pa_calib_ticks + 240 * hz) {
+		sc->pa_calib_ticks = ticks;
+		if (AR_SREV_9271(sc))
+			ar9271_pa_calib(sc);
+		else
+			ar9285_pa_calib(sc);
+	}
+
+	/* Do periodic (every 30 seconds) temperature compensation. */
+	if ((sc->flags & ATHN_FLAG_OLPC) &&
+	    ticks >= sc->olpc_ticks + 30 * hz) {
+		sc->olpc_ticks = ticks;
+		ops->olpc_temp_compensation(sc);
+	}
+
 #ifdef notyet
 	/* XXX ANI. */
 	athn_ani_monitor(sc);
-	/* XXX OLPC temperature compensation. */
 
-	sc->ops.next_calib(sc);
+	ops->next_calib(sc);
 #endif
 	if (ic->ic_fixed_rate == -1) {
 		if (ic->ic_opmode == IEEE80211_M_STA)
@@ -1181,9 +1253,14 @@ athn_init_calib(struct athn_softc *sc, struct ieee80211_channel *c,
 
 	if (!AR_SREV_9380_10_OR_LATER(sc)) {
 		/* Do PA calibration. */
-		if (AR_SREV_9285_11_OR_LATER(sc))
-			ar9285_pa_calib(sc);
-
+		if (AR_SREV_9285_11_OR_LATER(sc)) {
+			extern int ticks;
+			sc->pa_calib_ticks = ticks;
+			if (AR_SREV_9271(sc))
+				ar9271_pa_calib(sc);
+			else
+				ar9285_pa_calib(sc);
+		}
 		/* Do noisefloor calibration. */
 		ops->noisefloor_calib(sc);
 	}
@@ -1194,8 +1271,14 @@ athn_init_calib(struct athn_softc *sc, struct ieee80211_channel *c,
 			/* Support temperature compensation calibration. */
 			sc->sup_calib_mask |= ATHN_CAL_TEMP;
 		} else if (IEEE80211_IS_CHAN_5GHZ(c) || extc != NULL) {
-			/* Support ADC gain calibration. */
-			sc->sup_calib_mask |= ATHN_CAL_ADC_GAIN;
+			/*
+			 * ADC gain calibration causes uplink throughput
+			 * drops in HT40 mode on AR9287.
+			 */
+			if (!AR_SREV_9287(sc)) {
+				/* Support ADC gain calibration. */
+				sc->sup_calib_mask |= ATHN_CAL_ADC_GAIN;
+			}
 			/* Support ADC DC offset calibration. */
 			sc->sup_calib_mask |= ATHN_CAL_ADC_DC;
 		}
@@ -1399,6 +1482,7 @@ athn_ani_restart(struct athn_softc *sc)
 	AR_WRITE(sc, AR_PHY_ERR_2, 0);
 	AR_WRITE(sc, AR_PHY_ERR_MASK_1, AR_PHY_ERR_OFDM_TIMING);
 	AR_WRITE(sc, AR_PHY_ERR_MASK_2, AR_PHY_ERR_CCK_TIMING);
+	AR_WRITE_BARRIER(sc);
 
 	ani->listen_time = 0;
 	ani->ofdm_phy_err_count = 0;
@@ -1448,9 +1532,10 @@ athn_ani_monitor(struct athn_softc *sc)
 		AR_WRITE(sc, AR_PHY_ERR_2, ani->cck_phy_err_base);
 		AR_WRITE(sc, AR_PHY_ERR_MASK_2, AR_PHY_ERR_CCK_TIMING);
 	}
-	if (phy1 < ani->ofdm_phy_err_base || phy2 < ani->cck_phy_err_base)
+	if (phy1 < ani->ofdm_phy_err_base || phy2 < ani->cck_phy_err_base) {
+		AR_WRITE_BARRIER(sc);
 		return;
-
+	}
 	ani->ofdm_phy_err_count = phy1 - ani->ofdm_phy_err_base;
 	ani->cck_phy_err_count = phy2 - ani->cck_phy_err_base;
 
@@ -1527,7 +1612,7 @@ athn_init_dma(struct athn_softc *sc)
 	reg = RW(reg, AR_TXCFG_DMASZ, AR_DMASZ_128B);
 
 	/* Set initial Tx trigger level. */
-	if (AR_SREV_9285(sc))
+	if (AR_SREV_9285(sc) || AR_SREV_9271(sc))
 		reg = RW(reg, AR_TXCFG_FTRIG, AR_TXCFG_FTRIG_256B);
 	else if (!AR_SREV_9380_10_OR_LATER(sc))
 		reg = RW(reg, AR_TXCFG_FTRIG, AR_TXCFG_FTRIG_512B);
@@ -1542,9 +1627,14 @@ athn_init_dma(struct athn_softc *sc)
 	AR_WRITE(sc, AR_RXFIFO_CFG, 512);
 
 	/* Reduce the number of entries in PCU TXBUF to avoid wrap around. */
-	AR_WRITE(sc, AR_PCU_TXBUF_CTRL, AR_SREV_9285(sc) ?
-	    AR9285_PCU_TXBUF_CTRL_USABLE_SIZE :
-	    AR_PCU_TXBUF_CTRL_USABLE_SIZE);
+	if (AR_SREV_9285(sc)) {
+		AR_WRITE(sc, AR_PCU_TXBUF_CTRL,
+		    AR9285_PCU_TXBUF_CTRL_USABLE_SIZE);
+	} else if (!AR_SREV_9271(sc)) {
+		AR_WRITE(sc, AR_PCU_TXBUF_CTRL,
+		    AR_PCU_TXBUF_CTRL_USABLE_SIZE);
+	}
+	AR_WRITE_BARRIER(sc);
 
 	/* Reset Tx status ring. */
 	if (AR_SREV_9380_10_OR_LATER(sc))
@@ -1562,10 +1652,11 @@ athn_inc_tx_trigger_level(struct athn_softc *sc)
 	 * NB: The AR9285 and all single-stream parts have an issue that
 	 * limits the size of the PCU Tx FIFO to 2KB instead of 4KB.
 	 */
-	if (ftrig == (AR_SREV_9285(sc) ? 0x1f : 0x3f))
+	if (ftrig == ((AR_SREV_9285(sc) || AR_SREV_9271(sc)) ? 0x1f : 0x3f))
 		return;		/* Already at max. */
 	reg = RW(reg, AR_TXCFG_FTRIG, ftrig + 1);
 	AR_WRITE(sc, AR_TXCFG, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 int
@@ -1597,6 +1688,7 @@ athn_rx_abort(struct athn_softc *sc)
 	}
 	DPRINTF(("Rx failed to go idle in 10ms\n"));
 	AR_CLRBITS(sc, AR_DIAG_SW, AR_DIAG_RX_DIS | AR_DIAG_RX_ABORT);
+	AR_WRITE_BARRIER(sc);
 	return (ETIMEDOUT);
 }
 
@@ -1654,8 +1746,10 @@ athn_stop_tx_dma(struct athn_softc *sc, int qid)
 				break;
 		}
 		AR_SETBITS(sc, AR_DIAG_SW, AR_DIAG_FORCE_CH_IDLE_HIGH);
+		AR_WRITE_BARRIER(sc);
 		DELAY(200);
 		AR_CLRBITS(sc, AR_TIMER_MODE, AR_QUIET_TIMER_EN);
+		AR_WRITE_BARRIER(sc);
 
 		for (ntries = 0; ntries < 40; ntries++) {
 			if (!athn_tx_pending(sc, qid))
@@ -1666,6 +1760,7 @@ athn_stop_tx_dma(struct athn_softc *sc, int qid)
 		AR_CLRBITS(sc, AR_DIAG_SW, AR_DIAG_FORCE_CH_IDLE_HIGH);
 	}
 	AR_WRITE(sc, AR_Q_TXD, 0);
+	AR_WRITE_BARRIER(sc);
 }
 
 int
@@ -1751,6 +1846,7 @@ athn_init_tx_queues(struct athn_softc *sc)
 	AR_WRITE(sc, AR_IMR_S0, 0x00ff0000);
 	/* Enable EOL interrupts for all Tx queues except UAPSD. */
 	AR_WRITE(sc, AR_IMR_S1, 0x00df0000);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1817,6 +1913,8 @@ athn_set_sta_timers(struct athn_softc *sc)
 
 	/* Set TSF out-of-range threshold (fixed at 16k us). */
 	AR_WRITE(sc, AR_TSFOOR_THRESHOLD, 0x4240);
+
+	AR_WRITE_BARRIER(sc);
 }
 
 #ifndef IEEE80211_STA_ONLY
@@ -1843,6 +1941,8 @@ athn_set_hostap_timers(struct athn_softc *sc)
 
 	AR_WRITE(sc, AR_TIMER_MODE,
 	    AR_TBTT_TIMER_EN | AR_DBA_TIMER_EN | AR_SWBA_TIMER_EN);
+
+	AR_WRITE_BARRIER(sc);
 }
 #endif
 
@@ -1878,6 +1978,7 @@ athn_set_opmode(struct athn_softc *sc)
 		AR_WRITE(sc, AR_STA_ID1, reg);
 		break;
 	}
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1888,6 +1989,7 @@ athn_set_bss(struct athn_softc *sc, struct ieee80211_node *ni)
 	AR_WRITE(sc, AR_BSS_ID0, LE_READ_4(&bssid[0]));
 	AR_WRITE(sc, AR_BSS_ID1, LE_READ_2(&bssid[4]) |
 	    SM(AR_BSS_ID1_AID, IEEE80211_AID(ni->ni_associd)));
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1914,6 +2016,7 @@ athn_enable_interrupts(struct athn_softc *sc)
 
 	AR_WRITE(sc, AR_INTR_SYNC_ENABLE, sc->isync);
 	AR_WRITE(sc, AR_INTR_SYNC_MASK, sc->isync);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1935,6 +2038,7 @@ athn_disable_interrupts(struct athn_softc *sc)
 	    AR_IMR_S2_TSFOOR | AR_IMR_S2_GTT | AR_IMR_S2_CST);
 
 	AR_CLRBITS(sc, AR_IMR_S5, AR_IMR_S5_TIM_TIMER);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1953,11 +2057,12 @@ athn_init_qos(struct athn_softc *sc)
 	AR_WRITE(sc, AR_TXOP_4_7,   0xffffffff);
 	AR_WRITE(sc, AR_TXOP_8_11,  0xffffffff);
 	AR_WRITE(sc, AR_TXOP_12_15, 0xffffffff);
+	AR_WRITE_BARRIER(sc);
 }
 
 int
 athn_hw_reset(struct athn_softc *sc, struct ieee80211_channel *c,
-    struct ieee80211_channel *extc)
+    struct ieee80211_channel *extc, int init)
 {
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct athn_ops *ops = &sc->ops;
@@ -1982,6 +2087,11 @@ athn_hw_reset(struct athn_softc *sc, struct ieee80211_channel *c,
 	/* Mark PHY as inactive. */
 	ops->disable_phy(sc);
 
+	if (init && AR_SREV_9271(sc)) {
+		AR_WRITE(sc, AR9271_RESET_POWER_DOWN_CONTROL,
+		    AR9271_RADIO_RF_RST);
+		DELAY(50);
+	}
 	if (AR_SREV_9280(sc) && (sc->flags & ATHN_FLAG_OLPC)) {
 		/* Save TSF before it gets cleared. */
 		tsfhi = AR_READ(sc, AR_TSF_U32);
@@ -2016,6 +2126,11 @@ athn_hw_reset(struct athn_softc *sc, struct ieee80211_channel *c,
 			    sc->sc_dev.dv_xname);
 			return (EPERM);
 		}
+	}
+	if (init && AR_SREV_9271(sc)) {
+		AR_WRITE(sc, AR9271_RESET_POWER_DOWN_CONTROL,
+		    AR9271_GATE_MAC_CTL);
+		DELAY(50);
 	}
 	if (AR_SREV_9280(sc) && (sc->flags & ATHN_FLAG_OLPC)) {
 		/* Restore TSF if it got cleared. */
@@ -2147,10 +2262,20 @@ athn_hw_reset(struct athn_softc *sc, struct ieee80211_channel *c,
 
 	AR_WRITE(sc, AR_CFG_LED, cfg_led | AR_CFG_SCLK_32KHZ);
 
+	if (sc->flags & ATHN_FLAG_USB) {
+		if (AR_SREV_9271(sc))
+			AR_WRITE(sc, AR_CFG, AR_CFG_SWRB | AR_CFG_SWTB);
+		else
+			AR_WRITE(sc, AR_CFG, AR_CFG_SWTD | AR_CFG_SWRD);
+	}
 #if BYTE_ORDER == BIG_ENDIAN
-	/* Default is little-endian, turn on swapping for big-endian. */
-	AR_WRITE(sc, AR_CFG, AR_CFG_SWTD | AR_CFG_SWRD);
+	else {
+		/* Default is LE, turn on swapping for BE. */
+		AR_WRITE(sc, AR_CFG, AR_CFG_SWTD | AR_CFG_SWRD);
+	}
 #endif
+	AR_WRITE_BARRIER(sc);
+
 	return (0);
 }
 
@@ -2243,26 +2368,25 @@ athn_newstate(struct ieee80211com *ic, enum ieee80211_state nstate, int arg)
 {
 	struct ifnet *ifp = &ic->ic_if;
 	struct athn_softc *sc = ifp->if_softc;
-	struct athn_ops *ops = &sc->ops;
+	uint32_t reg;
 	int error;
 
 	timeout_del(&sc->calib_to);
-	if (nstate != IEEE80211_S_SCAN)
-		ops->gpio_write(sc, sc->led_pin, 1);
 
 	switch (nstate) {
 	case IEEE80211_S_INIT:
+		athn_set_led(sc, 0);
 		break;
 	case IEEE80211_S_SCAN:
 		/* Make the LED blink while scanning. */
-		ops->gpio_write(sc, sc->led_pin,
-		    !ops->gpio_read(sc, sc->led_pin));
+		athn_set_led(sc, !sc->led_state);
 		error = athn_switch_chan(sc, ic->ic_bss->ni_chan, NULL);
 		if (error != 0)
 			return (error);
 		timeout_add_msec(&sc->scan_to, 200);
 		break;
 	case IEEE80211_S_AUTH:
+		athn_set_led(sc, 0);
 		error = athn_switch_chan(sc, ic->ic_bss->ni_chan, NULL);
 		if (error != 0)
 			return (error);
@@ -2270,7 +2394,7 @@ athn_newstate(struct ieee80211com *ic, enum ieee80211_state nstate, int arg)
 	case IEEE80211_S_ASSOC:
 		break;
 	case IEEE80211_S_RUN:
-		ops->gpio_write(sc, sc->led_pin, 0);
+		athn_set_led(sc, 1);
 
 		if (ic->ic_opmode == IEEE80211_M_MONITOR)
 			break;
@@ -2291,6 +2415,13 @@ athn_newstate(struct ieee80211com *ic, enum ieee80211_state nstate, int arg)
 			athn_set_sta_timers(sc);
 			/* Enable beacon miss interrupts. */
 			sc->imask |= AR_IMR_BMISS;
+
+			/* Stop receiving beacons from other BSS. */
+			reg = AR_READ(sc, AR_RX_FILTER);
+			reg = (reg & ~AR_RX_FILTER_BEACON) |
+			    AR_RX_FILTER_MYBEACON;
+			AR_WRITE(sc, AR_RX_FILTER, reg);
+			AR_WRITE_BARRIER(sc);
 		}
 		athn_enable_interrupts(sc);
 
@@ -2332,6 +2463,7 @@ athn_updateedca(struct ieee80211com *ic)
 		} else
 			AR_WRITE(sc, AR_DCHNTIME(qid), 0);
 	}
+	AR_WRITE_BARRIER(sc);
 #undef ATHN_EXP2
 }
 
@@ -2365,6 +2497,7 @@ athn_updateslot(struct ieee80211com *ic)
 
 	slot = (ic->ic_flags & IEEE80211_F_SHSLOT) ? 9 : 20;
 	AR_WRITE(sc, AR_D_GBL_IFS_SLOT, slot * athn_clock_rate(sc));
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -2478,6 +2611,7 @@ athn_set_multi(struct athn_softc *sc)
  done:
 	AR_WRITE(sc, AR_MCAST_FIL0, lo);
 	AR_WRITE(sc, AR_MCAST_FIL1, hi);
+	AR_WRITE_BARRIER(sc);
 }
 
 int
@@ -2607,7 +2741,7 @@ athn_init(struct ifnet *ifp)
 	if (sc->flags & ATHN_FLAG_RFSILENT)
 		ops->rfsilent_init(sc);
 
-	if ((error = athn_hw_reset(sc, c, extc)) != 0) {
+	if ((error = athn_hw_reset(sc, c, extc, 1)) != 0) {
 		printf("%s: unable to reset hardware; reset status %d\n",
 		    sc->sc_dev.dv_xname, error);
 		goto fail;
@@ -2670,7 +2804,7 @@ athn_stop(struct ifnet *ifp, int disable)
 
 	/* Disable interrupts. */
 	athn_disable_interrupts(sc);
-	/* Acknowledge interrupts (avoids interrupt storms.) */
+	/* Acknowledge interrupts (avoids interrupt storms). */
 	AR_WRITE(sc, AR_INTR_SYNC_CAUSE, 0xffffffff);
 	AR_WRITE(sc, AR_INTR_SYNC_MASK, 0);
 
@@ -2681,11 +2815,12 @@ athn_stop(struct ifnet *ifp, int disable)
 		athn_tx_reclaim(sc, qid);
 
 	/* Stop Rx. */
-	AR_SETBITS(sc, AR_DIAG_SW, AR_DIAG_RX_DIS);
+	AR_SETBITS(sc, AR_DIAG_SW, AR_DIAG_RX_DIS | AR_DIAG_RX_ABORT);
 	AR_WRITE(sc, AR_MIBC, AR_MIBC_FMC);
 	AR_WRITE(sc, AR_MIBC, AR_MIBC_CMC);
 	AR_WRITE(sc, AR_FILT_OFDM, 0);
 	AR_WRITE(sc, AR_FILT_CCK, 0);
+	AR_WRITE_BARRIER(sc);
 	athn_set_rxfilter(sc, 0);
 	athn_stop_rx_dma(sc);
 

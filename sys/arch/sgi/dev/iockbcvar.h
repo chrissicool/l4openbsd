@@ -1,4 +1,4 @@
-/*	$OpenBSD: iockbcvar.h,v 1.2 2010/04/06 19:12:26 miod Exp $	*/
+/*	$OpenBSD: iockbcvar.h,v 1.4 2010/12/04 11:23:43 jsing Exp $	*/
 
 /*
  * Copyright (c) 2010 Miodrag Vallat.
@@ -16,4 +16,4 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-int	iockbc_cnattach(pckbc_slot_t);
+int	iockbc_cnattach(void);

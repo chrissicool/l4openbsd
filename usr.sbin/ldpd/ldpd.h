@@ -1,4 +1,4 @@
-/*	$OpenBSD: ldpd.h,v 1.24 2010/07/08 09:41:05 claudio Exp $ */
+/*	$OpenBSD: ldpd.h,v 1.28 2011/01/10 12:28:25 claudio Exp $ */
 
 /*
  * Copyright (c) 2009 Michele Marchetto <michele@openbsd.org>
@@ -46,7 +46,7 @@
 #define	MAX_RTSOCK_BUF		128 * 1024
 #define	LDP_BACKLOG		128
 
-#define	LDPD_FLAG_NO_LFIB_UPDATE	0x0001
+#define	LDPD_FLAG_NO_FIB_UPDATE	0x0001
 
 #define	F_LDPD_INSERTED		0x0001
 #define	F_CONNECTED		0x0002
@@ -75,8 +75,8 @@ enum imsg_type {
 	IMSG_CTL_SHOW_INTERFACE,
 	IMSG_CTL_SHOW_NBR,
 	IMSG_CTL_SHOW_LIB,
-	IMSG_CTL_LFIB_COUPLE,
-	IMSG_CTL_LFIB_DECOUPLE,
+	IMSG_CTL_FIB_COUPLE,
+	IMSG_CTL_FIB_DECOUPLE,
 	IMSG_CTL_KROUTE,
 	IMSG_CTL_KROUTE_ADDR,
 	IMSG_CTL_IFINFO,
@@ -144,12 +144,9 @@ enum iface_type {
 #define	NBR_STA_OPENREC		0x0008
 #define	NBR_STA_OPENSENT	0x0010
 #define	NBR_STA_OPER		0x0020
-#define	NBR_STA_ACTIVE		(~NBR_STA_DOWN)
-#define	NBR_STA_SESSION		(NBR_STA_PRESENT | NBR_STA_PRESENT | \
-				NBR_STA_INITIAL | NBR_STA_OPENREC | \
-				NBR_STA_OPER | NBR_STA_OPENSENT | \
-				NBR_STA_ACTIVE)
-#define	NBR_STA_UP		(NBR_STA_PRESENT | NBR_STA_SESSION)
+#define	NBR_STA_SESSION		(NBR_STA_PRESENT | NBR_STA_INITIAL | \
+				NBR_STA_OPENREC | NBR_STA_OPENSENT | \
+				NBR_STA_OPER)
 
 /* neighbor events */
 enum nbr_event {
@@ -202,7 +199,6 @@ struct iface {
 	LIST_ENTRY(iface)	 entry;
 	struct event		 hello_timer;
 
-	LIST_HEAD(, nbr)	 nbr_list;
 	LIST_HEAD(, lde_nbr)	 lde_nbr_list;
 
 	char			 name[IF_NAMESIZE];
@@ -356,24 +352,6 @@ struct ctl_rt {
 	u_int8_t		 in_use;
 };
 
-struct ctl_sum {
-	struct in_addr		 rtr_id;
-	u_int32_t		 spf_delay;
-	u_int32_t		 spf_hold_time;
-	u_int32_t		 num_ext_lsa;
-	u_int32_t		 num_lspace;
-	time_t			 uptime;
-	u_int8_t		 rfc1583compat;
-};
-
-struct ctl_sum_lspace {
-	struct in_addr		 lspace;
-	u_int32_t		 num_iface;
-	u_int32_t		 num_adj_nbr;
-	u_int32_t		 num_spf_calc;
-	u_int32_t		 num_lsa;
-};
-
 /* parse.y */
 struct ldpd_conf	*parse_config(char *, int);
 int			 cmdline_symset(char *);
@@ -393,8 +371,8 @@ int		 kr_init(int);
 int		 kr_change(struct kroute *);
 int		 kr_delete(struct kroute *);
 void		 kr_shutdown(void);
-void		 kr_lfib_couple(void);
-void		 kr_lfib_decouple(void);
+void		 kr_fib_couple(void);
+void		 kr_fib_decouple(void);
 void		 kr_dispatch_msg(int, short, void *);
 void		 kr_show_route(struct imsg *);
 void		 kr_ifinfo(char *, pid_t);

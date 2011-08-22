@@ -1,4 +1,4 @@
-/*	$OpenBSD: pfe_filter.c,v 1.43 2010/03/24 16:29:37 pyr Exp $	*/
+/*	$OpenBSD: pfe_filter.c,v 1.45 2010/10/26 15:04:37 reyk Exp $	*/
 
 /*
  * Copyright (c) 2006 Pierre-Yves Ritschard <pyr@openbsd.org>
@@ -264,9 +264,9 @@ kill_srcnodes(struct relayd *env, struct table *table)
 
 		switch (host->conf.ss.ss_family) {
 		case AF_INET:
-		sain = (struct sockaddr_in *)&host->conf.ss;   
+		sain = (struct sockaddr_in *)&host->conf.ss;
 			bcopy(&sain->sin_addr,
-			    &psnk.psnk_dst.addr.v.a.addr.v4, 
+			    &psnk.psnk_dst.addr.v.a.addr.v4,
 			    sizeof(psnk.psnk_dst.addr.v.a.addr.v4));
 			break;
 		case AF_INET6:
@@ -274,12 +274,12 @@ kill_srcnodes(struct relayd *env, struct table *table)
 			bcopy(&sain6->sin6_addr,
 			    &psnk.psnk_dst.addr.v.a.addr.v6,
 			    sizeof(psnk.psnk_dst.addr.v.a.addr.v6));
-			break;   
+			break;
 		default:
 			fatalx("kill_srcnodes: unknown address family");
 			break;
 		}
-			
+
 		psnk.psnk_af = host->conf.ss.ss_family;
 		psnk.psnk_killed = 0;
 
@@ -394,9 +394,14 @@ sync_ruleset(struct relayd *env, struct rdr *rdr, int enable)
 		memset(&rio, 0, sizeof(rio));
 		(void)strlcpy(rio.anchor, anchor, sizeof(rio.anchor));
 
-		rio.rule.action = PF_PASS;
+		if (rdr->conf.flags & F_MATCH) {
+			rio.rule.action = PF_MATCH;
+			rio.rule.quick = 0;
+		} else {
+			rio.rule.action = PF_PASS;
+			rio.rule.quick = 1; /* force first match */
+		}
 		rio.rule.direction = PF_IN;
-		rio.rule.quick = 1; /* force first match */
 		rio.rule.keep_state = PF_STATE_NORMAL;
 
 		switch (t->conf.fwdmode) {

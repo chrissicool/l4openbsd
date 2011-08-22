@@ -1,4 +1,4 @@
-/*	$OpenBSD: uticom.c,v 1.4 2009/10/13 19:33:19 pirofti Exp $	*/
+/*	$OpenBSD: uticom.c,v 1.13 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*
  * Copyright (c) 2005 Dmitry Komissaroff <dxi@mail.ru>.
  *
@@ -109,7 +109,7 @@ static int	uticomdebug = 0;
 struct uticom_fw_header {
 	uint16_t	length;
 	uint8_t		checkSum;
-} __attribute__((packed));
+} __packed;
 
 struct uticom_buf {
 	unsigned int		buf_size;
@@ -119,7 +119,7 @@ struct uticom_buf {
 };
 
 struct	uticom_softc {
-	struct device		 sc_dev;		/* base device */
+	struct device		 sc_dev;	/* base device */
 	usbd_device_handle	 sc_udev;	/* device */
 	usbd_interface_handle	 sc_iface;	/* interface */
 
@@ -158,6 +158,8 @@ static	int  uticom_param(void *, int, struct termios *);
 static	int  uticom_open(void *, int);
 static	void uticom_close(void *, int);
 
+void uticom_attach_hook(void *arg);
+
 static int uticom_download_fw(struct uticom_softc *sc, int pipeno,
 	    usbd_device_handle dev);
 
@@ -189,6 +191,13 @@ const struct cfattach uticom_ca = {
 	uticom_activate,
 };
 
+static const struct usb_devno uticom_devs[] = {
+	{ USB_VENDOR_TI, USB_PRODUCT_TI_TUSB3410 },
+	{ USB_VENDOR_STARTECH, USB_PRODUCT_STARTECH_ICUSB232X },
+	{ USB_VENDOR_MOXA, USB_PRODUCT_MOXA_UPORT1110 },
+	{ USB_VENDOR_ABBOTT, USB_PRODUCT_ABBOTT_STEREO_PLUG }
+};
+
 int
 uticom_match(struct device *parent, void *match, void *aux)
 {
@@ -197,36 +206,44 @@ uticom_match(struct device *parent, void *match, void *aux)
 	if (uaa->iface != NULL)
 		return (UMATCH_NONE);
 
-	if (uaa->vendor == USB_VENDOR_TI &&
-	    uaa->product == USB_PRODUCT_TI_TUSB3410)
-		return (UMATCH_VENDOR_PRODUCT);
-	return (0);
+	return (usb_lookup(uticom_devs, uaa->vendor, uaa->product) != NULL ?
+	    UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
 }
 
 void
 uticom_attach(struct device *parent, struct device *self, void *aux)
 {
-	struct uticom_softc *sc = (struct uticom_softc *)self;
-	struct usb_attach_arg *uaa = aux;
-	usbd_device_handle dev = uaa->device;
-	usbd_interface_handle iface;
-	usb_config_descriptor_t *cdesc;
-	usb_interface_descriptor_t *id;
-	usb_endpoint_descriptor_t *ed;
-	usbd_status err;
-	int status, i;
-	usb_device_descriptor_t *dd;
-	struct ucom_attach_args uca;
+	struct uticom_softc	*sc = (struct uticom_softc *)self;
+	struct usb_attach_arg	*uaa = aux;
+	usbd_device_handle	 dev = uaa->device;
 
 	sc->sc_udev = dev;
 	sc->sc_iface = uaa->iface;
+
+	if (rootvp == NULL)
+		mountroothook_establish(uticom_attach_hook, sc);
+	else
+		uticom_attach_hook(sc);
+}
+
+void
+uticom_attach_hook(void *arg)
+{
+	struct uticom_softc		*sc = arg;
+	usb_config_descriptor_t		*cdesc;
+	usb_interface_descriptor_t	*id;
+	usb_endpoint_descriptor_t	*ed;
+	usbd_status			 err;
+	int				 status, i;
+	usb_device_descriptor_t		*dd;
+	struct ucom_attach_args		 uca;
 
 	/* Initialize endpoints. */
 	uca.bulkin = uca.bulkout = -1;
 	sc->sc_intr_number = -1;
 	sc->sc_intr_pipe = NULL;
 
-	dd = usbd_get_device_descriptor(dev);
+	dd = usbd_get_device_descriptor(sc->sc_udev);
 	DPRINTF(("%s: uticom_attach: num of configurations %d\n",
 	    sc->sc_dev.dv_xname, dd->bNumConfigurations));
 
@@ -239,7 +256,7 @@ uticom_attach(struct device *parent, struct device *self, void *aux)
 	DPRINTF(("%s: uticom_attach: starting loading firmware\n",
 	    sc->sc_dev.dv_xname));
 
-	err = usbd_set_config_index(dev, UTICOM_CONFIG_INDEX, 1);
+	err = usbd_set_config_index(sc->sc_udev, UTICOM_CONFIG_INDEX, 1);
 	if (err) {
 		printf("%s: failed to set configuration: %s\n",
 		    sc->sc_dev.dv_xname, usbd_errstr(err));
@@ -257,7 +274,7 @@ uticom_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	err = usbd_device2interface_handle(dev, UTICOM_IFACE_INDEX,
+	err = usbd_device2interface_handle(sc->sc_udev, UTICOM_IFACE_INDEX,
 	    &sc->sc_iface);
 	if (err) {
 		printf("%s: failed to get interface: %s\n",
@@ -294,7 +311,7 @@ uticom_attach(struct device *parent, struct device *self, void *aux)
 		}
 	}
 
-	status = uticom_download_fw(sc, uca.bulkout, dev);
+	status = uticom_download_fw(sc, uca.bulkout, sc->sc_udev);
 
 	if (status) {
 		printf("%s: firmware download failed\n",
@@ -302,11 +319,11 @@ uticom_attach(struct device *parent, struct device *self, void *aux)
 		sc->sc_dying = 1;
 		return;
 	} else {
-		printf("%s: firmware download succeeded\n",
-		    sc->sc_dev.dv_xname);
+		DPRINTF(("%s: firmware download succeeded\n",
+		    sc->sc_dev.dv_xname));
 	}
 
-	status = usbd_reload_device_desc(dev);
+	status = usbd_reload_device_desc(sc->sc_udev);
 	if (status) {
 		printf("%s: error reloading device descriptor\n",
 		    sc->sc_dev.dv_xname);
@@ -315,11 +332,11 @@ uticom_attach(struct device *parent, struct device *self, void *aux)
 	}
 
 fwload_done:
-	dd = usbd_get_device_descriptor(dev);
+	dd = usbd_get_device_descriptor(sc->sc_udev);
 	DPRINTF(("%s: uticom_attach: num of configurations %d\n",
 	    sc->sc_dev.dv_xname, dd->bNumConfigurations));
 
-	err = usbd_set_config_index(dev, UTICOM_ACTIVE_INDEX, 1);
+	err = usbd_set_config_index(sc->sc_udev, UTICOM_ACTIVE_INDEX, 1);
 	if (err) {
 		printf("%s: failed to set configuration: %s\n",
 		    sc->sc_dev.dv_xname, usbd_errstr(err));
@@ -337,7 +354,7 @@ fwload_done:
 	}
 
 	/* Get the interface (XXX: multiport chips are not supported yet). */
-	err = usbd_device2interface_handle(dev, UTICOM_IFACE_INDEX,
+	err = usbd_device2interface_handle(sc->sc_udev, UTICOM_IFACE_INDEX,
 	    &sc->sc_iface);
 	if (err) {
 		printf("failed to get interface: %s\n",
@@ -363,6 +380,7 @@ fwload_done:
 		    UE_GET_XFERTYPE(ed->bmAttributes) == UE_INTERRUPT) {
 			sc->sc_intr_number = ed->bEndpointAddress;
 			sc->sc_isize = UGETW(ed->wMaxPacketSize);
+
 		}
 	}
 
@@ -381,7 +399,7 @@ fwload_done:
 	sc->sc_iface_number = id->bInterfaceNumber;
 
 	for (i = 0; i < id->bNumEndpoints; i++) {
-		ed = usbd_interface2endpoint_descriptor(iface, i);
+		ed = usbd_interface2endpoint_descriptor(sc->sc_iface, i);
 		if (ed == NULL) {
 			printf("%s: no endpoint descriptor for %d\n",
 			    sc->sc_dev.dv_xname, i);
@@ -418,8 +436,8 @@ fwload_done:
 	uca.ibufsize = UTICOM_IBUFSZ;
 	uca.obufsize = UTICOM_OBUFSZ;
 	uca.ibufsizepad = UTICOM_IBUFSZ;
-	uca.device = dev;
-	uca.iface = iface;
+	uca.device = sc->sc_udev;
+	uca.iface = sc->sc_iface;
 	uca.opkthdrlen = 0;
 	uca.methods = &uticom_methods;
 	uca.arg = sc;
@@ -437,7 +455,7 @@ fwload_done:
 	    sc->sc_dev.dv_xname, uca.bulkin,
 	    uca.bulkout, sc->sc_intr_number));
 
-	sc->sc_subdev = config_found_sm(self, &uca, ucomprint, ucomsubmatch);
+	sc->sc_subdev = config_found_sm((struct device *)sc, &uca, ucomprint, ucomsubmatch);
 }
 
 int
@@ -466,7 +484,6 @@ uticom_detach(struct device *self, int flags)
 
 	DPRINTF(("%s: uticom_detach: sc = %p\n",
 	    sc->sc_dev.dv_xname, sc));
-	sc->sc_dying = 1;
 
 	if (sc->sc_subdev != NULL) {
 		config_detach(sc->sc_subdev, flags);
@@ -480,8 +497,6 @@ uticom_detach(struct device *self, int flags)
 		sc->sc_intr_pipe = NULL;
 	}
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
 	return (0);
 }
 

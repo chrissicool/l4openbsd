@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_trunk.c,v 1.75 2010/05/08 11:26:06 stsp Exp $	*/
+/*	$OpenBSD: if_trunk.c,v 1.77 2011/01/28 14:20:37 reyk Exp $	*/
 
 /*
  * Copyright (c) 2005, 2006, 2007 Reyk Floeter <reyk@openbsd.org>
@@ -1211,7 +1211,7 @@ trunk_gethdr(struct mbuf *m, u_int off, u_int len, void *buf)
 		m_copydata(m, off, len, buf);
 		return (buf);
 	}
-	return (mtod(m, const void *) + off);
+	return (mtod(m, caddr_t) + off);
 }
 
 /*
@@ -1515,7 +1515,7 @@ trunk_bcast_start(struct trunk_softc *tr, struct mbuf *m)
 			if (active_ports) {
 				n = m_copym(m, 0, M_COPYALL, M_DONTWAIT);
 				if (n == NULL) {
-					m_free(m);
+					m_freem(m);
 					return (ENOBUFS);
 				}
 			} else
@@ -1526,7 +1526,7 @@ trunk_bcast_start(struct trunk_softc *tr, struct mbuf *m)
 		}
 	}
 	if (active_ports == 0) {
-		m_free(m);
+		m_freem(m);
 		return (ENOENT);
 	}
 	if (errors == active_ports)

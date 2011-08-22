@@ -1,4 +1,4 @@
-/*	$OpenBSD: crypto.c,v 1.2 2010/06/14 16:31:29 reyk Exp $	*/
+/*	$OpenBSD: crypto.c,v 1.5 2010/12/21 13:24:11 mikeb Exp $	*/
 /*	$vantronix: crypto.c,v 1.18 2010/05/28 15:34:35 reyk Exp $	*/
 
 /*
@@ -77,7 +77,7 @@ hash_new(u_int8_t type, u_int16_t id)
 		case IKEV2_XFORMPRF_HMAC_TIGER:
 		case IKEV2_XFORMPRF_AES128_CMAC:
 		default:
-			log_debug("%s: prf %s not supported",
+			log_debug("%s: prf %s not supported", __func__,
 			    print_map(id, ikev2_xformprf_map));
 			break;
 		}
@@ -120,13 +120,13 @@ hash_new(u_int8_t type, u_int16_t id)
 		case IKEV2_XFORMAUTH_AES_192_GMAC:
 		case IKEV2_XFORMAUTH_AES_256_GMAC:
 		default:
-			log_debug("%s: auth %s not supported",
+			log_debug("%s: auth %s not supported", __func__,
 			    print_map(id, ikev2_xformauth_map));
 			break;
 		}
 		break;
 	default:
-		log_debug("%s: hash type %s not supported",
+		log_debug("%s: hash type %s not supported", __func__,
 		    print_map(id, ikev2_xformtype_map));
 		break;
 	}
@@ -274,14 +274,14 @@ cipher_new(u_int8_t type, u_int16_t id, u_int16_t id_length)
 		case IKEV2_XFORMENCR_AES_CTR:
 			/* FALLTHROUGH */
 		default:
-			log_debug("%s: cipher %s not supported",
+			log_debug("%s: cipher %s not supported", __func__,
 			    print_map(id, ikev2_xformencr_map));
 			cipher = NULL;
 			break;
 		}
 		break;
 	default:
-		log_debug("%s: cipher type %s not supported",
+		log_debug("%s: cipher type %s not supported", __func__,
 		    print_map(id, ikev2_xformtype_map));
 		break;
 	}
@@ -307,7 +307,6 @@ cipher_new(u_int8_t type, u_int16_t id, u_int16_t id_length)
 	}
 
 	EVP_CIPHER_CTX_init(ctx);
-	EVP_CIPHER_CTX_set_padding(ctx, 0);
 	encr->encr_ctx = ctx;
 
 	return (encr);
@@ -330,7 +329,7 @@ cipher_setiv(struct iked_cipher *encr, void *iv, size_t len)
 	ibuf_release(encr->encr_iv);
 	if (iv != NULL) {
 		if (len < encr->encr_ivlength) {
-			log_debug("%s: invalid IV length %d", len);
+			log_debug("%s: invalid IV length %d", __func__, len);
 			return (NULL);
 		}
 		encr->encr_iv = ibuf_new(iv, encr->encr_ivlength);
@@ -363,6 +362,7 @@ cipher_init(struct iked_cipher *encr, int enc)
 {
 	EVP_CipherInit_ex(encr->encr_ctx, encr->encr_priv, NULL,
 	    ibuf_data(encr->encr_key), ibuf_data(encr->encr_iv), enc);
+	EVP_CIPHER_CTX_set_padding(encr->encr_ctx, 0);
 }
 
 void
@@ -384,7 +384,11 @@ cipher_update(struct iked_cipher *encr, void *in, size_t inlen,
 	int	 olen;
 
 	olen = 0;
-	EVP_CipherUpdate(encr->encr_ctx, out, &olen, in, inlen);
+	if (!EVP_CipherUpdate(encr->encr_ctx, out, &olen, in, inlen)) {
+		ca_sslerror();
+		*outlen = 0;
+		return;
+	}
 	*outlen = (size_t)olen;
 }
 
@@ -427,7 +431,7 @@ cipher_ivlength(struct iked_cipher *encr)
 size_t
 cipher_outlength(struct iked_cipher *encr, size_t inlen)
 {
-	return (inlen + encr->encr_length);
+	return (roundup(inlen, encr->encr_length));
 }
 
 struct iked_dsa *
@@ -468,7 +472,7 @@ dsa_new(u_int16_t id, struct iked_hash *prf, int sign)
 		dsa.dsa_priv = EVP_sha512();
 		break;
 	default:
-		log_debug("%s: auth method %s not supported",
+		log_debug("%s: auth method %s not supported", __func__,
 		    print_map(id, ikev2_auth_map));
 		break;
 	}

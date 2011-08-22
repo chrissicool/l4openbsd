@@ -1,4 +1,4 @@
-/*	$OpenBSD: ldpe.h,v 1.10 2010/05/26 13:56:08 nicm Exp $ */
+/*	$OpenBSD: ldpe.h,v 1.14 2011/01/10 12:28:25 claudio Exp $ */
 
 /*
  * Copyright (c) 2004, 2005, 2008 Esben Norby <norby@openbsd.org>
@@ -31,13 +31,11 @@ TAILQ_HEAD(ctl_conns, ctl_conn)	ctl_conns;
 
 struct mapping_entry {
 	TAILQ_ENTRY(mapping_entry)	entry;
-	u_int32_t			label;
-	u_int32_t			prefix;
-	u_int8_t			prefixlen;
+	struct map			map;
 };
 
 struct nbr {
-	LIST_ENTRY(nbr)		 entry, hash;
+	RB_ENTRY(nbr)		 id_tree, addr_tree, pid_tree;
 	struct evbuf		 wbuf;
 	struct event		 rev;
 	struct event		 inactivity_timer;
@@ -97,7 +95,6 @@ int	 recv_notification(struct nbr *, char *, u_int16_t);
 void	 send_address(struct nbr *, struct iface *);
 int	 recv_address(struct nbr *, char *, u_int16_t);
 void	 send_address_withdraw(struct nbr *, struct iface *);
-int	 recv_address_withdraw(struct nbr *, char *, u_int16_t);
 
 /* labelmapping.c */
 #define PREFIX_SIZE(x)	(((x) + 7) / 8)
@@ -122,7 +119,6 @@ int		 ldpe_imsg_compose_lde(int, u_int32_t, pid_t, void *,
 u_int32_t	 ldpe_router_id(void);
 void		 ldpe_fib_update(int);
 void		 ldpe_iface_ctl(struct ctl_conn *, unsigned int);
-void		 ldpe_nbr_ctl(struct ctl_conn *);
 
 /* interface.c */
 int		 if_fsm(struct iface *, enum iface_event);
@@ -147,12 +143,11 @@ int	 if_set_tos(int, int);
 int	 if_set_reuse(int, int);
 
 /* neighbor.c */
-void		 nbr_init(u_int32_t);
 struct nbr	*nbr_new(u_int32_t, u_int16_t, struct iface *);
 void		 nbr_del(struct nbr *);
 
-struct nbr	*nbr_find_ip(struct iface *, u_int32_t);
-struct nbr	*nbr_find_ldpid(struct iface *, u_int32_t, u_int16_t);
+struct nbr	*nbr_find_ip(u_int32_t);
+struct nbr	*nbr_find_ldpid(u_int32_t, u_int16_t);
 struct nbr	*nbr_find_peerid(u_int32_t);
 
 int	 nbr_fsm(struct nbr *, enum nbr_event);
@@ -160,19 +155,15 @@ int	 nbr_fsm(struct nbr *, enum nbr_event);
 void	 nbr_itimer(int, short, void *);
 void	 nbr_start_itimer(struct nbr *);
 void	 nbr_stop_itimer(struct nbr *);
-void	 nbr_reset_itimer(struct nbr *);
 void	 nbr_ktimer(int, short, void *);
 void	 nbr_start_ktimer(struct nbr *);
 void	 nbr_stop_ktimer(struct nbr *);
-void	 nbr_reset_ktimer(struct nbr *);
 void	 nbr_ktimeout(int, short, void *);
 void	 nbr_start_ktimeout(struct nbr *);
 void	 nbr_stop_ktimeout(struct nbr *);
-void	 nbr_reset_ktimeout(struct nbr *);
 void	 nbr_idtimer(int, short, void *);
 void	 nbr_start_idtimer(struct nbr *);
 void	 nbr_stop_idtimer(struct nbr *);
-void	 nbr_reset_idtimer(struct nbr *);
 int	 nbr_pending_idtimer(struct nbr *);
 
 int	 nbr_act_session_establish(struct nbr *, int);
@@ -187,6 +178,7 @@ void			 nbr_mapping_list_clr(struct nbr *,
 			    struct mapping_head *);
 
 struct ctl_nbr	*nbr_to_ctl(struct nbr *);
+void		 ldpe_nbr_ctl(struct ctl_conn *);
 
 /* packet.c */
 int	 gen_ldp_hdr(struct ibuf *, struct iface *, u_int16_t);

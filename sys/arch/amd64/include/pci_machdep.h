@@ -1,4 +1,4 @@
-/*	$OpenBSD: pci_machdep.h,v 1.15 2010/06/29 22:08:28 jordan Exp $	*/
+/*	$OpenBSD: pci_machdep.h,v 1.17 2011/01/04 21:17:49 kettenis Exp $	*/
 /*	$NetBSD: pci_machdep.h,v 1.1 2003/02/26 21:26:11 fvdl Exp $	*/
 
 /*
@@ -59,6 +59,9 @@ typedef struct {
  * amd64-specific PCI variables and functions.
  * NOT TO BE USED DIRECTLY BY MACHINE INDEPENDENT CODE.
  */
+extern bus_addr_t pci_mcfg_addr;
+extern int pci_mcfg_min_bus, pci_mcfg_max_bus;
+
 struct		pci_attach_args;
 
 extern struct extent *pciio_ex;
@@ -74,6 +77,7 @@ int		pci_bus_maxdevs(pci_chipset_tag_t, int);
 pcitag_t	pci_make_tag(pci_chipset_tag_t, int, int, int);
 void		pci_decompose_tag(pci_chipset_tag_t, pcitag_t,
 		    int *, int *, int *);
+int		pci_conf_size(pci_chipset_tag_t, pcitag_t);
 pcireg_t	pci_conf_read(pci_chipset_tag_t, pcitag_t, int);
 void		pci_conf_write(pci_chipset_tag_t, pcitag_t, int,
 		    pcireg_t);

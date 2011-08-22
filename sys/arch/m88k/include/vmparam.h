@@ -1,4 +1,4 @@
-/*	$OpenBSD: vmparam.h,v 1.8 2006/06/04 17:20:39 miod Exp $ */
+/*	$OpenBSD: vmparam.h,v 1.10 2010/12/31 21:38:08 miod Exp $ */
 /*
  * Mach Operating System
  * Copyright (c) 1992 Carnegie Mellon University
@@ -52,6 +52,9 @@
 #ifndef MAXDSIZ
 #define	MAXDSIZ		(64*1024*1024)		/* max data size */
 #endif
+#ifndef BRKSIZ
+#define	BRKSIZ		MAXDSIZ			/* heap gap size */
+#endif
 #ifndef	DFLSSIZ
 #define	DFLSSIZ		(2*1024*1024)		/* initial stack size limit */
 #endif
@@ -71,14 +74,6 @@
 #define	VM_MIN_ADDRESS		((vaddr_t)0)
 #define	VM_MAX_ADDRESS		((vaddr_t)0xfffff000)
 #define VM_MAXUSER_ADDRESS	VM_MAX_ADDRESS
-
-/*
- * Although user and supervisor address spaces are separate, we limit
- * ourselves to 512KB KVM because the kernel page table is statically
- * allocated.
- */
-#define VM_MIN_KERNEL_ADDRESS	((vaddr_t)0)
-#define VM_MAX_KERNEL_ADDRESS	((vaddr_t)0x20000000)
 
 /* virtual sizes (bytes) for various kernel submaps */
 #define VM_PHYS_SIZE		(1 * NPTEPG * PAGE_SIZE)

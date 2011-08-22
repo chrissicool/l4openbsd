@@ -1,4 +1,4 @@
-/* $OpenBSD: omap_com.c,v 1.1 2009/05/08 03:13:26 drahn Exp $ */
+/* $OpenBSD: omap_com.c,v 1.4 2010/09/07 16:21:37 deraadt Exp $ */
 /*
  * Copyright 2003 Wasabi Systems, Inc.
  * All rights reserved.
@@ -57,10 +57,12 @@
 
 int	omapuart_match(struct device *, void *, void *);
 void	omapuart_attach(struct device *, struct device *, void *);
+int	omapuart_activate(struct device *, int);
 void	omapuart_power(int why, void *);
 
 struct cfattach com_ahb_ca = {
-        sizeof (struct com_softc), omapuart_match, omapuart_attach
+        sizeof (struct com_softc), omapuart_match, omapuart_attach, NULL, 
+	omapuart_activate
 };
 
 int
@@ -114,26 +116,20 @@ omapuart_attach(struct device *parent, struct device *self, void *aux)
 
 	(void)intc_intr_establish(aa->aa_intr, IPL_TTY, comintr,
 	    sc, sc->sc_dev.dv_xname);
-
-#if 0
-	(void)powerhook_establish(&omapuart_power, sc);
-#endif
 }
 
-#if 0
-void
-omapuart_power(int why, void *arg)
+int
+omapuart_activate(struct device *self, int act)
 {
-	struct com_softc *sc = arg;
+	struct com_softc *sc = (struct com_softc *)self;
 	bus_space_tag_t iot = sc->sc_iot;
 	bus_space_handle_t ioh = sc->sc_ioh;
 	struct tty *tp = sc->sc_tty;
 
-	switch (why) {
-	case PWR_SUSPEND:
-	case PWR_STANDBY:
+	switch (act) {
+	case DVACT_SUSPEND:
 		break;
-	case PWR_RESUME:
+	case DVACT_RESUME:
 		if (sc->enabled) {
 			sc->sc_initialize = 1;
 			comparam(tp, &tp->t_termios);
@@ -146,5 +142,13 @@ omapuart_power(int why, void *arg)
 		}
 		break;
 	}
+	return 0;
+}
+
+#if 0
+void
+omapuart_power(int why, void *arg)
+{
+	omapuart_activate(arg, why);
 }
 #endif

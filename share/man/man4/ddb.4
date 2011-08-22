@@ -1,4 +1,4 @@
-.\"	$OpenBSD: ddb.4,v 1.68 2010/03/26 19:30:40 jmc Exp $
+.\"	$OpenBSD: ddb.4,v 1.71 2010/11/27 19:59:10 miod Exp $
 .\"	$NetBSD: ddb.4,v 1.5 1994/11/30 16:22:09 jtc Exp $
 .\"
 .\" Mach Operating System
@@ -25,7 +25,7 @@
 .\" any improvements or extensions that they make and grant Carnegie Mellon
 .\" the rights to redistribute these changes.
 .\"
-.Dd $Mdocdate: March 26 2010 $
+.Dd $Mdocdate: November 27 2010 $
 .Dt DDB 4
 .Os
 .Sh NAME
@@ -427,8 +427,8 @@ Otherwise, only print the last instruction.
 .Pp
 .Sy Warning:
 depending on machine type, it may not be possible to
-single-step through some low-level code paths or user space code.
-On machines with software-emulated single-stepping (e.g., pmax),
+single-step through some low-level code paths.
+On machines with software-emulated single-stepping (e.g., alpha),
 stepping through code executed by interrupt handlers will probably
 do the wrong thing.
 .\" --------------------
@@ -452,7 +452,6 @@ Continue execution until a breakpoint or watchpoint.
 If the
 .Cm /c
 modifier is given, instructions are counted while executing.
-Some machines (e.g., pmax) also count loads and stores.
 .Pp
 .Sy Warning:
 when counting with
@@ -482,7 +481,6 @@ with an error message.
 .Sy Warning:
 attempts to watch wired kernel memory
 may cause an unrecoverable error on some systems (e.g., i386).
-Watchpoints on user addresses work best.
 .\" --------------------
 .It Ic dwatch Ar addr
 Delete the watchpoint at address
@@ -646,6 +644,17 @@ at
 If the
 .Cm /f
 modifier is specified the complete map is printed.
+.\" --------------------
+.It Ic show mbuf Ar addr
+Prints the
+.Li struct mbuf
+header at
+.Ar addr .
+Depending on the mbuf flags
+.Li struct pkthdr
+and
+.Li struct m_ext
+are printed as well.
 .\" --------------------
 .It Xo
 .Ic show mount

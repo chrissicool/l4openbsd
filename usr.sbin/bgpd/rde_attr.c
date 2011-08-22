@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde_attr.c,v 1.85 2010/05/26 13:56:07 nicm Exp $ */
+/*	$OpenBSD: rde_attr.c,v 1.88 2010/12/31 21:22:42 guenther Exp $ */
 
 /*
  * Copyright (c) 2004 Claudio Jeker <claudio@openbsd.org>
@@ -22,6 +22,7 @@
 
 #include <netinet/in.h>
 
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -146,8 +147,11 @@ attr_optadd(struct rde_aspath *asp, u_int8_t flags, u_int8_t type,
 	for (l = 0; l < asp->others_len; l++) {
 		if (asp->others[l] == NULL)
 			break;
-		if (type == asp->others[l]->type)
+		if (type == asp->others[l]->type) {
+			if (a->refcnt == 0)
+				attr_put(a);
 			return (-1);
+		}
 	}
 
 	/* add attribute to the table but first bump refcnt */
@@ -405,6 +409,7 @@ aspath_verify(void *data, u_int16_t len, int as4byte)
 	u_int8_t	*seg = data;
 	u_int16_t	 seg_size, as_size = 2;
 	u_int8_t	 seg_len, seg_type;
+	int		 err = 0;
 
 	if (len & 1)
 		/* odd length aspath are invalid */
@@ -419,7 +424,15 @@ aspath_verify(void *data, u_int16_t len, int as4byte)
 		seg_type = seg[0];
 		seg_len = seg[1];
 
-		if (seg_type != AS_SET && seg_type != AS_SEQUENCE)
+		/*
+		 * BGP confederations should not show up but consider them
+		 * as a soft error which invalidates the path but keeps the
+		 * bgp session running.
+		 */
+		if (seg_type == AS_CONFED_SEQUENCE || seg_type == AS_CONFED_SET)
+			err = AS_ERR_SOFT;
+		if (seg_type != AS_SET && seg_type != AS_SEQUENCE &&
+		    seg_type != AS_CONFED_SEQUENCE && seg_type != AS_CONFED_SET)
 			return (AS_ERR_TYPE);
 
 		seg_size = 2 + as_size * seg_len;
@@ -431,7 +444,7 @@ aspath_verify(void *data, u_int16_t len, int as4byte)
 			/* empty aspath segments are not allowed */
 			return (AS_ERR_BAD);
 	}
-	return (0);	/* aspath is valid but probably not loop free */
+	return (err);	/* aspath is valid but probably not loop free */
 }
 
 void

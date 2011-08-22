@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-find-window.c,v 1.6 2009/11/13 19:53:29 nicm Exp $ */
+/* $OpenBSD: cmd-find-window.c,v 1.8 2011/01/04 00:42:46 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -30,26 +30,26 @@
 int	cmd_find_window_exec(struct cmd *, struct cmd_ctx *);
 
 void	cmd_find_window_callback(void *, int);
+void	cmd_find_window_free(void *);
 
 const struct cmd_entry cmd_find_window_entry = {
 	"find-window", "findw",
+	"t:", 1, 1,
 	CMD_TARGET_WINDOW_USAGE " match-string",
-	CMD_ARG1, "",
-	cmd_target_init,
-	cmd_target_parse,
-	cmd_find_window_exec,
-	cmd_target_free,
-	cmd_target_print
+	0,
+	NULL,
+	NULL,
+	cmd_find_window_exec
 };
 
 struct cmd_find_window_data {
-	u_int	session;
+	struct session	*session;
 };
 
 int
 cmd_find_window_exec(struct cmd *self, struct cmd_ctx *ctx)
 {
-	struct cmd_target_data		*data = self->data;
+	struct args			*args = self->args;
 	struct cmd_find_window_data	*cdata;
 	struct session			*s;
 	struct winlink			*wl, *wm;
@@ -57,7 +57,7 @@ cmd_find_window_exec(struct cmd *self, struct cmd_ctx *ctx)
 	struct window_pane		*wp;
 	ARRAY_DECL(, u_int)	 	 list_idx;
 	ARRAY_DECL(, char *)	 	 list_ctx;
-	char				*sres, *sctx, *searchstr;
+	char				*str, *sres, *sctx, *searchstr;
 	u_int				 i, line;
 
 	if (ctx->curclient == NULL) {
@@ -66,13 +66,15 @@ cmd_find_window_exec(struct cmd *self, struct cmd_ctx *ctx)
 	}
 	s = ctx->curclient->session;
 
-	if ((wl = cmd_find_window(ctx, data->target, NULL)) == NULL)
+	if ((wl = cmd_find_window(ctx, args_get(args, 't'), NULL)) == NULL)
 		return (-1);
+
+	str = args->argv[0];
 
 	ARRAY_INIT(&list_idx);
 	ARRAY_INIT(&list_ctx);
 
-	xasprintf(&searchstr, "*%s*", data->arg);
+	xasprintf(&searchstr, "*%s*", str);
 	RB_FOREACH(wm, winlinks, &s->windows) {
 		i = 0;
 		TAILQ_FOREACH(wp, &wm->window->panes, entry) {
@@ -81,7 +83,7 @@ cmd_find_window_exec(struct cmd *self, struct cmd_ctx *ctx)
 			if (fnmatch(searchstr, wm->window->name, 0) == 0)
 				sctx = xstrdup("");
 			else {
-				sres = window_pane_search(wp, data->arg, &line);
+				sres = window_pane_search(wp, str, &line);
 				if (sres == NULL &&
 				    fnmatch(searchstr, wp->base.title, 0) != 0)
 					continue;
@@ -105,7 +107,7 @@ cmd_find_window_exec(struct cmd *self, struct cmd_ctx *ctx)
 	xfree(searchstr);
 
 	if (ARRAY_LENGTH(&list_idx) == 0) {
-		ctx->error(ctx, "no windows matching: %s", data->arg);
+		ctx->error(ctx, "no windows matching: %s", str);
 		ARRAY_FREE(&list_idx);
 		ARRAY_FREE(&list_ctx);
 		return (-1);
@@ -134,11 +136,11 @@ cmd_find_window_exec(struct cmd *self, struct cmd_ctx *ctx)
 	}
 
 	cdata = xmalloc(sizeof *cdata);
-	if (session_index(s, &cdata->session) != 0)
-		fatalx("session not found");
+	cdata->session = s;
+	cdata->session->references++;
 
-	window_choose_ready(
-	    wl->window->active, 0, cmd_find_window_callback, xfree, cdata);
+	window_choose_ready(wl->window->active,
+	    0, cmd_find_window_callback, cmd_find_window_free, cdata);
 
 out:
 	ARRAY_FREE(&list_idx);
@@ -151,12 +153,24 @@ void
 cmd_find_window_callback(void *data, int idx)
 {
 	struct cmd_find_window_data	*cdata = data;
-	struct session			*s;
+	struct session			*s = cdata->session;
 
-	if (idx != -1 && cdata->session <= ARRAY_LENGTH(&sessions) - 1) {
-		s = ARRAY_ITEM(&sessions, cdata->session);
-		if (s != NULL && session_select(s, idx) == 0)
-			server_redraw_session(s);
+	if (idx == -1)
+		return;
+	if (!session_alive(s))
+		return;
+
+	if (session_select(s, idx) == 0) {
+		server_redraw_session(s);
 		recalculate_sizes();
 	}
+}
+
+void
+cmd_find_window_free(void *data)
+{
+	struct cmd_find_window_data	*cdata = data;
+
+	cdata->session->references--;
+	xfree(cdata);
 }

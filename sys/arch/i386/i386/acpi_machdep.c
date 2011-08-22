@@ -1,4 +1,4 @@
-/*	$OpenBSD: acpi_machdep.c,v 1.38 2010/08/08 21:23:41 deraadt Exp $	*/
+/*	$OpenBSD: acpi_machdep.c,v 1.41 2010/10/06 18:21:09 kettenis Exp $	*/
 /*
  * Copyright (c) 2005 Thorsten Lockert <tholo@sigmasoft.com>
  *
@@ -219,16 +219,25 @@ acpi_cpu_flush(struct acpi_softc *sc, int state)
 int
 acpi_sleep_machdep(struct acpi_softc *sc, int state)
 {
+	int s;
+
 	if (sc->sc_facs == NULL) {
 		printf("%s: acpi_sleep_machdep: no FACS\n", DEVNAME(sc));
 		return (ENXIO);
 	}
 
+	rtcstop();
+
 	/* i386 does lazy pmap_activate */
 	pmap_activate(curproc);
 
 	/*
-	 *
+	 * The local apic may lose its state, so save the Task
+	 * Priority register where we keep the system priority level.
+	 */
+	s = lapic_tpr;
+
+	/*
 	 * ACPI defines two wakeup vectors. One is used for ACPI 1.0
 	 * implementations - it's in the FACS table as wakeup_vector and
 	 * indicates a 32-bit physical address containing real-mode wakeup
@@ -237,10 +246,9 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 	 * The second wakeup vector is in the FACS table as
 	 * x_wakeup_vector and indicates a 64-bit physical address
 	 * containing protected-mode wakeup code.
-	 *
 	 */
 	sc->sc_facs->wakeup_vector = (u_int32_t)ACPI_TRAMPOLINE;
-	if (sc->sc_facs->version == 1)
+	if (sc->sc_facs->length > 32 && sc->sc_facs->version >= 1)
 		sc->sc_facs->x_wakeup_vector = 0;
 
 	/* Copy the current cpu registers into a safe place for resume.
@@ -263,6 +271,9 @@ acpi_sleep_machdep(struct acpi_softc *sc, int state)
 
 	/* Reset the vector */
 	sc->sc_facs->wakeup_vector = 0;
+
+	/* Restore the Task Priority register */
+	lapic_tpr = s;
 
 #if NISA > 0
 	isa_defaultirq();

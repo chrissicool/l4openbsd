@@ -1,4 +1,4 @@
-/* $Id: pftop.c,v 1.15 2010/07/22 12:33:29 giovanni Exp $	 */
+/* $OpenBSD: pftop.c,v 1.17 2011/02/06 05:20:25 lum Exp $	 */
 /*
  * Copyright (c) 2001, 2007 Can Erkin Acar
  * Copyright (c) 2001 Daniel Hartmeier
@@ -87,9 +87,6 @@ void print_states(void);
 int select_rules(void);
 int read_rules(void);
 void print_rules(void);
-
-int print_header(void);
-int keyboard_callback(int ch);
 
 int select_queues(void);
 int read_queues(void);
@@ -480,10 +477,10 @@ sort_addr_callback(const struct pfsync_state *s1,
 	}
 
 	if (s2->direction == PF_IN) {
-		ab = &s2->key[PF_SK_STACK].addr[ii];;
+		ab = &s2->key[PF_SK_STACK].addr[ii];
 		pb =  s2->key[PF_SK_STACK].port[ii];
 	} else {
-		ab = &s2->key[PF_SK_WIRE].addr[io];;
+		ab = &s2->key[PF_SK_WIRE].addr[io];
 		pb =  s2->key[PF_SK_WIRE].port[io];
 	}
 
@@ -528,10 +525,10 @@ sort_port_callback(const struct pfsync_state *s1,
 	}
 
 	if (s2->direction == PF_IN) {
-		ab = &s2->key[PF_SK_STACK].addr[ii];;
+		ab = &s2->key[PF_SK_STACK].addr[ii];
 		pb =  s2->key[PF_SK_STACK].port[ii];
 	} else {
-		ab = &s2->key[PF_SK_WIRE].addr[io];;
+		ab = &s2->key[PF_SK_WIRE].addr[io];
 		pb =  s2->key[PF_SK_WIRE].port[io];
 	}
 

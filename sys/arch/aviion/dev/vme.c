@@ -1,4 +1,4 @@
-/*	$OpenBSD: vme.c,v 1.8 2010/04/24 18:44:27 miod Exp $	*/
+/*	$OpenBSD: vme.c,v 1.11 2010/12/31 21:38:08 miod Exp $	*/
 /*
  * Copyright (c) 2006, 2007, 2010 Miodrag Vallat.
  *
@@ -356,8 +356,7 @@ vmeintr_establish(u_int vec, struct intrhand *ih, const char *name)
 		}
 	}
 
-	evcount_attach(&ih->ih_count, name, (void *)&ih->ih_ipl,
-	    &evcount_intr);
+	evcount_attach(&ih->ih_count, name, &ih->ih_ipl);
 	SLIST_INSERT_HEAD(list, ih, ih_link);
 
 	/*
@@ -508,7 +507,7 @@ vme_map_r(const struct vme_range *r, paddr_t pa, psize_t len, int flags,
 		pa += PAGE_SIZE;
 	}
 	if (flags & BUS_SPACE_MAP_CACHEABLE)
-		pmap_cache_ctrl(pmap_kernel(), ova, ova + len, CACHE_GLOBAL);
+		pmap_cache_ctrl(ova, ova + len, CACHE_GLOBAL);
 	pmap_update(pmap_kernel());
 
 	*rva = ova;
@@ -1008,5 +1007,5 @@ vmemmap(dev_t dev, off_t off, int prot)
 	if (r->vr_width == 0)
 		return -1;
 
-	return atop(r->vr_base + (paddr_t)off);
+	return r->vr_base + (paddr_t)off;
 }

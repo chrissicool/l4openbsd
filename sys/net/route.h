@@ -1,4 +1,4 @@
-/*	$OpenBSD: route.h,v 1.72 2010/07/14 00:42:57 dlg Exp $	*/
+/*	$OpenBSD: route.h,v 1.75 2010/10/28 17:18:35 claudio Exp $	*/
 /*	$NetBSD: route.h,v 1.9 1996/02/13 22:00:49 christos Exp $	*/
 
 /*
@@ -217,6 +217,8 @@ struct rt_msghdr {
 
 #define RTM_VERSION	4	/* Up the ante and ignore older versions */
 
+#define RTM_MAXSIZE	2048	/* Maximum size of an accepted route msg */
+
 #define RTM_ADD		0x1	/* Add Route */
 #define RTM_DELETE	0x2	/* Delete Route */
 #define RTM_CHANGE	0x3	/* Change Metrics or flags */
@@ -277,8 +279,11 @@ struct rt_msghdr {
  */
 #define ROUTE_MSGFILTER	1	/* bitmask to specifiy which types should be
 				   sent to the client. */
+#define ROUTE_TABLEFILTER 2	/* change routing table the socket is listening
+				   on, RTABLE_ANY listens on all tables. */
 
 #define ROUTE_FILTER(m)	(1 << (m))
+#define RTABLE_ANY	0xffffffff
 
 struct rt_addrinfo {
 	int	rti_addrs;
@@ -355,7 +360,6 @@ extern const struct sockaddr_rtin rt_defmask4;
 struct	socket;
 void	 route_init(void);
 int	 rtable_add(u_int);
-void	 rtable_addif(struct ifnet *, u_int);
 u_int	 rtable_l2(u_int);
 void	 rtable_l2set(u_int, u_int);
 int	 rtable_exists(u_int);

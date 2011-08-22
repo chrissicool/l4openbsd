@@ -1,4 +1,4 @@
-#	$OpenBSD: GENERIC,v 1.136 2010/08/02 14:13:23 deraadt Exp $
+#	$OpenBSD: GENERIC,v 1.142 2011/02/17 20:14:30 miod Exp $
 #
 # For further information on compiling OpenBSD kernels, see the config(8)
 # man page.
@@ -28,9 +28,7 @@ option		HP8700_CPU		# PCXW2 (in 32bit mode)
 option		FPEMUL
 option		USELEDS		# blink 'em
 option		USER_PCICONF	# user-space PCI configuration
-
-#option		COMPAT_LINUX
-#option		PROCFS		# /proc
+option	WSDISPLAY_COMPAT_RAWKBD		# provide raw scancodes; needed for X11
 
 config	bsd swap generic
 
@@ -156,7 +154,7 @@ udav*	at uhub?		# Davicom DM9601 based Ethernet
 upl*	at uhub?		# Prolific PL2301/PL2302 host-to-host `network'
 wi*	at uhub?		# WaveLAN IEEE 802.11DS
 urio*	at uhub?		# Diamond Multimedia Rio 500
-uscanner* at uhub?		# USB Scanners
+uscanner* at uhub? disable	# USB Scanners
 uyap*	at uhub?		# Y@P firmware loader
 udsbr*	at uhub?		# D-Link DSB-R100 radio
 radio*	at udsbr?		# USB radio
@@ -166,11 +164,14 @@ rum*	at uhub?		# Ralink RT2501USB/RT2601USB
 run*	at uhub?		# Ralink RT2700U/RT2800U/RT3000U
 zyd*	at uhub?		# Zydas ZD1211
 uthum*	at uhidev?		# TEMPerHUM sensor
+utwitch* at uhidev?		# YUREX BBU sensor
 uow*	at uhub?		# Maxim/Dallas DS2490 1-Wire adapter
 onewire* at uow?
+udl*	at uhub?		# DisplayLink USB displays
+wsdisplay* at udl?
 
 # Bluetooth controllers
-ubt*	at uhub?		# USB Bluetooth
+ubt*	at uhub? disable	# USB Bluetooth
 bthub*	at ubt?
 
 bthidev* at bthub?		# Bluetooth HID support

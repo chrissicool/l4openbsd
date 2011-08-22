@@ -1,4 +1,4 @@
-/*	$OpenBSD: init.c,v 1.42 2010/08/07 10:22:28 phessler Exp $	*/
+/*	$OpenBSD: init.c,v 1.45 2010/10/15 07:11:02 dlg Exp $	*/
 /*	$NetBSD: init.c,v 1.22 1996/05/15 23:29:33 jtc Exp $	*/
 
 /*-
@@ -39,6 +39,7 @@
 #include <sys/reboot.h>
 
 #include <db.h>
+#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -106,6 +107,7 @@ state_func_t multi_user(void);
 state_func_t clean_ttys(void);
 state_func_t catatonia(void);
 state_func_t death(void);
+state_func_t do_reboot(void);
 state_func_t hard_death(void);
 state_func_t nice_death(void);
 
@@ -230,12 +232,12 @@ main(int argc, char *argv[])
 	handle(badsys, SIGSYS, 0);
 	handle(disaster, SIGABRT, SIGFPE, SIGILL, SIGSEGV,
 	    SIGBUS, SIGXCPU, SIGXFSZ, 0);
-	handle(transition_handler, SIGHUP, SIGTERM, SIGTSTP, SIGUSR1,
-	    SIGUSR2, 0);
+	handle(transition_handler, SIGHUP, SIGINT, SIGTERM, SIGTSTP,
+            SIGUSR1, SIGUSR2, 0);
 	handle(alrm_handler, SIGALRM, 0);
 	sigfillset(&mask);
 	delset(&mask, SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGBUS, SIGSYS,
-	    SIGXCPU, SIGXFSZ, SIGHUP, SIGTERM, SIGUSR1, SIGUSR2,
+	    SIGXCPU, SIGXFSZ, SIGHUP, SIGINT, SIGTERM, SIGUSR1, SIGUSR2,
 	    SIGTSTP, SIGALRM, 0);
 	sigprocmask(SIG_SETMASK, &mask, NULL);
 	memset(&sa, 0, sizeof sa);
@@ -1132,6 +1134,9 @@ transition_handler(int sig)
 	case SIGHUP:
 		requested_transition = clean_ttys;
 		break;
+	case SIGINT:
+		requested_transition = do_reboot;
+		break;
 	case SIGTERM:
 		requested_transition = death;
 		break;
@@ -1274,6 +1279,16 @@ alrm_handler(int sig)
 }
 
 int death_howto = RB_HALT;
+
+/*
+ * Reboot the system.
+ */
+state_func_t
+do_reboot(void)
+{
+	death_howto = RB_AUTOBOOT;
+	return nice_death();
+}
 
 /*
  * Bring the system down nicely, then we must powerdown because something

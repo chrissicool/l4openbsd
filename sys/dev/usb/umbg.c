@@ -1,4 +1,4 @@
-/*	$OpenBSD: umbg.c,v 1.11 2009/11/21 14:30:35 deraadt Exp $ */
+/*	$OpenBSD: umbg.c,v 1.16 2011/01/25 20:03:36 jakemsr Exp $ */
 
 /*
  * Copyright (c) 2007 Marc Balmer <mbalmer@openbsd.org>
@@ -53,7 +53,6 @@ struct umbg_softc {
 	struct device		sc_dev;		/* base device */
 	usbd_device_handle	sc_udev;	/* USB device */
 	usbd_interface_handle	sc_iface;	/* data interface */
-	u_char			sc_dying;	/* disconnecting */
 
 	int			sc_bulkin_no;
 	usbd_pipe_handle	sc_bulkin_pipe;
@@ -200,7 +199,7 @@ umbg_attach(struct device *parent, struct device *self, void *aux)
 	sensor_attach(&sc->sc_sensordev, &sc->sc_signal);
 	sensordev_install(&sc->sc_sensordev);
 
-	usb_init_task(&sc->sc_task, umbg_task, sc);
+	usb_init_task(&sc->sc_task, umbg_task, sc, USB_TASK_TYPE_GENERIC);
 	timeout_set(&sc->sc_to, umbg_intr, sc);
 	timeout_set(&sc->sc_it_to, umbg_it_intr, sc);
 
@@ -276,9 +275,6 @@ umbg_attach(struct device *parent, struct device *self, void *aux)
 #endif
 	printf("\n");
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
-
 	t_wait = 5;
 
 	t_trust = TRUSTTIME;
@@ -287,7 +283,7 @@ umbg_attach(struct device *parent, struct device *self, void *aux)
 	return;
 
 fishy:
-	sc->sc_dying = 1;
+	usbd_deactivate(sc->sc_udev);
 }
 
 int
@@ -296,10 +292,10 @@ umbg_detach(struct device *self, int flags)
 	struct umbg_softc *sc = (struct umbg_softc *)self;
 	usbd_status err;
 
-	sc->sc_dying = 1;
-
-	timeout_del(&sc->sc_to);
-	timeout_del(&sc->sc_it_to);
+	if (timeout_initialized(&sc->sc_to))
+		timeout_del(&sc->sc_to);
+	if (timeout_initialized(&sc->sc_it_to))
+		timeout_del(&sc->sc_it_to);
 
 	usb_rem_task(sc->sc_udev, &sc->sc_task);
 
@@ -329,7 +325,6 @@ umbg_detach(struct device *self, int flags)
 	/* Unregister the clock with the kernel */
 	sensordev_deinstall(&sc->sc_sensordev);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev, &sc->sc_dev);
 	return 0;
 }
 
@@ -350,7 +345,7 @@ umbg_task(void *arg)
 	int64_t tlocal, trecv;
 	int signal;
 
-	if (sc->sc_dying)
+	if (usbd_is_dying(sc->sc_udev))
 		return;
 
 	if (umbg_read(sc, MBG_GET_TIME_HR, (char *)&tframe, sizeof(tframe),
@@ -438,7 +433,7 @@ umbg_it_intr(void *xsc)
 {
 	struct umbg_softc *sc = xsc;
 
-	if (sc->sc_dying)
+	if (usbd_is_dying(sc->sc_udev))
 		return;
 
 	if (sc->sc_timedelta.status == SENSOR_S_OK) {
@@ -461,7 +456,7 @@ umbg_activate(struct device *self, int act)
 	case DVACT_ACTIVATE:
 		break;
 	case DVACT_DEACTIVATE:
-		sc->sc_dying = 1;
+		usbd_deactivate(sc->sc_udev);
 		break;
 	}
 	return 0;

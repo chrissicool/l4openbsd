@@ -1,0 +1,77 @@
+#	$OpenBSD: rc.subr,v 1.20 2011/02/24 07:07:03 ajacoutot Exp $
+
+rc_err() {
+	echo $1
+	exit 1
+}
+
+rc_start() {
+	type rc_pre >/dev/null && rc_pre
+	${rcexec} "${daemon} ${daemon_flags}" >/dev/null
+}
+
+rc_check() {
+	pgrep -f "^${pexp}" >/dev/null
+}
+
+rc_reload() {
+	pkill -HUP -f "^${pexp}"
+}
+
+rc_stop() {
+	pkill -f "^${pexp}"
+	type rc_post >/dev/null && rc_post || return 0
+}
+
+rc_cmd() {
+	[ `id -u` -eq 0 -o X"$1" = "Xcheck" ] || \
+		rc_err "$0: need root privileges"
+
+	eval _enotsup=\${rc_${1}}
+	[ X"${_enotsup}" != X"NO" ] || rc_err "$0: $1 is not supported"
+
+	case "$1" in
+	check)
+		rc_check
+		;;
+	start)
+		rc_check || rc_start
+		;;
+	stop)
+		rc_stop
+		;;
+	reload)
+		rc_check && rc_reload
+		;;
+	restart)
+		rc_stop
+		while rc_check; do
+			sleep 1
+		done
+		rc_start
+		;;
+	*)
+		rc_err "usage: $0 {start|check|reload|restart|stop}"
+	esac
+}
+
+[ -z "${local_rcconf}" ] && . /etc/rc.conf
+
+[ -n "${daemon}" ] || rc_err "$0: daemon is not set"
+
+_name=`basename $0`
+eval _rcflags=\${${_name}_flags}
+eval _rcuser=\${${_name}_user}
+
+getcap -f /etc/login.conf ${_name} 1>/dev/null 2>&1 && \
+	daemon_class=${_name}
+
+[ -z "${daemon_class}" ] && daemon_class=daemon
+[ -z "${daemon_user}"  ] && daemon_user=root
+
+[ -n "${_rcflags}" ] && daemon_flags=${_rcflags}
+[ -n "${_rcuser}"  ] && daemon_user=${_rcuser}
+
+daemon_flags=`echo ${daemon_flags} | tr -s "[:space:]"`
+pexp="${daemon}${daemon_flags:+ ${daemon_flags}}"
+rcexec="su -l -c ${daemon_class} -s /bin/sh ${daemon_user} -c"

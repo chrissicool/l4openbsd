@@ -1,4 +1,4 @@
-/*	$OpenBSD: utrh.c,v 1.4 2010/04/15 09:40:46 yuo Exp $   */
+/*	$OpenBSD: utrh.c,v 1.7 2011/01/25 20:03:36 jakemsr Exp $   */
 
 /*
  * Copyright (c) 2009 Yojiro UO <yuo@nui.org>
@@ -77,7 +77,6 @@ struct utrh_softc {
 const struct usb_devno utrh_devs[] = {
 	{ USB_VENDOR_STRAWBERRYLINUX, USB_PRODUCT_STRAWBERRYLINUX_USBRH},
 };
-#define utrh_lookup(v, p) usb_lookup(utrh_devs, v, p)
 
 int utrh_match(struct device *, void *, void *);
 void utrh_attach(struct device *, struct device *, void *);
@@ -108,10 +107,8 @@ utrh_match(struct device *parent, void *match, void *aux)
 	struct usb_attach_arg *uaa = aux;
 	struct uhidev_attach_arg *uha = (struct uhidev_attach_arg *)uaa;
 
-	if (utrh_lookup(uha->uaa->vendor, uha->uaa->product) == NULL)
-		return UMATCH_NONE;
-
-	return (UMATCH_VENDOR_PRODUCT);
+	return (usb_lookup(utrh_devs, uha->uaa->vendor, uha->uaa->product) != NULL ?
+	    UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
 }
 
 void
@@ -143,8 +140,6 @@ utrh_attach(struct device *parent, struct device *self, void *aux)
 	}
 	sc->sc_ibuf = malloc(sc->sc_ilen, M_USBDEV, M_WAITOK);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_hdev.sc_dev);
 	printf("\n");
 
 	/* attach sensor */
@@ -181,8 +176,6 @@ utrh_detach(struct device *self, int flags)
 	struct utrh_softc *sc = (struct utrh_softc *)self;
 	int i, rv = 0;
 
-	sc->sc_dying = 1;
-
 	if (sc->sc_num_sensors > 0) {
 		wakeup(&sc->sc_sensortask);
 		sensordev_deinstall(&sc->sc_sensordev);
@@ -196,9 +189,6 @@ utrh_detach(struct device *self, int flags)
 		free(sc->sc_ibuf, M_USBDEV);
 		sc->sc_ibuf = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_hdev.sc_dev);
 
 	return (rv);
 }

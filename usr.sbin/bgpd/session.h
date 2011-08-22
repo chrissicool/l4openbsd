@@ -1,4 +1,4 @@
-/*	$OpenBSD: session.h,v 1.108 2010/06/27 19:53:34 claudio Exp $ */
+/*	$OpenBSD: session.h,v 1.111 2010/12/09 13:50:41 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -92,6 +92,13 @@ enum suberr_open {
 	ERR_OPEN_AUTH,
 	ERR_OPEN_HOLDTIME,
 	ERR_OPEN_CAPA
+};
+
+enum suberr_fsm {
+	ERR_FSM_UNSPECIFIC = 0,
+	ERR_FSM_UNEX_OPENSENT,
+	ERR_FSM_UNEX_OPENCONFIRM,
+	ERR_FSM_UNEX_ESTABLISHED
 };
 
 enum opt_params {
@@ -241,7 +248,7 @@ char		*log_fmt_peer(const struct peer_config *);
 void		 log_statechange(struct peer *, enum session_state,
 		    enum session_events);
 void		 log_notification(const struct peer *, u_int8_t, u_int8_t,
-		    u_char *, u_int16_t);
+		    u_char *, u_int16_t, const char *);
 void		 log_conn_attempt(const struct peer *, struct sockaddr *);
 
 /* parse.y */
@@ -266,6 +273,7 @@ int	control_dispatch_msg(struct pollfd *, u_int *);
 unsigned int	control_accept(int, int);
 
 /* pfkey.c */
+int	pfkey_read(int, struct sadb_msg *);
 int	pfkey_establish(struct peer *);
 int	pfkey_remove(struct peer *);
 int	pfkey_init(struct bgpd_sysdep *);

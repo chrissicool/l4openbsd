@@ -3,8 +3,8 @@
 # THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
 # generated from:
 #
-#	OpenBSD: etc.sgi/MAKEDEV.md,v 1.30 2010/07/03 03:59:15 krw Exp 
-#	OpenBSD: MAKEDEV.common,v 1.51 2010/08/03 20:12:01 miod Exp 
+#	OpenBSD: etc.sgi/MAKEDEV.md,v 1.33 2010/11/19 20:55:48 miod Exp 
+#	OpenBSD: MAKEDEV.common,v 1.53 2010/09/30 15:27:54 claudio Exp 
 #	OpenBSD: MAKEDEV.mi,v 1.79 2009/01/25 17:30:48 miod Exp 
 #	OpenBSD: MAKEDEV.sub,v 1.14 2005/02/07 06:14:18 david Exp 
 #
@@ -46,37 +46,39 @@
 #	pty*	Set of 62 master pseudo terminals
 #	tty*	Set of 62 slave pseudo terminals
 # Console ports:
-#	wscons	Minimal wscons devices
 #	ttyC-J*	wscons display devices
+#	wscons	Minimal wscons devices
 #	wskbd*	wscons keyboards
 #	wsmux	wscons keyboard/mouse mux devices
 # Pointing devices:
 #	wsmouse*	wscons mice
 # USB devices:
-#	uall	All USB devices
 #	ttyU*	USB serial ports
+#	uall	All USB devices
 #	ugen*	Generic USB devices
 #	uhid*	Generic HID devices
 #	ulpt*	Printer devices
 #	urio*	Diamond Multimedia Rio 500
 #	usb*	Bus control devices used by usbd for attach/detach
+#	uscanner*	Scanners
 # Special purpose devices:
 #	audio*	Audio devices
 #	bio	ioctl tunnel pseudo-device
 #	bpf*	Berkeley Packet Filter
 #	crypto	Hardware crypto access driver
+#	diskmap	Disk mapper
 #	fd	fd/* nodes
 #	hotplug	devices hot plugging
+#	nnpfs*	NNPFS filesystem node
 #	pci*	PCI bus devices
 #	pf*	Packet Filter
+#	pppx*	PPP Multiplexer
 #	*random	In-kernel random data source
 #	systrace*	System call tracing device
 #	tun*	Network tunnel driver
 #	uk*	Unknown SCSI devices
 #	video*	Video V4L2 devices
-#	nnpfs*	NNPFS filesystem node
 #	vscsi*	Virtual SCSI controller
-#	diskmap	Disk mapper
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 T=$0
 
@@ -216,16 +218,8 @@ std)
 	M klog		c 6 0 600
 	;;
 
-diskmap)
-	M diskmap c 69 0 640 operator
-	;;
-
 vscsi*)
 	M vscsi$U c 68 $U 600
-	;;
-
-nnpfs*)
-	M nnpfs$U c 51 $U 600
 	;;
 
 video*)
@@ -254,6 +248,10 @@ systrace)
 	done
 	;;
 
+pppx*)
+	M pppx$U c 70 $U 600
+	;;
+
 pf*)
 	M pf c 31 0 600
 	;;
@@ -261,6 +259,10 @@ pf*)
 pci*)
 	M pci$U	c 29 $U 600
 	MKlist[${#MKlist[*]}]=";[ -h pci ] || ln -sf pci0 pci"
+	;;
+
+nnpfs*)
+	M nnpfs$U c 51 $U 600
 	;;
 
 hotplug)
@@ -271,6 +273,10 @@ fd)
 	RMlist[${#RMlist[*]}]=";mkdir -p fd;rm -f" n=0
 	while [ $n -lt 64 ];do M fd/$n c 7 $n;n=$(($n+1));done
 	MKlist[${#MKlist[*]}]=";chmod 555 fd"
+	;;
+
+diskmap)
+	M diskmap c 69 0 640 operator
 	;;
 
 crypto)
@@ -294,6 +300,10 @@ audio*)
 	MKlist[${#MKlist[*]}]=";[ -e mixer ] || ln -s mixer$U mixer"
 	MKlist[${#MKlist[*]}]=";[ -e sound ] || ln -s sound$U sound"
 	MKlist[${#MKlist[*]}]=";[ -e audioctl ] || ln -s audioctl$U audioctl"
+	;;
+
+uscanner*)
+	M uscanner$U c 72 $U 660
 	;;
 
 usb*)
@@ -321,16 +331,17 @@ ugen*)
 	done
 	;;
 
+uall)
+	R ttyU0 ttyU1 ttyU2 ttyU3 ugen0 ugen1 ulpt0 ulpt1 uhid0 uhid1
+	R uhid2 uhid3 uscanner0 urio0 usb0 usb1 usb2 usb3 usb4 usb5
+	R usb6 usb7
+	;;
+
 ttyU[0-9a-zA-Z])
 	U=${i#ttyU*}
 	o=$(alph2d $U)
 	M ttyU$U c 66 $o 660 dialer uucp
 	M cuaU$U c 66 $(($o+128)) 660 dialer uucp
-	;;
-
-uall)
-	R ttyU0 ttyU1 ttyU2 ttyU3 ugen0 ugen1 ulpt0 ulpt1 uhid0 uhid1
-	R uhid2 uhid3 urio0 usb0 usb1 usb2 usb3 usb4 usb5 usb6 usb7
 	;;
 
 wsmouse[0-9]*)
@@ -344,6 +355,16 @@ wsmux|wsmouse|wskbd)
 
 wskbd[0-9]*)
 	M wskbd$U c 26 $U 600
+	;;
+
+wscons)
+	R wsmouse0 wsmouse1 wsmouse2 wsmouse3 wskbd0 wskbd1 wskbd2
+	R wskbd3 wsmux ttyFcfg ttyF0 ttyF1 ttyF2 ttyF3 ttyF4 ttyF5
+	R ttyF6 ttyF7 ttyF8 ttyF9 ttyFa ttyFb ttyEcfg ttyE0 ttyE1
+	R ttyE2 ttyE3 ttyE4 ttyE5 ttyE6 ttyE7 ttyE8 ttyE9 ttyEa ttyEb
+	R ttyDcfg ttyD0 ttyD1 ttyD2 ttyD3 ttyD4 ttyD5 ttyD6 ttyD7
+	R ttyD8 ttyD9 ttyDa ttyDb ttyCcfg ttyC0 ttyC1 ttyC2 ttyC3
+	R ttyC4 ttyC5 ttyC6 ttyC7 ttyC8 ttyC9 ttyCa ttyCb
 	;;
 
 tty[C-J]*)
@@ -363,16 +384,6 @@ tty[C-J]*)
 	cfg) M tty${n}cfg c 25 $((255+$m)) 600;;
 	*) echo bad unit $U for $i; exit 1;;
 	esac
-	;;
-
-wscons)
-	R wsmouse0 wsmouse1 wsmouse2 wsmouse3 wskbd0 wskbd1 wskbd2
-	R wskbd3 wsmux ttyFcfg ttyF0 ttyF1 ttyF2 ttyF3 ttyF4 ttyF5
-	R ttyF6 ttyF7 ttyF8 ttyF9 ttyFa ttyFb ttyEcfg ttyE0 ttyE1
-	R ttyE2 ttyE3 ttyE4 ttyE5 ttyE6 ttyE7 ttyE8 ttyE9 ttyEa ttyEb
-	R ttyDcfg ttyD0 ttyD1 ttyD2 ttyD3 ttyD4 ttyD5 ttyD6 ttyD7
-	R ttyD8 ttyD9 ttyDa ttyDb ttyCcfg ttyC0 ttyC1 ttyC2 ttyC3
-	R ttyC4 ttyC5 ttyC6 ttyC7 ttyC8 ttyC9 ttyCa ttyCb
 	;;
 
 pty*)

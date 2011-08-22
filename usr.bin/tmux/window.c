@@ -1,4 +1,4 @@
-/* $OpenBSD: window.c,v 1.53 2010/07/14 18:37:49 nicm Exp $ */
+/* $OpenBSD: window.c,v 1.63 2011/01/25 22:31:50 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -123,7 +123,7 @@ winlink_count(struct winlinks *wwl)
 }
 
 struct winlink *
-winlink_add(struct winlinks *wwl, struct window *w, int idx)
+winlink_add(struct winlinks *wwl, int idx)
 {
 	struct winlink	*wl;
 
@@ -135,12 +135,16 @@ winlink_add(struct winlinks *wwl, struct window *w, int idx)
 
 	wl = xcalloc(1, sizeof *wl);
 	wl->idx = idx;
-	wl->window = w;
 	RB_INSERT(winlinks, wwl, wl);
 
-	w->references++;
-
 	return (wl);
+}
+
+void
+winlink_set_window(struct winlink *wl, struct window *w)
+{
+	wl->window = w;
+	w->references++;
 }
 
 void
@@ -153,11 +157,13 @@ winlink_remove(struct winlinks *wwl, struct winlink *wl)
 		xfree(wl->status_text);
 	xfree(wl);
 
-	if (w->references == 0)
-		fatal("bad reference count");
-	w->references--;
-	if (w->references == 0)
-		window_destroy(w);
+	if (w != NULL) {
+		if (w->references == 0)
+			fatal("bad reference count");
+		w->references--;
+		if (w->references == 0)
+			window_destroy(w);
+	}
 }
 
 struct winlink *
@@ -325,6 +331,9 @@ window_resize(struct window *w, u_int sx, u_int sy)
 void
 window_set_active_pane(struct window *w, struct window_pane *wp)
 {
+	if (wp == w->active)
+		return;
+	w->last = w->active;
 	w->active = wp;
 	while (!window_pane_visible(w->active)) {
 		w->active = TAILQ_PREV(w->active, window_panes, entry);
@@ -341,7 +350,7 @@ window_set_active_at(struct window *w, u_int x, u_int y)
 	struct window_pane	*wp;
 
 	TAILQ_FOREACH(wp, &w->panes, entry) {
-		if (!window_pane_visible(wp))
+		if (wp == w->active || !window_pane_visible(wp))
 			continue;
 		if (x < wp->xoff || x >= wp->xoff + wp->sx)
 			continue;
@@ -368,9 +377,16 @@ window_add_pane(struct window *w, u_int hlimit)
 void
 window_remove_pane(struct window *w, struct window_pane *wp)
 {
-	w->active = TAILQ_PREV(wp, window_panes, entry);
-	if (w->active == NULL)
-		w->active = TAILQ_NEXT(wp, entry);
+	if (wp == w->active) {
+		w->active = w->last;
+		w->last = NULL;
+		if (w->active == NULL) {
+			w->active = TAILQ_PREV(wp, window_panes, entry);
+			if (w->active == NULL)
+				w->active = TAILQ_NEXT(wp, entry);
+		}
+	} else if (wp == w->last)
+		w->last = NULL;
 
 	TAILQ_REMOVE(&w->panes, wp, entry);
 	window_pane_destroy(wp);
@@ -453,6 +469,32 @@ window_destroy_panes(struct window *w)
 	}
 }
 
+/* Return list of printable window flag symbols. No flags is just a space. */
+char *
+window_printable_flags(struct session *s, struct winlink *wl)
+{
+	char	flags[BUFSIZ];
+	int	pos;
+
+	pos = 0;
+	if (wl->flags & WINLINK_ACTIVITY)
+		flags[pos++] = '#';
+	if (wl->flags & WINLINK_BELL)
+		flags[pos++] = '!';
+	if (wl->flags & WINLINK_CONTENT)
+		flags[pos++] = '+';
+	if (wl->flags & WINLINK_SILENCE)
+		flags[pos++] = '~';
+	if (wl == s->curw)
+		flags[pos++] = '*';
+	if (wl == TAILQ_FIRST(&s->lastw))
+		flags[pos++] = '-';
+	if (pos == 0)
+		flags[pos++] = ' ';
+	flags[pos] = '\0';
+	return (xstrdup(flags));
+}
+
 struct window_pane *
 window_pane_create(struct window *w, u_int sx, u_int sy, u_int hlimit)
 {
@@ -495,6 +537,8 @@ window_pane_create(struct window *w, u_int sx, u_int sy, u_int hlimit)
 void
 window_pane_destroy(struct window_pane *wp)
 {
+	window_pane_reset_mode(wp);
+
 	if (wp->fd != -1) {
 		close(wp->fd);
 		bufferevent_free(wp->event);
@@ -502,7 +546,6 @@ window_pane_destroy(struct window_pane *wp)
 
 	input_free(wp);
 
-	window_pane_reset_mode(wp);
 	screen_free(&wp->base);
 	if (wp->saved_grid != NULL)
 		grid_destroy(wp->saved_grid);
@@ -526,7 +569,6 @@ window_pane_spawn(struct window_pane *wp, const char *cmd, const char *shell,
     const char *cwd, struct environ *env, struct termios *tio, char **cause)
 {
 	struct winsize	 ws;
-	int		 mode;
 	char		*argv0;
 	const char	*ptr;
 	struct termios	 tio2;
@@ -572,9 +614,11 @@ window_pane_spawn(struct window_pane *wp, const char *cmd, const char *shell,
 		if (tcsetattr(STDIN_FILENO, TCSANOW, &tio2) != 0)
 			fatal("tcgetattr failed");
 
+		closefrom(STDERR_FILENO + 1);
+
 		environ_push(env);
 
-		clear_signals();
+		clear_signals(1);
 		log_close();
 
 		if (*wp->cmd != '\0') {
@@ -598,12 +642,8 @@ window_pane_spawn(struct window_pane *wp, const char *cmd, const char *shell,
 		fatal("execl failed");
 	}
 
-	if ((mode = fcntl(wp->fd, F_GETFL)) == -1)
-		fatal("fcntl failed");
-	if (fcntl(wp->fd, F_SETFL, mode|O_NONBLOCK) == -1)
-		fatal("fcntl failed");
-	if (fcntl(wp->fd, F_SETFD, FD_CLOEXEC) == -1)
-		fatal("fcntl failed");
+	setblocking(wp->fd, 0);
+
 	wp->event = bufferevent_new(wp->fd,
 	    window_pane_read_callback, NULL, window_pane_error_callback, wp);
 	bufferevent_enable(wp->event, EV_READ|EV_WRITE);
@@ -628,6 +668,14 @@ window_pane_read_callback(unused struct bufferevent *bufev, void *data)
 	input_parse(wp);
 
 	wp->pipe_off = EVBUFFER_LENGTH(wp->event->input);
+
+	/*
+	 * If we get here, we're not outputting anymore, so set the silence
+	 * flag on the window.
+	 */
+	wp->window->flags |= WINDOW_SILENCE;
+	if (gettimeofday(&wp->window->silence_timer, NULL) != 0)
+		fatal("gettimeofday failed.");
 }
 
 /* ARGSUSED */

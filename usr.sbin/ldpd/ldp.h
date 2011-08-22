@@ -1,4 +1,4 @@
-/*	$OpenBSD: ldp.h,v 1.5 2010/05/17 08:07:04 claudio Exp $ */
+/*	$OpenBSD: ldp.h,v 1.9 2011/01/10 11:58:39 claudio Exp $ */
 
 /*
  * Copyright (c) 2009 Michele Marchetto <michele@openbsd.org>
@@ -97,16 +97,21 @@ struct ldp_hdr {
 #define	INFINITE_HOLDTIME	0xffff
 
 /* TLV record */
+struct tlv {
+	u_int16_t	type;
+	u_int16_t	length;
+};
+#define	TLV_HDR_LEN		4
+
 struct ldp_msg {
 	u_int16_t	type;
 	u_int16_t	length;
 	u_int32_t	msgid;
 	/* Mandatory Parameters */
 	/* Optional Parameters */
-};
+} __packed;
 
 #define LDP_MSG_LEN		8
-#define	TLV_HDR_LEN		4
 
 #define	UNKNOWN_FLAGS_MASK	0xc000
 #define	UNKNOWN_FLAG		0x8000
@@ -119,8 +124,10 @@ struct hello_prms_tlv {
 	u_int16_t	type;
 	u_int16_t	length;
 	u_int16_t	holdtime;
-	u_int16_t	reserved;
+	u_int16_t	flags;
 };
+
+#define HELLO_PRMS_SIZE		8
 
 #define	S_SUCCESS	0x00000000
 #define	S_BAD_LDP_ID	0x80000001
@@ -159,7 +166,7 @@ struct sess_prms_tlv {
 	u_int16_t	max_pdu_len;
 	u_int32_t	lsr_id;
 	u_int16_t	lspace_id;
-};
+} __packed;
 
 #define SESS_PRMS_SIZE		18
 
@@ -169,7 +176,7 @@ struct status_tlv {
 	u_int32_t	status_code;
 	u_int32_t	msg_id;
 	u_int16_t	msg_type;
-};
+} __packed;
 
 #define STATUS_SIZE		14
 #define STATUS_TLV_LEN		10
@@ -180,18 +187,12 @@ struct address_list_tlv {
 	u_int16_t	length;
 	u_int16_t	family;
 	/* address entries */
-};
+} __packed;
 
 #define	BASIC_LABEL_MAP_LEN	24
 
 #define	ADDR_IPV4		0x1
 #define	ADDR_IPV6		0x2
-
-struct fec_tlv {
-	u_int16_t	type;
-	u_int16_t	length;
-	/* fec elm entries */
-};
 
 /* This struct is badly aligned so use two 32 bit fields */
 struct fec_elm {
@@ -200,10 +201,8 @@ struct fec_elm {
 };
 
 #define FEC_ELM_MIN_LEN		4
-
 #define	FEC_WILDCARD		0x01
 #define	FEC_PREFIX		0x02
-
 #define	FEC_IPV4		0x0001
 
 struct label_tlv {
@@ -214,11 +213,13 @@ struct label_tlv {
 
 #define LABEL_TLV_LEN		8
 
-struct hello_opt_parms_tlv {
+struct reqid_tlv {
 	u_int16_t	type;
 	u_int16_t	length;
-	u_int32_t	value;
+	u_int32_t	reqid;
 };
+
+#define REQID_TLV_LEN		8
 
 #define	NO_LABEL		UINT_MAX
 

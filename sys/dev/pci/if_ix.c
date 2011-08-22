@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_ix.c,v 1.42 2010/04/20 14:54:58 jsg Exp $	*/
+/*	$OpenBSD: if_ix.c,v 1.46 2010/11/10 15:23:25 claudio Exp $	*/
 
 /******************************************************************************
 
@@ -77,7 +77,6 @@ const struct pci_matchid ixgbe_devices[] = {
 int	ixgbe_probe(struct device *, void *, void *);
 void	ixgbe_attach(struct device *, struct device *, void *);
 int	ixgbe_detach(struct device *, int);
-void	ixgbe_power(int, void *);
 void	ixgbe_start(struct ifnet *);
 void	ixgbe_start_locked(struct tx_ring *, struct ifnet *);
 int	ixgbe_ioctl(struct ifnet *, u_long, caddr_t);
@@ -294,8 +293,6 @@ ixgbe_attach(struct device *parent, struct device *self, void *aux)
 	ctrl_ext |= IXGBE_CTRL_EXT_DRV_LOAD;
 	IXGBE_WRITE_REG(&sc->hw, IXGBE_CTRL_EXT, ctrl_ext);
 
-	sc->powerhook = powerhook_establish(ixgbe_power, sc);
-
 	printf(", address %s\n", ether_sprintf(sc->hw.mac.addr));
 
 	INIT_DEBUGOUT("ixgbe_attach: end");
@@ -344,19 +341,6 @@ ixgbe_detach(struct device *self, int flags)
 	ixgbe_free_receive_structures(sc);
 
 	return (0);
-}
-
-void
-ixgbe_power(int why, void *arg)
-{
-	struct ix_softc *sc = (struct ix_softc *)arg;
-	struct ifnet *ifp;
-
-	if (why == PWR_RESUME) {
-		ifp = &sc->arpcom.ac_if;
-		if (ifp->if_flags & IFF_UP)
-			ixgbe_init(sc);
-	}
 }
 
 /*********************************************************************
@@ -673,6 +657,11 @@ ixgbe_init(void *arg)
 	if (sc->hw.mac.type == ixgbe_mac_82599EB) {
 		gpie |= IXGBE_SDP1_GPIEN;
 		gpie |= IXGBE_SDP2_GPIEN;
+		/*
+		 * Set LL interval to max to reduce the number of low latency
+		 * interrupts hitting the card when the ring is getting full.
+		 */
+		gpie |= 0xf << IXGBE_GPIE_LLI_DELAY_SHIFT;
 	}
 
 	/* Enable Fan Failure Interrupt */
@@ -1843,9 +1832,27 @@ ixgbe_initialize_transmit_units(struct ix_softc *sc)
 		    (txhwb & 0x00000000ffffffffULL));
 		IXGBE_WRITE_REG(hw, IXGBE_TDWBAH(i),
 		    (txhwb >> 32));
-		txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(i));
+
+		/* Disable Head Writeback */
+		switch (hw->mac.type) {
+		case ixgbe_mac_82598EB:
+			txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(i));
+			break;
+		case ixgbe_mac_82599EB:
+		default:
+			txctrl = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL_82599(i));
+			break;
+		}
 		txctrl &= ~IXGBE_DCA_TXCTRL_TX_WB_RO_EN;
-		IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL(i), txctrl);
+		switch (hw->mac.type) {
+		case ixgbe_mac_82598EB:
+			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL(i), txctrl);
+			break;
+		case ixgbe_mac_82599EB:
+		default:
+			IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL_82599(i), txctrl);
+			break;
+		}
 
 		/* Setup the HW Tx Head and Tail descriptor pointers */
 		IXGBE_WRITE_REG(hw, IXGBE_TDH(i), 0);
@@ -2481,6 +2488,7 @@ ixgbe_initialize_receive_units(struct ix_softc *sc)
 	uint32_t	rxctrl, fctrl, srrctl, rxcsum;
 	uint32_t	reta, mrqc, hlreg, linkvec;
 	uint32_t	random[10];
+	uint32_t	llimod = 0;
 	int		i;
 
 	/*
@@ -2514,8 +2522,10 @@ ixgbe_initialize_receive_units(struct ix_softc *sc)
 	IXGBE_WRITE_REG(&sc->hw, IXGBE_SRRCTL(0), srrctl);
 
 	/* Set Queue moderation rate */
+	if (sc->hw.mac.type == ixgbe_mac_82599EB)
+		llimod = IXGBE_EITR_LLI_MOD;
 	for (i = 0; i < IXGBE_MSGS; i++)
-		IXGBE_WRITE_REG(&sc->hw, IXGBE_EITR(i), DEFAULT_ITR);
+		IXGBE_WRITE_REG(&sc->hw, IXGBE_EITR(i), DEFAULT_ITR | llimod);
 
 	/* Set Link moderation lower */
 	linkvec = sc->num_tx_queues + sc->num_rx_queues;
@@ -3026,7 +3036,7 @@ ixgbe_configure_ivars(struct ix_softc *sc)
 void
 ixgbe_update_stats_counters(struct ix_softc *sc)
 {
-	struct ifnet   *ifp = &sc->arpcom.ac_if;;
+	struct ifnet   *ifp = &sc->arpcom.ac_if;
 	struct ixgbe_hw *hw = &sc->hw;
 	uint32_t  missed_rx = 0, bprc, lxon, lxoff, total;
 	int	i;

@@ -1,4 +1,4 @@
-/*	$OpenBSD: atwvar.h,v 1.21 2009/10/13 19:33:16 pirofti Exp $	*/
+/*	$OpenBSD: atwvar.h,v 1.24 2010/11/20 20:11:19 miod Exp $	*/
 /*	$NetBSD: atwvar.h,v 1.13 2004/07/23 07:07:55 dyoung Exp $	*/
 
 /*
@@ -35,6 +35,7 @@
 #include <sys/queue.h>
 #include <sys/time.h>
 #include <sys/timeout.h>
+#include <sys/workq.h>
 
 /*
  * Some misc. statics, useful for debugging.
@@ -195,7 +196,6 @@ struct atw_softc {
 	bus_space_handle_t	sc_sh;		/* bus space handle */
 	bus_size_t		sc_mapsize;	/* mapping size */
 	bus_dma_tag_t		sc_dmat;	/* bus dma tag */
-	void			*sc_powerhook;	/* power management hook */
 	u_int32_t		sc_cacheline;	/* cache line size */
 	u_int32_t		sc_maxburst;	/* maximum burst length */
 
@@ -278,6 +278,8 @@ struct atw_softc {
 		struct atw_tx_radiotap_header	tap;
 		u_int8_t			pad[64];
 	} sc_txtapu;
+
+	struct workq_task	sc_resume_wqt;
 };
 
 #define sc_rxtap	sc_rxtapu.tap
@@ -323,7 +325,7 @@ struct atw_frame {
 			struct ieee80211_frame	ihdr;
 		} s2;
 	} u;
-} __attribute__((__packed__));
+} __packed;
 
 #define atw_hdrctl	u.s1.hdrctl
 #define atw_fragthr	u.s1.fragthr
@@ -438,6 +440,6 @@ int	atw_detach(struct atw_softc *);
 int	atw_activate(struct device *, int);
 int	atw_intr(void *arg);
 int	atw_enable(struct atw_softc *);
-void	atw_power(int, void *);
+void	atw_resume(void *, void *);
 
 #endif /* _DEV_IC_ATWVAR_H_ */

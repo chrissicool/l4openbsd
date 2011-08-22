@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_ale.c,v 1.14 2010/07/27 00:03:03 deraadt Exp $	*/
+/*	$OpenBSD: if_ale.c,v 1.16 2010/08/31 17:13:44 deraadt Exp $	*/
 /*-
  * Copyright (c) 2008, Pyun YongHyeon <yongari@FreeBSD.org>
  * All rights reserved.
@@ -512,7 +512,6 @@ ale_attach(struct device *parent, struct device *self, void *aux)
 	ifp = &sc->sc_arpcom.ac_if;
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = ale_init;
 	ifp->if_ioctl = ale_ioctl;
 	ifp->if_start = ale_start;
 	ifp->if_watchdog = ale_watchdog;
@@ -607,6 +606,9 @@ ale_activate(struct device *self, int act)
 	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		if (ifp->if_flags & IFF_RUNNING)
 			ale_stop(sc);
@@ -618,7 +620,7 @@ ale_activate(struct device *self, int act)
 			ale_init(ifp);
 		break;
 	}
-	return rv;
+	return (rv);
 }
 
 int

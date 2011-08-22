@@ -1,7 +1,7 @@
-.\"	$OpenBSD: mg.1,v 1.46 2010/03/26 19:30:40 jmc Exp $
+.\"	$OpenBSD: mg.1,v 1.52 2011/02/02 05:27:55 lum Exp $
 .\" This file is in the public domain.
 .\"
-.Dd $Mdocdate: March 26 2010 $
+.Dd $Mdocdate: February 2 2011 $
 .Dt MG 1
 .Os
 .Sh NAME
@@ -75,7 +75,7 @@ Note: The point and mark are window-specific in
 not buffer-specific, as in other emacs flavours.
 .Sh DEFAULT KEY BINDINGS
 Normal editing commands are very similar to Gnu Emacs.
-In the following examples, C-x means control-X, and M-x means Meta-X,
+In the following examples, C-x means Control-x, and M-x means Meta-x,
 where the Meta key may be either a special key on your keyboard
 or the ALT key; otherwise ESC followed by the key X works as well.
 .Pp
@@ -220,6 +220,8 @@ beginning-of-buffer
 end-of-buffer
 .It M-\e
 delete-horizontal-space
+.It M-^
+join-line
 .It M-b
 backward-word
 .It M-c
@@ -230,6 +232,8 @@ kill-word
 forward-word
 .It M-l
 downcase-word
+.It M-m
+back-to-indentation
 .It M-q
 fill-paragraph
 .It M-r
@@ -304,6 +308,8 @@ where text inserted past the fill column is automatically wrapped
 to a new line.
 .It auto-indent-mode
 Toggle indent mode, where indentation is preserved after a newline.
+.It back-to-indentation
+Move the dot to the first non-whitespace character on the current line.
 .It backward-char
 Move cursor backwards one character.
 .It backward-kill-word
@@ -506,6 +512,10 @@ Use incremental searching, initially in the forward direction.
 isearch ignores any explicit arguments.
 If invoked during macro definition or evaluation, the non-incremental
 search-forward is invoked instead.
+.It join-line
+Join the current line to the previous.
+If called with an argument,
+join the next line to the current one.
 .It just-one-space
 Delete any whitespace around dot, then insert a space.
 .It keyboard-quit
@@ -821,6 +831,8 @@ auto-execute *.c c-mode
 normal startup file
 .It Pa ~/.mg-TERM
 terminal-specific startup file
+.It Pa /usr/share/doc/mg/tutorial
+concise tutorial
 .El
 .Sh SEE ALSO
 .Xr vi 1

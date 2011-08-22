@@ -1,6 +1,7 @@
-/*	$Id: html.c,v 1.14 2010/07/31 21:43:07 schwarze Exp $ */
+/*	$Id: html.c,v 1.23 2011/01/30 16:05:29 schwarze Exp $ */
 /*
- * Copyright (c) 2008, 2009, 2010 Kristaps Dzonsons <kristaps@bsd.lv>
+ * Copyright (c) 2008, 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
+ * Copyright (c) 2011 Ingo Schwarze <schwarze@openbsd.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -53,37 +54,43 @@ static	const struct htmldata htmltags[TAG_MAX] = {
 	{"br",		HTML_CLRLINE | HTML_NOSTACK | HTML_AUTOCLOSE}, /* TAG_BR */
 	{"a",		0}, /* TAG_A */
 	{"table",	HTML_CLRLINE}, /* TAG_TABLE */
+	{"tbody",	HTML_CLRLINE}, /* TAG_TBODY */
 	{"col",		HTML_CLRLINE | HTML_NOSTACK | HTML_AUTOCLOSE}, /* TAG_COL */
 	{"tr",		HTML_CLRLINE}, /* TAG_TR */
 	{"td",		HTML_CLRLINE}, /* TAG_TD */
 	{"li",		HTML_CLRLINE}, /* TAG_LI */
 	{"ul",		HTML_CLRLINE}, /* TAG_UL */
 	{"ol",		HTML_CLRLINE}, /* TAG_OL */
-};
-
-static	const char	*const htmlfonts[HTMLFONT_MAX] = {
-	"roman",
-	"bold",
-	"italic"
+	{"dl",		HTML_CLRLINE}, /* TAG_DL */
+	{"dt",		HTML_CLRLINE}, /* TAG_DT */
+	{"dd",		HTML_CLRLINE}, /* TAG_DD */
+	{"blockquote",	HTML_CLRLINE}, /* TAG_BLOCKQUOTE */
+	{"p",		HTML_CLRLINE | HTML_NOSTACK | HTML_AUTOCLOSE}, /* TAG_P */
+	{"pre",		HTML_CLRLINE }, /* TAG_PRE */
+	{"b",		0 }, /* TAG_B */
+	{"i",		0 }, /* TAG_I */
+	{"code",	0 }, /* TAG_CODE */
+	{"small",	0 }, /* TAG_SMALL */
 };
 
 static	const char	*const htmlattrs[ATTR_MAX] = {
-	"http-equiv",
-	"content",
-	"name",
-	"rel",
-	"href",
-	"type",
-	"media",
-	"class",
-	"style",
-	"width",
-	"valign",
-	"target",
-	"id",
-	"summary",
+	"http-equiv", /* ATTR_HTTPEQUIV */
+	"content", /* ATTR_CONTENT */
+	"name", /* ATTR_NAME */
+	"rel", /* ATTR_REL */
+	"href", /* ATTR_HREF */
+	"type", /* ATTR_TYPE */
+	"media", /* ATTR_MEDIA */
+	"class", /* ATTR_CLASS */
+	"style", /* ATTR_STYLE */
+	"width", /* ATTR_WIDTH */
+	"id", /* ATTR_ID */
+	"summary", /* ATTR_SUMMARY */
+	"align", /* ATTR_ALIGN */
+	"colspan", /* ATTR_COLSPAN */
 };
 
+static	void		  print_num(struct html *, const char *, size_t);
 static	void		  print_spec(struct html *, enum roffdeco,
 				const char *, size_t);
 static	void		  print_res(struct html *, const char *, size_t);
@@ -112,12 +119,11 @@ ml_alloc(char *outopts, enum htmltype type)
 	h = calloc(1, sizeof(struct html));
 	if (NULL == h) {
 		perror(NULL);
-		exit(EXIT_FAILURE);
+		exit((int)MANDOCLEVEL_SYSERR);
 	}
 
 	h->type = type;
 	h->tags.head = NULL;
-	h->ords.head = NULL;
 	h->symtab = chars_init(CHARS_HTML);
 
 	while (outopts && *outopts)
@@ -158,15 +164,9 @@ void
 html_free(void *p)
 {
 	struct tag	*tag;
-	struct ord	*ord;
 	struct html	*h;
 
 	h = (struct html *)p;
-
-	while ((ord = h->ords.head) != NULL) { 
-		h->ords.head = ord->next;
-		free(ord);
-	}
 
 	while ((tag = h->tags.head) != NULL) {
 		h->tags.head = tag->next;	
@@ -212,6 +212,17 @@ print_gen_head(struct html *h)
 
 
 static void
+print_num(struct html *h, const char *p, size_t len)
+{
+	const char	*rhs;
+
+	rhs = chars_num2char(p, len);
+	if (rhs)
+		putchar((int)*rhs);
+}
+
+
+static void
 print_spec(struct html *h, enum roffdeco d, const char *p, size_t len)
 {
 	int		 cp;
@@ -250,25 +261,6 @@ print_res(struct html *h, const char *p, size_t len)
 }
 
 
-struct tag *
-print_ofont(struct html *h, enum htmlfont font)
-{
-	struct htmlpair	 tag;
-
-	h->metal = h->metac;
-	h->metac = font;
-
-	/* FIXME: DECO_ROMAN should just close out preexisting. */
-
-	if (h->metaf && h->tags.head == h->metaf)
-		print_tagq(h, h->metaf);
-
-	PAIR_CLASS_INIT(&tag, htmlfonts[font]);
-	h->metaf = print_otag(h, TAG_SPAN, 1, &tag);
-	return(h->metaf);
-}
-
-
 static void
 print_metaf(struct html *h, enum roffdeco deco)
 {
@@ -292,7 +284,18 @@ print_metaf(struct html *h, enum roffdeco deco)
 		/* NOTREACHED */
 	}
 
-	(void)print_ofont(h, font);
+	if (h->metaf) {
+		print_tagq(h, h->metaf);
+		h->metaf = NULL;
+	}
+
+	h->metal = h->metac;
+	h->metac = font;
+
+	if (HTMLFONT_NONE != font)
+		h->metaf = HTMLFONT_BOLD == font ?
+			print_otag(h, TAG_B, 0, NULL) :
+			print_otag(h, TAG_I, 0, NULL);
 }
 
 
@@ -339,6 +342,9 @@ print_encode(struct html *h, const char *p, int norecurse)
 		len = a2roffdeco(&deco, &seq, &sz);
 
 		switch (deco) {
+		case (DECO_NUMBERED):
+			print_num(h, seq, sz);
+			break;
 		case (DECO_RESERVED):
 			print_res(h, seq, sz);
 			break;
@@ -394,7 +400,7 @@ print_otag(struct html *h, enum htmltag tag,
 		t = malloc(sizeof(struct tag));
 		if (NULL == t) {
 			perror(NULL);
-			exit(EXIT_FAILURE);
+			exit((int)MANDOCLEVEL_SYSERR);
 		}
 		t->tag = tag;
 		t->next = h->tags.head;
@@ -446,6 +452,10 @@ print_otag(struct html *h, enum htmltag tag,
 	putchar('>');
 
 	h->flags |= HTML_NOSPACE;
+
+	if ((HTML_AUTOCLOSE | HTML_CLRLINE) & htmltags[tag].flags)
+		putchar('\n');
+
 	return(t);
 }
 
@@ -476,7 +486,7 @@ print_xmltype(struct html *h)
 {
 
 	if (HTML_XHTML_1_0_STRICT == h->type)
-		printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+		puts("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
 }
 
 
@@ -543,10 +553,23 @@ print_text(struct html *h, const char *word)
 			printf("&#160;");
 	}
 
+	assert(NULL == h->metaf);
+	if (HTMLFONT_NONE != h->metac)
+		h->metaf = HTMLFONT_BOLD == h->metac ?
+			print_otag(h, TAG_B, 0, NULL) :
+			print_otag(h, TAG_I, 0, NULL);
+
 	assert(word);
 	if ( ! print_encode(h, word, 0))
 		if ( ! (h->flags & HTML_NONOSPACE))
 			h->flags &= ~HTML_NOSPACE;
+
+	if (h->metaf) {
+		print_tagq(h, h->metaf);
+		h->metaf = NULL;
+	}
+
+	h->flags &= ~HTML_IGNDELIM;
 
 	/* 
 	 * Note that we don't process the pipe: the parser sees it as
@@ -571,8 +594,14 @@ print_tagq(struct html *h, const struct tag *until)
 	struct tag	*tag;
 
 	while ((tag = h->tags.head) != NULL) {
+		/* 
+		 * Remember to close out and nullify the current
+		 * meta-font and table, if applicable.
+		 */
 		if (tag == h->metaf)
 			h->metaf = NULL;
+		if (tag == h->tblt)
+			h->tblt = NULL;
 		print_ctag(h, tag->tag);
 		h->tags.head = tag->next;
 		free(tag);
@@ -590,8 +619,14 @@ print_stagq(struct html *h, const struct tag *suntil)
 	while ((tag = h->tags.head) != NULL) {
 		if (suntil && tag == suntil)
 			return;
+		/* 
+		 * Remember to close out and nullify the current
+		 * meta-font and table, if applicable.
+		 */
 		if (tag == h->metaf)
 			h->metaf = NULL;
+		if (tag == h->tblt)
+			h->tblt = NULL;
 		print_ctag(h, tag->tag);
 		h->tags.head = tag->next;
 		free(tag);
@@ -761,20 +796,24 @@ html_idcat(char *dst, const char *src, int sz)
 {
 	int		 ssz;
 
-	assert(sz);
+	assert(sz > 2);
 
 	/* Cf. <http://www.w3.org/TR/html4/types.html#h-6.2>. */
 
-	for ( ; *dst != '\0' && sz; dst++, sz--)
-		/* Jump to end. */ ;
-
-	assert(sz > 2);
-
 	/* We can't start with a number (bah). */
 
-	*dst++ = 'x';
-	*dst = '\0';
-	sz--;
+	if ('#' == *dst) {
+		dst++;
+		sz--;
+	}
+	if ('\0' == *dst) {
+		*dst++ = 'x';
+		*dst = '\0';
+		sz--;
+	}
+
+	for ( ; *dst != '\0' && sz; dst++, sz--)
+		/* Jump to end. */ ;
 
 	for ( ; *src != '\0' && sz > 1; src++) {
 		ssz = snprintf(dst, (size_t)sz, "%.2x", *src);

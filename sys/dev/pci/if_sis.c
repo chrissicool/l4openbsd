@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_sis.c,v 1.99 2010/08/06 05:24:16 deraadt Exp $ */
+/*	$OpenBSD: if_sis.c,v 1.102 2011/02/15 19:10:19 kettenis Exp $ */
 /*
  * Copyright (c) 1997, 1998, 1999
  *	Bill Paul <wpaul@ctr.columbia.edu>.  All rights reserved.
@@ -1158,20 +1158,24 @@ sis_activate(struct device *self, int act)
 {
 	struct sis_softc *sc = (struct sis_softc *)self;
 	struct ifnet *ifp = &sc->arpcom.ac_if;
+	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		if (ifp->if_flags & IFF_RUNNING)
 			sis_stop(sc);
-		config_activate_children(self, act);
+		rv = config_activate_children(self, act);
 		break;
 	case DVACT_RESUME:
-		config_activate_children(self, act);
+		rv = config_activate_children(self, act);
 		if (ifp->if_flags & IFF_UP)
 			sis_init(sc);
 		break;
 	}
-	return (0);
+	return (rv);
 }
 
 /*
@@ -1268,6 +1272,11 @@ sis_newbuf(struct sis_softc *sc, struct sis_desc *c)
 
 	c->sis_mbuf = m_new;
 	c->sis_ptr = htole32(c->map->dm_segs[0].ds_addr);
+
+	bus_dmamap_sync(sc->sc_dmat, sc->sc_listmap,
+	    ((caddr_t)c - sc->sc_listkva), sizeof(struct sis_desc),
+	    BUS_DMASYNC_PREWRITE);
+
 	c->sis_ctl = htole32(ETHER_MAX_DIX_LEN);
 
 	bus_dmamap_sync(sc->sc_dmat, sc->sc_listmap,

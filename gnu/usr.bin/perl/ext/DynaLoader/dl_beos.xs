@@ -1,7 +1,7 @@
 /*
  * dl_beos.xs, by Tom Spindler
  * based on dl_dlopen.xs, by Paul Marquess
- * $Id: dl_beos.xs,v 1.8 2009/10/12 18:24:27 millert Exp $
+ * $Id:$
  */
 
 #include "EXTERN.h"

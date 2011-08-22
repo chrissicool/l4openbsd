@@ -1,10 +1,8 @@
 #!./perl
 
-# $RCSfile: sdbm.t,v $$Revision: 1.4 $$Date: 2009/10/12 18:24:34 $
+# $RCSfile: dbm.t,v $$Revision: 4.1 $$Date: 92/08/07 18:27:43 $
 
 BEGIN {
-    chdir 't' if -d 't';
-    @INC = '../lib';
     require Config; import Config;
     if ($Config{'extensions'} !~ /\bSDBM_File\b/) {
 	print "1..0 # Skip: no SDBM_File\n";
@@ -157,7 +155,7 @@ print ($h{''} eq 'bar' ? "ok 12\n" : "not ok 12\n");
    require Exporter ;
    use SDBM_File;
    @ISA=qw(SDBM_File);
-   @EXPORT = @SDBM_File::EXPORT if defined @SDBM_File::EXPORT ;
+   @EXPORT = @SDBM_File::EXPORT if @SDBM_File::EXPORT ;
 
    sub STORE { 
 	my $self = shift ;

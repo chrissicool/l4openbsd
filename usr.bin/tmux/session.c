@@ -1,4 +1,4 @@
-/* $OpenBSD: session.c,v 1.19 2010/06/27 02:56:59 nicm Exp $ */
+/* $OpenBSD: session.c,v 1.30 2011/01/25 22:31:50 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -30,24 +30,56 @@
 /* Global session list. */
 struct sessions	sessions;
 struct sessions dead_sessions;
+u_int		next_session;
 struct session_groups session_groups;
 
 struct winlink *session_next_alert(struct winlink *);
 struct winlink *session_previous_alert(struct winlink *);
 
+RB_GENERATE(sessions, session, entry, session_cmp);
+
+int
+session_cmp(struct session *s1, struct session *s2)
+{
+	return (strcmp(s1->name, s2->name));
+}
+
+/*
+ * Find if session is still alive. This is true if it is still on the global
+ * sessions list.
+ */
+int
+session_alive(struct session *s)
+{
+	struct session *s_loop;
+
+	RB_FOREACH(s_loop, sessions, &sessions) {
+		if (s_loop == s)
+			return (1);
+	}
+	return (0);
+}
+
 /* Find session by name. */
 struct session *
 session_find(const char *name)
 {
-	struct session	*s;
-	u_int		 i;
+	struct session	s;
 
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		s = ARRAY_ITEM(&sessions, i);
-		if (s != NULL && strcmp(s->name, name) == 0)
+	s.name = (char *) name;
+	return (RB_FIND(sessions, &sessions, &s));
+}
+
+/* Find session by index. */
+struct session *
+session_find_by_index(u_int idx)
+{
+	struct session	*s;
+
+	RB_FOREACH(s, sessions, &sessions) {
+		if (s->idx == idx)
 			return (s);
 	}
-
 	return (NULL);
 }
 
@@ -58,7 +90,6 @@ session_create(const char *name, const char *cmd, const char *cwd,
     char **cause)
 {
 	struct session	*s;
-	u_int		 i;
 
 	s = xmalloc(sizeof *s);
 	s->references = 0;
@@ -66,15 +97,13 @@ session_create(const char *name, const char *cmd, const char *cwd,
 
 	if (gettimeofday(&s->creation_time, NULL) != 0)
 		fatal("gettimeofday failed");
-	memcpy(&s->activity_time, &s->creation_time, sizeof s->activity_time);
+	session_update_activity(s);
 
 	s->cwd = xstrdup(cwd);
 
 	s->curw = NULL;
 	TAILQ_INIT(&s->lastw);
 	RB_INIT(&s->windows);
-
-	paste_init_stack(&s->buffers);
 
 	options_init(&s->options, &global_s_options);
 	environ_init(&s->environ);
@@ -90,19 +119,12 @@ session_create(const char *name, const char *cmd, const char *cwd,
 	s->sx = sx;
 	s->sy = sy;
 
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		if (ARRAY_ITEM(&sessions, i) == NULL) {
-			ARRAY_SET(&sessions, i, s);
-			break;
-		}
-	}
-	if (i == ARRAY_LENGTH(&sessions))
-		ARRAY_ADD(&sessions, s);
-
+	s->idx = next_session++;
 	if (name != NULL)
 		s->name = xstrdup(name);
 	else
-		xasprintf(&s->name, "%u", i);
+		xasprintf(&s->name, "%u", s->idx);
+	RB_INSERT(sessions, &sessions, s);
 
 	if (cmd != NULL) {
 		if (session_new(s, NULL, cmd, cwd, idx, cause) == NULL) {
@@ -121,15 +143,9 @@ session_create(const char *name, const char *cmd, const char *cwd,
 void
 session_destroy(struct session *s)
 {
-	u_int	i;
-
 	log_debug("session %s destroyed", s->name);
 
-	if (session_index(s, &i) != 0)
-		fatalx("session not found");
-	ARRAY_SET(&sessions, i, NULL);
-	while (!ARRAY_EMPTY(&sessions) && ARRAY_LAST(&sessions) == NULL)
-		ARRAY_TRUNC(&sessions, 1);
+	RB_REMOVE(sessions, &sessions, s);
 
 	if (s->tio != NULL)
 		xfree(s->tio);
@@ -137,7 +153,6 @@ session_destroy(struct session *s)
 	session_group_remove(s);
 	environ_free(&s->environ);
 	options_free(&s->options);
-	paste_free_stack(&s->buffers);
 
 	while (!TAILQ_EMPTY(&s->lastw))
 		winlink_stack_remove(&s->lastw, TAILQ_FIRST(&s->lastw));
@@ -145,28 +160,50 @@ session_destroy(struct session *s)
 		winlink_remove(&s->windows, RB_ROOT(&s->windows));
 
 	xfree(s->cwd);
-	xfree(s->name);
 
-	for (i = 0; i < ARRAY_LENGTH(&dead_sessions); i++) {
-		if (ARRAY_ITEM(&dead_sessions, i) == NULL) {
-			ARRAY_SET(&dead_sessions, i, s);
-			break;
-		}
-	}
-	if (i == ARRAY_LENGTH(&dead_sessions))
-		ARRAY_ADD(&dead_sessions, s);
-	s->flags |= SESSION_DEAD;
+	RB_INSERT(sessions, &dead_sessions, s);
 }
 
-/* Find session index. */
-int
-session_index(struct session *s, u_int *i)
+/* Update session active time. */
+void
+session_update_activity(struct session *s)
 {
-	for (*i = 0; *i < ARRAY_LENGTH(&sessions); (*i)++) {
-		if (s == ARRAY_ITEM(&sessions, *i))
-			return (0);
-	}
-	return (-1);
+	if (gettimeofday(&s->activity_time, NULL) != 0)
+		fatal("gettimeofday");
+}
+
+/* Find the next usable session. */
+struct session *
+session_next_session(struct session *s)
+{
+	struct session *s2;
+
+	if (RB_EMPTY(&sessions) || !session_alive(s))
+		return (NULL);
+
+	s2 = RB_NEXT(sessions, &sessions, s);
+	if (s2 == NULL)
+		s2 = RB_MIN(sessions, &sessions);
+	if (s2 == s)
+		return (NULL);
+	return (s2);
+}
+
+/* Find the previous usable session. */
+struct session *
+session_previous_session(struct session *s)
+{
+	struct session *s2;
+
+	if (RB_EMPTY(&sessions) || !session_alive(s))
+		return (NULL);
+
+	s2 = RB_PREV(sessions, &sessions, s);
+	if (s2 == NULL)
+		s2 = RB_MAX(sessions, &sessions);
+	if (s2 == s)
+		return (NULL);
+	return (s2);
 }
 
 /* Create a new window on a session. */
@@ -175,9 +212,15 @@ session_new(struct session *s,
     const char *name, const char *cmd, const char *cwd, int idx, char **cause)
 {
 	struct window	*w;
+	struct winlink	*wl;
 	struct environ	 env;
 	const char	*shell;
 	u_int		 hlimit;
+
+	if ((wl = winlink_add(&s->windows, idx)) == NULL) {
+		xasprintf(cause, "index in use: %d", idx);
+		return (NULL);
+	}
 
 	environ_init(&env);
 	environ_copy(&global_environ, &env);
@@ -192,15 +235,18 @@ session_new(struct session *s,
 	w = window_create(
 	    name, cmd, shell, cwd, &env, s->tio, s->sx, s->sy, hlimit, cause);
 	if (w == NULL) {
+		winlink_remove(&s->windows, wl);
 		environ_free(&env);
 		return (NULL);
 	}
+	winlink_set_window(wl, w);
 	environ_free(&env);
 
 	if (options_get_number(&s->options, "set-remain-on-exit"))
 		options_set_number(&w->options, "remain-on-exit", 1);
 
-	return (session_attach(s, w, idx, cause));
+	session_group_synchronize_from(s);
+	return (wl);
 }
 
 /* Attach a window to a session. */
@@ -209,8 +255,12 @@ session_attach(struct session *s, struct window *w, int idx, char **cause)
 {
 	struct winlink	*wl;
 
-	if ((wl = winlink_add(&s->windows, w, idx)) == NULL)
+	if ((wl = winlink_add(&s->windows, idx)) == NULL) {
 		xasprintf(cause, "index in use: %d", idx);
+		return (NULL);
+	}
+	winlink_set_window(wl, w);
+
 	session_group_synchronize_from(s);
 	return (wl);
 }
@@ -489,7 +539,8 @@ session_group_synchronize1(struct session *target, struct session *s)
 
 	/* Link all the windows from the target. */
 	RB_FOREACH(wl, winlinks, ww) {
-		wl2 = winlink_add(&s->windows, wl->window, wl->idx);
+		wl2 = winlink_add(&s->windows, wl->idx);
+		winlink_set_window(wl2, wl->window);
 		wl2->flags |= wl->flags & WINLINK_ALERTFLAGS;
 	}
 

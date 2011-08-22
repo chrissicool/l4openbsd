@@ -1,4 +1,4 @@
-/*	$OpenBSD: machdep.c,v 1.26 2010/07/24 21:27:57 kettenis Exp $	*/
+/*	$OpenBSD: machdep.c,v 1.30 2011/01/04 17:59:14 jasper Exp $	*/
 
 /*
  * Copyright (c) 2005 Michael Shalayeff
@@ -121,7 +121,6 @@ u_int	fpu_version;
 
 dev_t	bootdev;
 int	physmem, resvmem, resvphysmem, esym;
-paddr_t	avail_end;
 
 /*
  * Things for MI glue to stick on.
@@ -177,11 +176,11 @@ hppa_cpuspeed(int *mhz)
 }
 
 void
-hppa_init(start)
-	paddr_t start;
+hppa_init(paddr_t start)
 {
 	extern int kernel_text;
 	int error;
+	paddr_t	avail_end;
 
 	mtctl((long)&cpu0_info, 24);
 
@@ -221,7 +220,7 @@ TODO hpmc/toc/pfr
 	/* setup hpmc handler */
 	{
 		extern u_int hpmc_v[];	/* from locore.s */
-		register u_int *p = hpmc_v;
+		u_int *p = hpmc_v;
 
 		if (pdc_call((iodcio_t)pdc, 0, PDC_INSTR, PDC_INSTR_DFLT, p))
 			*p = 0x08000240;
@@ -233,7 +232,7 @@ TODO hpmc/toc/pfr
 
 	{
 		extern u_int hppa_toc[], hppa_toc_end[];
-		register u_int cksum, *p;
+		u_int cksum, *p;
 
 		for (cksum = 0, p = hppa_toc; p < hppa_toc_end; p++)
 			cksum += *p;
@@ -245,7 +244,7 @@ TODO hpmc/toc/pfr
 
 	{
 		extern u_int hppa_pfr[], hppa_pfr_end[];
-		register u_int cksum, *p;
+		u_int cksum, *p;
 
 		for (cksum = 0, p = hppa_pfr; p < hppa_pfr_end; p++)
 			cksum += *p;
@@ -427,61 +426,6 @@ printf("here7\n");
 }
 
 /*
- * initialize the system time from the time of day clock
- */
-void
-inittodr(t)
-	time_t t;
-{
-	struct pdc_tod tod PDC_ALIGNMENT;
-	int 	error, tbad = 0;
-	struct timespec ts;
-
-	if (t < 12*SECYR) {
-		printf ("WARNING: preposterous time in file system");
-		t = 6*SECYR + 186*SECDAY + SECDAY/2;
-		tbad = 1;
-	}
-
-	if ((error = pdc_call((iodcio_t)pdc,
-	    1, PDC_TOD, PDC_TOD_READ, &tod, 0, 0, 0, 0, 0)))
-		printf("clock: failed to fetch (%d)\n", error);
-
-	ts.tv_sec = tod.sec;
-	ts.tv_nsec = tod.usec * 1000;
-	tc_setclock(&ts);
-
-	if (!tbad) {
-		u_long	dt;
-
-		dt = (tod.sec < t)?  t - tod.sec : tod.sec - t;
-
-		if (dt < 2 * SECDAY)
-			return;
-		printf("WARNING: clock %s %ld days",
-		    tod.sec < t? "lost" : "gained", dt / SECDAY);
-	}
-
-	printf (" -- CHECK AND RESET THE DATE!\n");
-}
-
-/*
- * reset the time of day clock to the value in time
- */
-void
-resettodr()
-{
-	struct timeval tv;
-	int error;
-
-	microtime(&tv);
-
-	if ((error = pdc_call((iodcio_t)pdc, 1, PDC_TOD, PDC_TOD_WRITE,
-	    tv.tv_sec, tv.tv_usec)))
-		printf("clock: failed to save (%d)\n", error);
-}
-
-/*
  * compute cpu clock ratio such as:
  *	cpu_ticksnum / cpu_ticksdenom = t + delta
  *	delta -> 0
@@ -509,8 +453,7 @@ printf("nom=%lu denom=%lu\n", cpu_ticksnum, cpu_ticksdenom);
 }
 
 void
-delay(us)
-	u_int us;
+delay(u_int us)
 {
 	u_long start, end, n;
 
@@ -534,8 +477,7 @@ delay(us)
 }
 
 static __inline void
-fall(c_base, c_count, c_loop, c_stride, data)
-	int c_base, c_count, c_loop, c_stride, data;
+fall(int c_base, int c_count, int c_loop, int c_stride, int data)
 {
 	int loop;
 
@@ -571,13 +513,13 @@ fdcacheall(void)
 void
 ptlball(void)
 {
-	register pa_space_t sp;
-	register int i, j, k;
+	pa_space_t sp;
+	int i, j, k;
 
 	/* instruction TLB */
 	sp = pdc_cache.it_sp_base;
 	for (i = 0; i < pdc_cache.it_sp_count; i++) {
-		register vaddr_t off = pdc_cache.it_off_base;
+		vaddr_t off = pdc_cache.it_off_base;
 		for (j = 0; j < pdc_cache.it_off_count; j++) {
 			for (k = 0; k < pdc_cache.it_loop; k++)
 				pitlb(sp, off);
@@ -589,7 +531,7 @@ ptlball(void)
 	/* data TLB */
 	sp = pdc_cache.dt_sp_base;
 	for (i = 0; i < pdc_cache.dt_sp_count; i++) {
-		register vaddr_t off = pdc_cache.dt_off_base;
+		vaddr_t off = pdc_cache.dt_off_base;
 		for (j = 0; j < pdc_cache.dt_off_count; j++) {
 			for (k = 0; k < pdc_cache.dt_loop; k++)
 				pdtlb(sp, off);
@@ -600,8 +542,7 @@ ptlball(void)
 }
 
 void
-boot(howto)
-	int howto;
+boot(int howto)
 {
 	/* If system is cold, just halt. */
 	if (cold) {
@@ -798,30 +739,19 @@ dumpsys(void)
 
 /* bcopy(), error on fault */
 int
-kcopy(from, to, size)
-	const void *from;
-	void *to;
-	size_t size;
+kcopy(const void *from, void *to, size_t size)
 {
 	return spcopy(HPPA_SID_KERNEL, from, HPPA_SID_KERNEL, to, size);
 }
 
 int
-copystr(src, dst, size, lenp)
-	const void *src;
-	void *dst;
-	size_t size;
-	size_t *lenp;
+copystr(const void *src, void *dst, size_t size, size_t *lenp)
 {
 	return spstrcpy(HPPA_SID_KERNEL, src, HPPA_SID_KERNEL, dst, size, lenp);
 }
 
 int
-copyinstr(src, dst, size, lenp)
-	const void *src;
-	void *dst;
-	size_t size;
-	size_t *lenp;
+copyinstr(const void *src, void *dst, size_t size, size_t *lenp)
 {
 	return spstrcpy(curproc->p_addr->u_pcb.pcb_space, src,
 	    HPPA_SID_KERNEL, dst, size, lenp);
@@ -829,11 +759,7 @@ copyinstr(src, dst, size, lenp)
 
 
 int
-copyoutstr(src, dst, size, lenp)
-	const void *src;
-	void *dst;
-	size_t size;
-	size_t *lenp;
+copyoutstr(const void *src, void *dst, size_t size, size_t *lenp)
 {
 	return spstrcpy(HPPA_SID_KERNEL, src,
 	    curproc->p_addr->u_pcb.pcb_space, dst, size, lenp);
@@ -841,20 +767,14 @@ copyoutstr(src, dst, size, lenp)
 
 
 int
-copyin(src, dst, size)
-	const void *src;
-	void *dst;
-	size_t size;
+copyin(const void *src, void *dst, size_t size)
 {
 	return spcopy(curproc->p_addr->u_pcb.pcb_space, src,
 	    HPPA_SID_KERNEL, dst, size);
 }
 
 int
-copyout(src, dst, size)
-	const void *src;
-	void *dst;
-	size_t size;
+copyout(const void *src, void *dst, size_t size)
 {
 	return spcopy(HPPA_SID_KERNEL, src,
 	    curproc->p_addr->u_pcb.pcb_space, dst, size);
@@ -864,11 +784,8 @@ copyout(src, dst, size)
  * Set registers on exec.
  */
 void
-setregs(p, pack, stack, retval)
-	struct proc *p;
-	struct exec_package *pack;
-	u_long stack;
-	register_t *retval;
+setregs(struct proc *p, struct exec_package *pack, u_long stack,
+    register_t *retval)
 {
 	extern paddr_t fpu_curpcb;	/* from locore.S */
 	struct trapframe *tf = p->p_md.md_regs;
@@ -909,12 +826,8 @@ setregs(p, pack, stack, retval)
  * Send an interrupt to process.
  */
 void
-sendsig(catcher, sig, mask, code, type, val)
-	sig_t catcher;
-	int sig, mask;
-	u_long code;
-	int type;
-	union sigval val;
+sendsig(sig_t catcher, int sig, int mask, u_long code, int type,
+    union sigval val)
 {
 	extern paddr_t fpu_curpcb;	/* from locore.S */
 	extern u_int fpu_enable;
@@ -1016,10 +929,7 @@ sendsig(catcher, sig, mask, code, type, val)
 }
 
 int
-sys_sigreturn(p, v, retval)
-	struct proc *p;
-	void *v;
-	register_t *retval;
+sys_sigreturn(struct proc *p, void *v, register_t *retval)
 {
 	extern paddr_t fpu_curpcb;	/* from locore.S */
 	struct sys_sigreturn_args /* {
@@ -1080,14 +990,8 @@ sys_sigreturn(p, v, retval)
  * machine dependent system variables.
  */
 int
-cpu_sysctl(name, namelen, oldp, oldlenp, newp, newlen, p)
-	int *name;
-	u_int namelen;
-	void *oldp;
-	size_t *oldlenp;
-	void *newp;
-	size_t newlen;
-	struct proc *p;
+cpu_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp,
+    size_t newlen, struct proc *p)
 {
 	dev_t consdev;
 

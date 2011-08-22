@@ -1,4 +1,4 @@
-/*	$OpenBSD: ohci.c,v 1.95 2010/05/01 19:43:57 jsg Exp $ */
+/*	$OpenBSD: ohci.c,v 1.103 2010/12/14 16:13:16 jakemsr Exp $ */
 /*	$NetBSD: ohci.c,v 1.139 2003/02/22 05:24:16 tsutsui Exp $	*/
 /*	$FreeBSD: src/sys/dev/usb/ohci.c,v 1.22 1999/11/17 22:33:40 n_hibma Exp $	*/
 
@@ -327,22 +327,70 @@ int
 ohci_activate(struct device *self, int act)
 {
 	struct ohci_softc *sc = (struct ohci_softc *)self;
+	u_int32_t reg;
 	int rv = 0;
 
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
+	case DVACT_SUSPEND:
+		sc->sc_bus.use_polling++;
+		reg = OREAD4(sc, OHCI_CONTROL) & ~OHCI_HCFS_MASK;
+		if (sc->sc_control == 0) {
+			/*
+			 * Preserve register values, in case that APM BIOS
+			 * does not recover them.
+			 */
+			sc->sc_control = reg;
+			sc->sc_intre = OREAD4(sc, OHCI_INTERRUPT_ENABLE);
+			sc->sc_ival = OHCI_GET_IVAL(OREAD4(sc,
+			    OHCI_FM_INTERVAL));
+		}
+		reg |= OHCI_HCFS_SUSPEND;
+		OWRITE4(sc, OHCI_CONTROL, reg);
+		usb_delay_ms(&sc->sc_bus, USB_RESUME_WAIT);
+		sc->sc_bus.use_polling--;
+		break;
+	case DVACT_RESUME:
+		sc->sc_bus.use_polling++;
 
+		/* Some broken BIOSes do not recover these values */
+		OWRITE4(sc, OHCI_HCCA, DMAADDR(&sc->sc_hccadma, 0));
+		OWRITE4(sc, OHCI_CONTROL_HEAD_ED, sc->sc_ctrl_head->physaddr);
+		OWRITE4(sc, OHCI_BULK_HEAD_ED, sc->sc_bulk_head->physaddr);
+		if (sc->sc_intre)
+			OWRITE4(sc, OHCI_INTERRUPT_ENABLE,
+			    sc->sc_intre & (OHCI_ALL_INTRS | OHCI_MIE));
+		if (sc->sc_control)
+			reg = sc->sc_control;
+		else
+			reg = OREAD4(sc, OHCI_CONTROL);
+		reg |= OHCI_HCFS_RESUME;
+		OWRITE4(sc, OHCI_CONTROL, reg);
+		usb_delay_ms(&sc->sc_bus, USB_RESUME_DELAY);
+		reg = (reg & ~OHCI_HCFS_MASK) | OHCI_HCFS_OPERATIONAL;
+		OWRITE4(sc, OHCI_CONTROL, reg);
+
+		reg = (OREAD4(sc, OHCI_FM_REMAINING) & OHCI_FIT) ^ OHCI_FIT;
+		reg |= OHCI_FSMPS(sc->sc_ival) | sc->sc_ival;
+		OWRITE4(sc, OHCI_FM_INTERVAL, reg);
+		OWRITE4(sc, OHCI_PERIODIC_START, OHCI_PERIODIC(sc->sc_ival));
+
+		/* Fiddle the No OverCurrent Protection to avoid a chip bug */
+		reg = OREAD4(sc, OHCI_RH_DESCRIPTOR_A);
+		OWRITE4(sc, OHCI_RH_DESCRIPTOR_A, reg | OHCI_NOCP);
+		OWRITE4(sc, OHCI_RH_STATUS, OHCI_LPSC); /* Enable port power */
+		usb_delay_ms(&sc->sc_bus, OHCI_ENABLE_POWER_DELAY);
+		OWRITE4(sc, OHCI_RH_DESCRIPTOR_A, reg);
+
+		usb_delay_ms(&sc->sc_bus, USB_RESUME_RECOVERY);
+		sc->sc_control = sc->sc_intre = sc->sc_ival = 0;
+		sc->sc_bus.use_polling--;
+		break;
 	case DVACT_DEACTIVATE:
 		if (sc->sc_child != NULL)
 			rv = config_deactivate(sc->sc_child);
-		sc->sc_dying = 1;
-		break;
-	case DVACT_SUSPEND:
-		ohci_power(PWR_SUSPEND, sc);
-		break;
-	case DVACT_RESUME:
-		ohci_power(PWR_RESUME, sc);
+		sc->sc_bus.dying = 1;
 		break;
 	}
 	return (rv);
@@ -975,86 +1023,6 @@ ohci_shutdown(void *v)
 	OWRITE4(sc, OHCI_CONTROL, OHCI_HCFS_RESET);
 }
 
-/*
- * Handle suspend/resume.
- *
- * We need to switch to polling mode here, because this routine is
- * called from an interrupt context.  This is all right since we
- * are almost suspended anyway.
- */
-void
-ohci_power(int why, void *v)
-{
-	ohci_softc_t *sc = v;
-	u_int32_t reg;
-	int s;
-
-#ifdef OHCI_DEBUG
-	DPRINTF(("ohci_power: sc=%p, why=%d\n", sc, why));
-	ohci_dumpregs(sc);
-#endif
-
-	s = splhardusb();
-	switch (why) {
-	case PWR_SUSPEND:
-	case PWR_STANDBY:
-		sc->sc_bus.use_polling++;
-		reg = OREAD4(sc, OHCI_CONTROL) & ~OHCI_HCFS_MASK;
-		if (sc->sc_control == 0) {
-			/*
-			 * Preserve register values, in case that APM BIOS
-			 * does not recover them.
-			 */
-			sc->sc_control = reg;
-			sc->sc_intre = OREAD4(sc, OHCI_INTERRUPT_ENABLE);
-			sc->sc_ival = OHCI_GET_IVAL(OREAD4(sc,
-			    OHCI_FM_INTERVAL));
-		}
-		reg |= OHCI_HCFS_SUSPEND;
-		OWRITE4(sc, OHCI_CONTROL, reg);
-		usb_delay_ms(&sc->sc_bus, USB_RESUME_WAIT);
-		sc->sc_bus.use_polling--;
-		break;
-	case PWR_RESUME:
-		sc->sc_bus.use_polling++;
-
-		/* Some broken BIOSes do not recover these values */
-		OWRITE4(sc, OHCI_HCCA, DMAADDR(&sc->sc_hccadma, 0));
-		OWRITE4(sc, OHCI_CONTROL_HEAD_ED, sc->sc_ctrl_head->physaddr);
-		OWRITE4(sc, OHCI_BULK_HEAD_ED, sc->sc_bulk_head->physaddr);
-		if (sc->sc_intre)
-			OWRITE4(sc, OHCI_INTERRUPT_ENABLE,
-			    sc->sc_intre & (OHCI_ALL_INTRS | OHCI_MIE));
-		if (sc->sc_control)
-			reg = sc->sc_control;
-		else
-			reg = OREAD4(sc, OHCI_CONTROL);
-		reg |= OHCI_HCFS_RESUME;
-		OWRITE4(sc, OHCI_CONTROL, reg);
-		usb_delay_ms(&sc->sc_bus, USB_RESUME_DELAY);
-		reg = (reg & ~OHCI_HCFS_MASK) | OHCI_HCFS_OPERATIONAL;
-		OWRITE4(sc, OHCI_CONTROL, reg);
-
-		reg = (OREAD4(sc, OHCI_FM_REMAINING) & OHCI_FIT) ^ OHCI_FIT;
-		reg |= OHCI_FSMPS(sc->sc_ival) | sc->sc_ival;
-		OWRITE4(sc, OHCI_FM_INTERVAL, reg);
-		OWRITE4(sc, OHCI_PERIODIC_START, OHCI_PERIODIC(sc->sc_ival));
-
-		/* Fiddle the No OverCurrent Protection to avoid a chip bug */
-		reg = OREAD4(sc, OHCI_RH_DESCRIPTOR_A);
-		OWRITE4(sc, OHCI_RH_DESCRIPTOR_A, reg | OHCI_NOCP);
-		OWRITE4(sc, OHCI_RH_STATUS, OHCI_LPSC); /* Enable port power */
-		usb_delay_ms(&sc->sc_bus, OHCI_ENABLE_POWER_DELAY);
-		OWRITE4(sc, OHCI_RH_DESCRIPTOR_A, reg);
-
-		usb_delay_ms(&sc->sc_bus, USB_RESUME_RECOVERY);
-		sc->sc_control = sc->sc_intre = sc->sc_ival = 0;
-		sc->sc_bus.use_polling--;
-		break;
-	}
-	splx(s);
-}
-
 #ifdef OHCI_DEBUG
 void
 ohci_dumpregs(ohci_softc_t *sc)
@@ -1103,7 +1071,7 @@ ohci_intr(void *p)
 {
 	ohci_softc_t *sc = p;
 
-	if (sc == NULL || sc->sc_dying)
+	if (sc == NULL || sc->sc_bus.dying)
 		return (0);
 
 	/* If we get an interrupt while polling, then just ignore it. */
@@ -1155,7 +1123,7 @@ ohci_intr1(ohci_softc_t *sc)
 	}
 
 	if (intrs == 0xffffffff) {
-		sc->sc_dying = 1;
+		sc->sc_bus.dying = 1;
 		return (0);
 	}
 
@@ -1246,6 +1214,9 @@ ohci_rhsc_enable(void *v_sc)
 	ohci_softc_t *sc = v_sc;
 	int s;
 
+	if (sc->sc_bus.dying)
+		return;
+
 	s = splhardusb();
 	ohci_rhsc(sc, sc->sc_intrxfer);
 	DPRINTFN(2, ("%s: rhsc interrupt enabled\n",
@@ -1325,6 +1296,9 @@ ohci_softintr(void *v)
 	int i, j, actlen, iframes, uedir;
 
 	DPRINTFN(10,("ohci_softintr: enter\n"));
+
+	if (sc->sc_bus.dying)
+		return;
 
 	sc->sc_bus.intr_context++;
 
@@ -1453,7 +1427,7 @@ ohci_softintr(void *v)
 			    bEndpointAddress);
 			xfer->status = USBD_NORMAL_COMPLETION;
 			actlen = 0;
-			for (i = 0, sitd = xfer->hcpriv;;
+			for (i = 0, sitd = xfer->hcpriv; ;
 			    sitd = next) {
 				next = sitd->nextitd;
 				if (OHCI_ITD_GET_CC(letoh32(sitd->
@@ -1619,7 +1593,7 @@ ohci_waitintr(ohci_softc_t *sc, usbd_xfer_handle xfer)
 	xfer->status = USBD_IN_PROGRESS;
 	for (timo = xfer->timeout; timo >= 0; timo--) {
 		usb_delay_ms(&sc->sc_bus, 1);
-		if (sc->sc_dying)
+		if (sc->sc_bus.dying)
 			break;
 		intrs = OREAD4(sc, OHCI_INTERRUPT_STATUS) & sc->sc_eintrs;
 		DPRINTFN(15,("ohci_waitintr: 0x%04x\n", intrs));
@@ -1920,13 +1894,14 @@ ohci_timeout(void *addr)
 
 	DPRINTF(("ohci_timeout: oxfer=%p\n", oxfer));
 
-	if (sc->sc_dying) {
+	if (sc->sc_bus.dying) {
 		ohci_abort_xfer(&oxfer->xfer, USBD_TIMEOUT);
 		return;
 	}
 
 	/* Execute the abort in a process context. */
-	usb_init_task(&oxfer->abort_task, ohci_timeout_task, addr);
+	usb_init_task(&oxfer->abort_task, ohci_timeout_task, addr,
+	    USB_TASK_TYPE_ABORT);
 	usb_add_task(oxfer->xfer.pipe->device, &oxfer->abort_task);
 }
 
@@ -2043,7 +2018,7 @@ ohci_open(usbd_pipe_handle pipe)
 	DPRINTFN(1, ("ohci_open: pipe=%p, addr=%d, endpt=%d (%d)\n",
 		     pipe, addr, ed->bEndpointAddress, sc->sc_addr));
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 	std = NULL;
@@ -2205,7 +2180,7 @@ ohci_abort_xfer(usbd_xfer_handle xfer, usbd_status status)
 	DPRINTF(("ohci_abort_xfer: xfer=%p pipe=%p sed=%p\n", xfer, opipe,
 		 sed));
 
-	if (sc->sc_dying) {
+	if (sc->sc_bus.dying) {
 		/* If we're dying, just do the software part. */
 		s = splusb();
 		xfer->status = status;	/* make software ignore it */
@@ -2401,7 +2376,7 @@ ohci_root_ctrl_start(usbd_xfer_handle xfer)
 	usbd_status err;
 	u_int32_t v;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 #ifdef DIAGNOSTIC
@@ -2664,7 +2639,7 @@ ohci_root_ctrl_start(usbd_xfer_handle xfer)
 			for (i = 0; i < 5; i++) {
 				usb_delay_ms(&sc->sc_bus,
 					     USB_PORT_ROOT_RESET_DELAY);
-				if (sc->sc_dying) {
+				if (sc->sc_bus.dying) {
 					err = USBD_IOERROR;
 					goto ret;
 				}
@@ -2736,7 +2711,7 @@ ohci_root_intr_start(usbd_xfer_handle xfer)
 	usbd_pipe_handle pipe = xfer->pipe;
 	ohci_softc_t *sc = (ohci_softc_t *)pipe->device->bus;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 	sc->sc_intrxfer = xfer;
@@ -2793,7 +2768,7 @@ ohci_device_ctrl_start(usbd_xfer_handle xfer)
 	ohci_softc_t *sc = (ohci_softc_t *)xfer->pipe->device->bus;
 	usbd_status err;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 #ifdef DIAGNOSTIC
@@ -2876,7 +2851,7 @@ ohci_device_bulk_start(usbd_xfer_handle xfer)
 	int s, isread, endpt;
 	usbd_status err;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 #ifdef DIAGNOSTIC
@@ -3014,7 +2989,7 @@ ohci_device_intr_start(usbd_xfer_handle xfer)
 	ohci_soft_td_t *data, *tail;
 	int s, len, isread, endpt;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 	DPRINTFN(3, ("ohci_device_intr_transfer: xfer=%p len=%u "
@@ -3239,7 +3214,7 @@ ohci_device_isoc_enter(usbd_xfer_handle xfer)
 		    "nframes=%d\n",
 		    iso->inuse, iso->next, xfer, xfer->nframes));
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return;
 
 	if (iso->next == -1) {
@@ -3351,7 +3326,7 @@ ohci_device_isoc_start(usbd_xfer_handle xfer)
 
 	DPRINTFN(5,("ohci_device_isoc_start: xfer=%p\n", xfer));
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 #ifdef DIAGNOSTIC

@@ -1,4 +1,4 @@
-/*	$OpenBSD: util.c,v 1.11 2010/03/29 09:04:43 claudio Exp $ */
+/*	$OpenBSD: util.c,v 1.13 2010/11/18 12:18:31 claudio Exp $ */
 
 /*
  * Copyright (c) 2006 Claudio Jeker <claudio@openbsd.org>
@@ -27,6 +27,8 @@
 
 #include "bgpd.h"
 #include "rde.h"
+
+const char	*aspath_delim(u_int8_t, int);
 
 const char *
 log_addr(const struct bgpd_addr *addr)
@@ -156,8 +158,40 @@ log_ext_subtype(u_int8_t subtype)
 	case EXT_COMMUNITY_BGP_COLLECT:
 		return ("bdc");	/* bgp data collection */
 	default:
-		snprintf(etype, sizeof(etype), "[%i]", (int)subtype);
+		snprintf(etype, sizeof(etype), "[%u]", subtype);
 		return (etype);
+	}
+}
+
+const char *
+aspath_delim(u_int8_t seg_type, int closing)
+{
+	static char db[8];
+
+	switch (seg_type) {
+	case AS_SET:
+		if (!closing)
+			return ("{ ");
+		else
+			return (" }");
+	case AS_SEQUENCE:
+		return ("");
+	case AS_CONFED_SEQUENCE:
+		if (!closing)
+			return ("( ");
+		else
+			return (" )");
+	case AS_CONFED_SET:
+		if (!closing)
+			return ("[ ");
+		else
+			return (" ]");
+	default:
+		if (!closing)
+			snprintf(db, sizeof(db), "!%u ", seg_type);
+		else
+			snprintf(db, sizeof(db), " !%u", seg_type);
+		return (db);
 	}
 }
 
@@ -189,16 +223,10 @@ aspath_snprint(char *buf, size_t size, void *data, u_int16_t len)
 		seg_len = seg[1];
 		seg_size = 2 + sizeof(u_int32_t) * seg_len;
 
-		if (seg_type == AS_SET) {
-			if (total_size != 0)
-				r = snprintf(buf, size, " { ");
-			else
-				r = snprintf(buf, size, "{ ");
-			UPDATE();
-		} else if (total_size != 0) {
-			r = snprintf(buf, size, " ");
-			UPDATE();
-		}
+		r = snprintf(buf, size, "%s%s",
+		    total_size != 0 ? " " : "",
+		    aspath_delim(seg_type, 0));
+		UPDATE();
 
 		for (i = 0; i < seg_len; i++) {
 			r = snprintf(buf, size, "%s",
@@ -209,10 +237,8 @@ aspath_snprint(char *buf, size_t size, void *data, u_int16_t len)
 				UPDATE();
 			}
 		}
-		if (seg_type == AS_SET) {
-			r = snprintf(buf, size, " }");
-			UPDATE();
-		}
+		r = snprintf(buf, size, "%s", aspath_delim(seg_type, 1));
+		UPDATE();
 	}
 	/* ensure that we have a valid C-string especially for empty as path */
 	if (size > 0)

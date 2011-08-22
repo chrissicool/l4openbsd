@@ -1,4 +1,4 @@
-/*	$OpenBSD: omohci.c,v 1.1 2009/05/08 03:13:26 drahn Exp $ */
+/*	$OpenBSD: omohci.c,v 1.4 2010/09/07 16:21:37 deraadt Exp $ */
 
 /*
  * Copyright (c) 2005 David Gwynne <dlg@openbsd.org>
@@ -95,7 +95,7 @@
 int	omohci_match(struct device *, void *, void *);
 void	omohci_attach(struct device *, struct device *, void *);
 int	omohci_detach(struct device *, int);
-void	omohci_power(int, void *);
+int	omohci_activate(struct device *, int);
 
 struct omohci_softc {
 	ohci_softc_t	sc;
@@ -112,7 +112,7 @@ void	omohci_disable(struct omohci_softc *);
 
 struct cfattach omohci_ca = {
         sizeof (struct omohci_softc), omohci_match, omohci_attach,
-	omohci_detach, ohci_activate
+	omohci_detach, omohci_detach
 };
 
 int
@@ -224,11 +224,6 @@ omohci_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	sc->sc.sc_powerhook = powerhook_establish(omohci_power, sc);
-	if (sc->sc.sc_powerhook == NULL)
-		printf("%s: cannot establish powerhook\n",
-		    sc->sc.sc_bus.bdev.dv_xname);
-
 	sc->sc.sc_child = config_found((void *)sc, &sc->sc.sc_bus,
 	    usbctlprint);
 }
@@ -242,11 +237,6 @@ omohci_detach(struct device *self, int flags)
 	rv = ohci_detach(&sc->sc, flags);
 	if (rv)
 		return (rv);
-
-	if (sc->sc.sc_powerhook != NULL) {
-		powerhook_disestablish(sc->sc.sc_powerhook);
-		sc->sc.sc_powerhook = NULL;
-	}
 
 	if (sc->sc_ih0 != NULL) {
 		intc_intr_disestablish(sc->sc_ih0);
@@ -279,33 +269,32 @@ omohci_detach(struct device *self, int flags)
 }
 
 
-void
-omohci_power(int why, void *arg)
+int
+omohci_activate(struct device *self, int act)
 {
-	struct omohci_softc		*sc = (struct omohci_softc *)arg;
-	int				s;
+	struct omohci_softc *sc = (struct omohci_softc *)self;
 
-	s = splhardusb();
-	sc->sc.sc_bus.use_polling++;
-	switch (why) {
-	case PWR_STANDBY:
-	case PWR_SUSPEND:
+	switch (act) {
+	case DVACT_SUSPEND:
+		sc->sc.sc_bus.use_polling++;
 		ohci_power(why, &sc->sc);
 #if 0
 		pxa2x0_clkman_config(CKEN_USBHC, 0);
 #endif
+		sc->sc.sc_bus.use_polling--;
 		break;
 
-	case PWR_RESUME:
+	case DVACT_RESUME:
+		sc->sc.sc_bus.use_polling++;
 #if 0
 		pxa2x0_clkman_config(CKEN_USBHC, 1);
 #endif
 		omohci_enable(sc);
 		ohci_power(why, &sc->sc);
+		sc->sc.sc_bus.use_polling--;
 		break;
 	}
-	sc->sc.sc_bus.use_polling--;
-	splx(s);
+	return 0;
 }
 
 void

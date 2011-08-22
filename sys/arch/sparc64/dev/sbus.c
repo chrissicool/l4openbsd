@@ -1,4 +1,4 @@
-/*	$OpenBSD: sbus.c,v 1.37 2009/01/14 20:35:42 miod Exp $	*/
+/*	$OpenBSD: sbus.c,v 1.39 2010/12/26 15:37:20 kettenis Exp $	*/
 /*	$NetBSD: sbus.c,v 1.46 2001/10/07 20:30:41 eeh Exp $ */
 
 /*-
@@ -277,7 +277,7 @@ sbus_xbox_attach(struct device *parent, struct device *self, void *aux)
 	 * IS THIS THE CORRECT DEFAULT??
 	 */
 	sc->sc_clockfreq = getpropint(node, "clock-frequency", 25*1000*1000);
-	printf(": clock = %s MHz\n", clockfreq(sc->sc_clockfreq));
+	printf(": %s MHz\n", clockfreq(sc->sc_clockfreq));
 
 	sbus_attach_common(sc, node, 1);
 }
@@ -776,8 +776,7 @@ sbus_alloc_bustag(struct sbus_softc *sc, int indirect)
 	if (sbt == NULL)
 		return (NULL);
 
-	snprintf(sbt->name, sizeof(sbt->name), "%s",
-		sc->sc_dev.dv_xname);
+	strlcpy(sbt->name, sc->sc_dev.dv_xname, sizeof(sbt->name));
 	sbt->cookie = sc;
 	if (indirect)
 		sbt->parent = sc->sc_bustag->parent;

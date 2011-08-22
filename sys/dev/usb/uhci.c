@@ -1,4 +1,4 @@
-/*	$OpenBSD: uhci.c,v 1.75 2010/05/01 19:43:57 jsg Exp $	*/
+/*	$OpenBSD: uhci.c,v 1.89 2010/12/14 16:13:16 jakemsr Exp $	*/
 /*	$NetBSD: uhci.c,v 1.172 2003/02/23 04:19:26 simonb Exp $	*/
 /*	$FreeBSD: src/sys/dev/usb/uhci.c,v 1.33 1999/11/17 22:33:41 n_hibma Exp $	*/
 
@@ -129,7 +129,6 @@ void		uhci_globalreset(uhci_softc_t *);
 usbd_status	uhci_portreset(uhci_softc_t*, int);
 void		uhci_reset(uhci_softc_t *);
 void		uhci_shutdown(void *v);
-void		uhci_power(int, void *);
 usbd_status	uhci_run(uhci_softc_t *, int run);
 uhci_soft_td_t  *uhci_alloc_std(uhci_softc_t *);
 void		uhci_free_std(uhci_softc_t *, uhci_soft_td_t *);
@@ -507,8 +506,7 @@ uhci_init(uhci_softc_t *sc)
 	sc->sc_bus.methods = &uhci_bus_methods;
 	sc->sc_bus.pipe_size = sizeof(struct uhci_pipe);
 
-	sc->sc_suspend = PWR_RESUME;
-	sc->sc_powerhook = powerhook_establish(uhci_power, sc);
+	sc->sc_suspend = DVACT_RESUME;
 	sc->sc_shutdownhook = shutdownhook_establish(uhci_shutdown, sc);
 
 	UHCICMD(sc, UHCI_CMD_MAXP); /* Assume 64 byte packets at frame end */
@@ -524,21 +522,72 @@ int
 uhci_activate(struct device *self, int act)
 {
 	struct uhci_softc *sc = (struct uhci_softc *)self;
-	int rv = 0;
+	int cmd, rv = 0;
 
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
+	case DVACT_SUSPEND:
+#ifdef UHCI_DEBUG
+		if (uhcidebug > 2)
+			uhci_dumpregs(sc);
+#endif
+		if (sc->sc_intr_xfer != NULL)
+			timeout_del(&sc->sc_poll_handle);
+		sc->sc_bus.use_polling++;
+		uhci_run(sc, 0); /* stop the controller */
 
+		/* save some state if BIOS doesn't */
+		sc->sc_saved_frnum = UREAD2(sc, UHCI_FRNUM);
+
+		UWRITE2(sc, UHCI_INTR, 0); /* disable intrs */
+
+		cmd = UREAD2(sc, UHCI_CMD);
+		UHCICMD(sc, cmd | UHCI_CMD_EGSM); /* enter global suspend */
+		usb_delay_ms(&sc->sc_bus, USB_RESUME_WAIT);
+		sc->sc_suspend = act;
+		sc->sc_bus.use_polling--;
+		DPRINTF(("uhci_activate: cmd=0x%x\n", UREAD2(sc, UHCI_CMD)));
+		break;
+	case DVACT_RESUME:
+#ifdef DIAGNOSTIC
+		if (sc->sc_suspend == DVACT_RESUME)
+			printf("uhci_powerhook: weird, resume without suspend.\n");
+#endif
+		sc->sc_bus.use_polling++;
+		sc->sc_suspend = act;
+		cmd = UREAD2(sc, UHCI_CMD);
+		if (cmd & UHCI_CMD_RS)
+			uhci_run(sc, 0); /* in case BIOS has started it */
+
+		/* restore saved state */
+		UWRITE4(sc, UHCI_FLBASEADDR, DMAADDR(&sc->sc_dma, 0));
+		UWRITE2(sc, UHCI_FRNUM, sc->sc_saved_frnum);
+		UWRITE1(sc, UHCI_SOF, sc->sc_saved_sof);
+
+		UHCICMD(sc, cmd | UHCI_CMD_FGR); /* force global resume */
+		usb_delay_ms(&sc->sc_bus, USB_RESUME_DELAY);
+		UHCICMD(sc, cmd & ~UHCI_CMD_EGSM); /* back to normal */
+		UHCICMD(sc, UHCI_CMD_MAXP);
+		UWRITE2(sc, UHCI_INTR, UHCI_INTR_TOCRCIE | UHCI_INTR_RIE |
+			UHCI_INTR_IOCE | UHCI_INTR_SPIE); /* re-enable intrs */
+		uhci_run(sc, 1); /* and start traffic again */
+		usb_delay_ms(&sc->sc_bus, USB_RESUME_RECOVERY);
+		sc->sc_bus.use_polling--;
+		if (sc->sc_intr_xfer != NULL) {
+			timeout_del(&sc->sc_poll_handle);
+			timeout_set(&sc->sc_poll_handle, uhci_poll_hub,
+			    sc->sc_intr_xfer);
+			timeout_add(&sc->sc_poll_handle, sc->sc_ival);
+		}
+#ifdef UHCI_DEBUG
+		if (uhcidebug > 2)
+			uhci_dumpregs(sc);
+#endif
+		break;
 	case DVACT_DEACTIVATE:
 		if (sc->sc_child != NULL)
 			rv = config_deactivate(sc->sc_child);
-		break;
-	case DVACT_SUSPEND:
-		uhci_power(PWR_SUSPEND, sc);
-		break;
-	case DVACT_RESUME:
-		uhci_power(PWR_RESUME, sc);
 		break;
 	}
 	return (rv);
@@ -556,10 +605,13 @@ uhci_detach(struct uhci_softc *sc, int flags)
 	if (rv != 0)
 		return (rv);
 
-	if (sc->sc_powerhook != NULL)
-		powerhook_disestablish(sc->sc_powerhook);
 	if (sc->sc_shutdownhook != NULL)
 		shutdownhook_disestablish(sc->sc_shutdownhook);
+
+	if (sc->sc_intr_xfer != NULL) {
+		timeout_del(&sc->sc_poll_handle);
+		sc->sc_intr_xfer = NULL;
+	}
 
 	/* Free all xfers associated with this HC. */
 	for (;;) {
@@ -673,88 +725,6 @@ uhci_shutdown(void *v)
 
 	DPRINTF(("uhci_shutdown: stopping the HC\n"));
 	uhci_run(sc, 0); /* stop the controller */
-}
-
-/*
- * Handle suspend/resume.
- *
- * We need to switch to polling mode here, because this routine is
- * called from an interrupt context.  This is all right since we
- * are almost suspended anyway.
- */
-void
-uhci_power(int why, void *v)
-{
-	uhci_softc_t *sc = v;
-	int cmd;
-	int s;
-
-	s = splhardusb();
-	cmd = UREAD2(sc, UHCI_CMD);
-
-	DPRINTF(("uhci_power: sc=%p, why=%d (was %d), cmd=0x%x\n",
-		 sc, why, sc->sc_suspend, cmd));
-
-	switch (why) {
-	case PWR_SUSPEND:
-	case PWR_STANDBY:
-#ifdef UHCI_DEBUG
-		if (uhcidebug > 2)
-			uhci_dumpregs(sc);
-#endif
-		if (sc->sc_intr_xfer != NULL)
-			timeout_del(&sc->sc_poll_handle);
-		sc->sc_bus.use_polling++;
-		uhci_run(sc, 0); /* stop the controller */
-
-		/* save some state if BIOS doesn't */
-		sc->sc_saved_frnum = UREAD2(sc, UHCI_FRNUM);
-
-		UWRITE2(sc, UHCI_INTR, 0); /* disable intrs */
-
-		UHCICMD(sc, cmd | UHCI_CMD_EGSM); /* enter global suspend */
-		usb_delay_ms(&sc->sc_bus, USB_RESUME_WAIT);
-		sc->sc_suspend = why;
-		sc->sc_bus.use_polling--;
-		DPRINTF(("uhci_power: cmd=0x%x\n", UREAD2(sc, UHCI_CMD)));
-		break;
-	case PWR_RESUME:
-#ifdef DIAGNOSTIC
-		if (sc->sc_suspend == PWR_RESUME)
-			printf("uhci_power: weird, resume without suspend.\n");
-#endif
-		sc->sc_bus.use_polling++;
-		sc->sc_suspend = why;
-		if (cmd & UHCI_CMD_RS)
-			uhci_run(sc, 0); /* in case BIOS has started it */
-
-		/* restore saved state */
-		UWRITE4(sc, UHCI_FLBASEADDR, DMAADDR(&sc->sc_dma, 0));
-		UWRITE2(sc, UHCI_FRNUM, sc->sc_saved_frnum);
-		UWRITE1(sc, UHCI_SOF, sc->sc_saved_sof);
-
-		UHCICMD(sc, cmd | UHCI_CMD_FGR); /* force global resume */
-		usb_delay_ms(&sc->sc_bus, USB_RESUME_DELAY);
-		UHCICMD(sc, cmd & ~UHCI_CMD_EGSM); /* back to normal */
-		UHCICMD(sc, UHCI_CMD_MAXP);
-		UWRITE2(sc, UHCI_INTR, UHCI_INTR_TOCRCIE | UHCI_INTR_RIE |
-			UHCI_INTR_IOCE | UHCI_INTR_SPIE); /* re-enable intrs */
-		uhci_run(sc, 1); /* and start traffic again */
-		usb_delay_ms(&sc->sc_bus, USB_RESUME_RECOVERY);
-		sc->sc_bus.use_polling--;
-		if (sc->sc_intr_xfer != NULL) {
-			timeout_del(&sc->sc_poll_handle);
-			timeout_set(&sc->sc_poll_handle, uhci_poll_hub,
-			    sc->sc_intr_xfer);
-			timeout_add(&sc->sc_poll_handle, sc->sc_ival);
-		}
-#ifdef UHCI_DEBUG
-		if (uhcidebug > 2)
-			uhci_dumpregs(sc);
-#endif
-		break;
-	}
-	splx(s);
 }
 
 #ifdef UHCI_DEBUG
@@ -958,6 +928,9 @@ uhci_poll_hub(void *addr)
 	u_char *p;
 
 	DPRINTFN(20, ("uhci_poll_hub\n"));
+
+	if (sc->sc_bus.dying)
+		return;
 
 	timeout_del(&sc->sc_poll_handle);
 	timeout_set(&sc->sc_poll_handle, uhci_poll_hub, xfer);
@@ -1164,15 +1137,10 @@ uhci_intr(void *arg)
 {
 	uhci_softc_t *sc = arg;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (0);
-
-	if (sc->sc_bus.use_polling) {
-#ifdef DIAGNOSTIC
-		DPRINTFN(16, ("uhci_intr: ignored interrupt while polling\n"));
-#endif
+	if (sc->sc_bus.use_polling)
 		return (0);
-	}
 	return (uhci_intr1(sc));
 }
 
@@ -1186,7 +1154,7 @@ uhci_intr1(uhci_softc_t *sc)
 	if (status == 0)	/* The interrupt was not for us. */
 		return (0);
 	if (status == 0xffffffff) {
-		sc->sc_dying = 1;
+		sc->sc_bus.dying = 1;
 		return (0);
 	}
 
@@ -1197,10 +1165,9 @@ uhci_intr1(uhci_softc_t *sc)
 	}
 #endif
 
-	if (sc->sc_suspend != PWR_RESUME) {
+	if (sc->sc_suspend != DVACT_RESUME) {
 		printf("%s: interrupt while not operating ignored\n",
 		       sc->sc_bus.bdev.dv_xname);
-		UWRITE2(sc, UHCI_STS, status); /* acknowledge the ints */
 		return (0);
 	}
 
@@ -1226,14 +1193,14 @@ uhci_intr1(uhci_softc_t *sc)
 	}
 	if (status & UHCI_STS_HCH) {
 		/* no acknowledge needed */
-		if (!sc->sc_dying) {
+		if (!sc->sc_bus.dying) {
 			printf("%s: host controller halted\n",
 			    sc->sc_bus.bdev.dv_xname);
 #ifdef UHCI_DEBUG
 			uhci_dump_all(sc);
 #endif
 		}
-		sc->sc_dying = 1;
+		sc->sc_bus.dying = 1;
 	}
 
 	if (!ack)
@@ -1256,6 +1223,9 @@ uhci_softintr(void *v)
 
 	DPRINTFN(10,("%s: uhci_softintr (%d)\n", sc->sc_bus.bdev.dv_xname,
 		     sc->sc_bus.intr_context));
+
+	if (sc->sc_bus.dying)
+		return;
 
 	sc->sc_bus.intr_context++;
 
@@ -1482,13 +1452,14 @@ uhci_timeout(void *addr)
 
 	DPRINTF(("uhci_timeout: uxfer=%p\n", uxfer));
 
-	if (sc->sc_dying) {
+	if (sc->sc_bus.dying) {
 		uhci_abort_xfer(&uxfer->xfer, USBD_TIMEOUT);
 		return;
 	}
 
 	/* Execute the abort in a process context. */
-	usb_init_task(&uxfer->abort_task, uhci_timeout_task, ii->xfer);
+	usb_init_task(&uxfer->abort_task, uhci_timeout_task, ii->xfer,
+	    USB_TASK_TYPE_ABORT);
 	usb_add_task(uxfer->xfer.pipe->device, &uxfer->abort_task);
 }
 
@@ -1817,7 +1788,7 @@ uhci_device_bulk_start(usbd_xfer_handle xfer)
 	DPRINTFN(3, ("uhci_device_bulk_start: xfer=%p len=%u flags=%d ii=%p\n",
 		     xfer, xfer->length, xfer->flags, ii));
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 #ifdef DIAGNOSTIC
@@ -1914,7 +1885,7 @@ uhci_abort_xfer(usbd_xfer_handle xfer, usbd_status status)
 
 	DPRINTFN(1,("uhci_abort_xfer: xfer=%p, status=%d\n", xfer, status));
 
-	if (sc->sc_dying) {
+	if (sc->sc_bus.dying) {
 		/* If we're dying, just do the software part. */
 		s = splusb();
 		xfer->status = status;	/* make software ignore it */
@@ -1998,7 +1969,7 @@ uhci_device_ctrl_start(usbd_xfer_handle xfer)
 	uhci_softc_t *sc = (uhci_softc_t *)xfer->pipe->device->bus;
 	usbd_status err;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 #ifdef DIAGNOSTIC
@@ -2045,7 +2016,7 @@ uhci_device_intr_start(usbd_xfer_handle xfer)
 	int isread, endpt;
 	int i, s;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 	DPRINTFN(3,("uhci_device_intr_start: xfer=%p len=%u flags=%d\n",
@@ -2337,7 +2308,7 @@ uhci_device_isoc_enter(usbd_xfer_handle xfer)
 		    "nframes=%d\n",
 		    iso->inuse, iso->next, xfer, xfer->nframes));
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return;
 
 	if (xfer->status == USBD_IN_PROGRESS) {
@@ -2403,7 +2374,7 @@ uhci_device_isoc_start(usbd_xfer_handle xfer)
 
 	DPRINTFN(5,("uhci_device_isoc_start: xfer=%p\n", xfer));
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 #ifdef DIAGNOSTIC
@@ -2780,7 +2751,7 @@ uhci_remove_intr(uhci_softc_t *sc, uhci_soft_qh_t *sqh)
 usbd_status
 uhci_device_setintr(uhci_softc_t *sc, struct uhci_pipe *upipe, int ival)
 {
-	uhci_soft_qh_t *sqh;
+	uhci_soft_qh_t *sqh, **qhs;
 	int i, npoll, s;
 	u_int bestbw, bw, bestoffs, offs;
 
@@ -2795,9 +2766,9 @@ uhci_device_setintr(uhci_softc_t *sc, struct uhci_pipe *upipe, int ival)
 	npoll = (UHCI_VFRAMELIST_COUNT + ival - 1) / ival;
 	DPRINTFN(2, ("uhci_device_setintr: ival=%d npoll=%d\n", ival, npoll));
 
-	upipe->u.intr.npoll = npoll;
-	upipe->u.intr.qhs =
-		malloc(npoll * sizeof(uhci_soft_qh_t *), M_USBHC, M_WAITOK);
+	qhs = malloc(npoll * sizeof(uhci_soft_qh_t *), M_USBHC, M_NOWAIT);
+	if (qhs == NULL)
+		return (USBD_NOMEM);
 
 	/*
 	 * Figure out which offset in the schedule that has most
@@ -2815,12 +2786,22 @@ uhci_device_setintr(uhci_softc_t *sc, struct uhci_pipe *upipe, int ival)
 	DPRINTFN(1, ("uhci_device_setintr: bw=%d offs=%d\n", bestbw, bestoffs));
 
 	for(i = 0; i < npoll; i++) {
-		upipe->u.intr.qhs[i] = sqh = uhci_alloc_sqh(sc);
+		sqh = uhci_alloc_sqh(sc);
+		if (sqh == NULL) {
+			while (i > 0)
+				uhci_free_sqh(sc, qhs[--i]);
+			free(qhs, M_USBHC);
+			return (USBD_NOMEM);
+		}
 		sqh->elink = NULL;
 		sqh->qh.qh_elink = htole32(UHCI_PTR_T);
 		sqh->pos = MOD(i * ival + bestoffs);
+		qhs[i] = sqh;
 	}
 #undef MOD
+
+	upipe->u.intr.npoll = npoll;
+	upipe->u.intr.qhs = qhs;
 
 	s = splusb();
 	/* Enter QHs into the controller data structures. */
@@ -3114,7 +3095,7 @@ uhci_root_ctrl_start(usbd_xfer_handle xfer)
 	usb_port_status_t ps;
 	usbd_status err;
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 #ifdef DIAGNOSTIC
@@ -3493,7 +3474,7 @@ uhci_root_intr_start(usbd_xfer_handle xfer)
 	DPRINTFN(3, ("uhci_root_intr_start: xfer=%p len=%u flags=%d\n",
 		     xfer, xfer->length, xfer->flags));
 
-	if (sc->sc_dying)
+	if (sc->sc_bus.dying)
 		return (USBD_IOERROR);
 
 	sc->sc_ival = mstohz(xfer->pipe->endpoint->edesc->bInterval);

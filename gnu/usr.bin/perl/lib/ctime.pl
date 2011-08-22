@@ -2,16 +2,19 @@
 #
 # This library is no longer being maintained, and is included for backward
 # compatibility with Perl 4 programs which may require it.
+# This legacy library is deprecated and will be removed in a future
+# release of perl.
 #
 # In particular, this should not be used as an example of modern Perl
 # programming techniques.
 #
 # Suggested alternative: the POSIX ctime function
+
 ;#
 ;# Waldemar Kebsch, Federal Republic of Germany, November 1988
 ;# kebsch.pad@nixpbe.UUCP
 ;# Modified March 1990, Feb 1991 to properly handle timezones
-;#  $RCSfile: ctime.pl,v $$Revision: 1.9 $$Date: 2009/10/12 18:24:38 $
+;#  $RCSfile: ctime.pl,v $$Revision: 4.1 $$Date: 92/08/07 18:23:47 $
 ;#   Marion Hakanson (hakanson@cse.ogi.edu)
 ;#   Oregon Graduate Institute of Science and Technology
 ;#

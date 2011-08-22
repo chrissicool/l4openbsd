@@ -1,4 +1,4 @@
-/*	$OpenBSD: scsiconf.h,v 1.135 2010/07/27 04:41:56 matthew Exp $	*/
+/*	$OpenBSD: scsiconf.h,v 1.142 2010/12/24 02:45:33 krw Exp $	*/
 /*	$NetBSD: scsiconf.h,v 1.35 1997/04/02 02:29:38 mycroft Exp $	*/
 
 /*
@@ -367,6 +367,7 @@ struct scsi_link {
 	u_int16_t flags;		/* flags that all devices have */
 #define	SDEV_REMOVABLE	 	0x0001	/* media is removable */
 #define	SDEV_MEDIA_LOADED 	0x0002	/* device figures are still valid */
+#define	SDEV_READONLY		0x0004	/* device is read-only */
 #define	SDEV_OPEN	 	0x0008	/* at least 1 open session */
 #define	SDEV_DBX		0x00f0	/* debugging flags (scsi_debug.h) */
 #define	SDEV_EJECTING		0x0100	/* eject on device close */
@@ -396,6 +397,7 @@ struct scsi_link {
 
 	struct	scsi_runq queue;
 	u_int	running;
+	u_short	pending;
 
 	struct	scsi_iopool *pool;
 };
@@ -575,7 +577,7 @@ int	scsi_detach_lun(struct scsibus_softc *, int, int, int);
 int	scsi_req_probe(struct scsibus_softc *, int, int);
 int	scsi_req_detach(struct scsibus_softc *, int, int, int);
 
-void	scsi_activate(struct scsibus_softc *, int, int, int);
+int	scsi_activate(struct scsibus_softc *, int, int, int);
 
 struct scsi_link *	scsi_get_link(struct scsibus_softc *, int, int);
 void			scsi_add_link(struct scsibus_softc *,
@@ -584,7 +586,7 @@ void			scsi_remove_link(struct scsibus_softc *,
 			    struct scsi_link *);
 
 extern const u_int8_t version_to_spc[];
-#define SCSISPC(x)(version_to_spc[(x) & SID_ANSII])
+#define SCSISPC(x)	(version_to_spc[(x) & SID_ANSII])
 
 struct scsi_xfer *	scsi_xs_get(struct scsi_link *, int);
 void			scsi_xs_exec(struct scsi_xfer *);
@@ -599,6 +601,8 @@ void			scsi_sense_print_debug(struct scsi_xfer *);
  */
 void	scsi_iopool_init(struct scsi_iopool *, void *,
 	    void *(*)(void *), void (*)(void *, void *));
+void	scsi_iopool_destroy(struct scsi_iopool *);
+void	scsi_link_shutdown(struct scsi_link *);
 
 void *	scsi_io_get(struct scsi_iopool *, int);
 void	scsi_io_put(struct scsi_iopool *, void *);

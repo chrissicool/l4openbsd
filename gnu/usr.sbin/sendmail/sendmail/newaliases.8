@@ -1,3 +1,5 @@
+.\"	$OpenBSD: newaliases.8,v 1.7 2010/09/23 14:51:57 jmc Exp $
+.\"
 .\" Copyright (c) 1998-2001 Sendmail, Inc. and its suppliers.
 .\"	All rights reserved.
 .\" Copyright (c) 1983, 1997 Eric P. Allman.  All rights reserved.
@@ -11,7 +13,7 @@
 .\"
 .\"     $Sendmail: newaliases.1,v 8.19 2001/10/10 03:23:17 ca Exp $
 .\"
-.Dd October 10, 2001
+.Dd $Mdocdate: September 23 2010 $
 .Dt NEWALIASES 8
 .Os
 .Sh NAME
@@ -30,10 +32,6 @@ in order for the change to take effect.
 is identical to
 .Dq Li "sendmail -bi" .
 .Pp
-The
-.Nm
-utility exits 0 on success, and >0 if an error occurs.
-.Pp
 Notice: do
 .Em not
 use
@@ -47,6 +45,8 @@ puts a special token into the data base that is required by
 .It Pa /etc/mail/aliases
 The mail aliases file
 .El
+.Sh EXIT STATUS
+.Ex -std newaliases
 .Sh SEE ALSO
 .Xr aliases 5 ,
 .Xr mailer.conf 5 ,

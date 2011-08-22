@@ -1,5 +1,5 @@
 # $FreeBSD: src/gnu/usr.bin/cc/cc_tools/Makefile,v 1.88.8.1 2009/04/15 03:14:26 kensmith Exp $
-# $OpenBSD: Makefile,v 1.6 2010/05/04 18:37:00 naddy Exp $
+# $OpenBSD: Makefile,v 1.8 2010/09/10 16:20:11 kettenis Exp $
 
 .include <bsd.own.mk>
 
@@ -27,7 +27,11 @@ TARGET_INC+=	options.h
 .if ${TARGET_ARCH} == "amd64"
 TARGET_INC+=	i386/biarch64.h
 .endif
-.if ${TARGET_ARCH} != "arm"
+.if ${TARGET_ARCH} == "sh"
+TARGET_INC+=	sh/little.h
+.endif
+.if ${TARGET_ARCH} != "arm" && ${TARGET_ARCH} != "mips64" && \
+    ${TARGET_ARCH} != "mips64el"
 TARGET_INC+=	${GCC_CPU}/${GCC_CPU}.h
 .endif
 .if ${TARGET_ARCH} == "i386" || ${TARGET_ARCH} == "amd64"
@@ -41,6 +45,9 @@ TARGET_INC+=	alpha/openbsd1.h
 .else
 TARGET_INC+=	elfos.h
 .endif
+.if ${TARGET_ARCH} == "sh"
+TARGET_INC+=	sh/elf.h
+.endif
 TARGET_INC+=	openbsd.h
 TARGET_INC+=	openbsd-libpthread.h
 TARGET_INC+=	openbsd-native.h
@@ -50,6 +57,13 @@ TARGET_INC+=	freebsd-spec.h
 .if ${TARGET_ARCH} != "i386" && ${TARGET_ARCH} != "amd64"
 .if exists(${GCCDIR}/config/${GCC_CPU}/sysv4.h)
 TARGET_INC+=	${GCC_CPU}/sysv4.h
+.endif
+.endif
+.if ${TARGET_ARCH} == "mips64" || ${TARGET_ARCH} == "mips64el"
+TARGET_INC+=	${GCC_CPU}/${GCC_CPU}.h
+TM_DEFINES= MIPS_ISA_DEFAULT=3 MIPS_ABI_DEFAULT=ABI_64
+.if ${TARGET_ARCH} == "mips64el"
+TM_DEFINES+= TARGET_ENDIAN_DEFAULT=0
 .endif
 .endif
 .if ${TARGET_ARCH} == "amd64"
@@ -225,7 +239,7 @@ GENONLY+=	optionlist options.h options.c
 tm.h:
 	TARGET_CPU_DEFAULT="${TARGET_CPU_DEFAULT}" \
 	HEADERS="${TARGET_INC}" \
-	DEFINES="" \
+	DEFINES="${TM_DEFINES}" \
 	/bin/sh ${GCCDIR}/mkconfig.sh ${.TARGET}
 .if exists(${GCCDIR}/config/${GCC_CPU}/${GCC_CPU}-modes.def)
 	echo '#define EXTRA_MODES_FILE "${GCC_CPU}/${GCC_CPU}-modes.def"' >> ${.TARGET}

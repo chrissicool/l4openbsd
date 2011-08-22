@@ -1,4 +1,4 @@
-/*	$OpenBSD: kroute.c,v 1.87 2010/07/14 01:00:32 dlg Exp $ */
+/*	$OpenBSD: kroute.c,v 1.89 2011/01/12 15:07:46 claudio Exp $ */
 
 /*
  * Copyright (c) 2004 Esben Norby <norby@openbsd.org>
@@ -52,8 +52,8 @@ struct {
 
 struct kroute_node {
 	RB_ENTRY(kroute_node)	 entry;
-	struct kroute		 r;
 	struct kroute_node	*next;
+	struct kroute		 r;
 	int			 serial;
 };
 
@@ -64,7 +64,7 @@ struct kif_node {
 };
 
 void	kr_redist_remove(struct kroute_node *, struct kroute_node *);
-int	kr_redist_eval(struct kroute *, struct rroute *);
+int	kr_redist_eval(struct kroute *, struct kroute *);
 void	kr_redistribute(struct kroute_node *);
 int	kroute_compare(struct kroute_node *, struct kroute_node *);
 int	kif_compare(struct kif_node *, struct kif_node *);
@@ -375,7 +375,6 @@ kr_fib_reload(void)
 			kn = kr->next;
 
 			if (kr->serial != kr_state.fib_serial) {
-
 				if (kr->r.priority == RTP_OSPF) {
 					kr->serial = kr_state.fib_serial;
 					if (send_rtmsg(kr_state.fd,
@@ -461,7 +460,7 @@ kr_ifinfo(char *ifname, pid_t pid)
 void
 kr_redist_remove(struct kroute_node *kh, struct kroute_node *kn)
 {
-	struct rroute	 rr;
+	struct kroute	*rr;
 
 	/* was the route redistributed? */
 	if ((kn->r.flags & F_REDISTRIBUTED) == 0)
@@ -469,8 +468,7 @@ kr_redist_remove(struct kroute_node *kh, struct kroute_node *kn)
 
 	/* remove redistributed flag */
 	kn->r.flags &= ~F_REDISTRIBUTED;
-	rr.kr = kn->r;
-	rr.metric = DEFAULT_REDIST_METRIC;	/* some dummy value */
+	rr = &kn->r;
 
 	/* probably inform the RDE (check if no other path is redistributed) */
 	for (kn = kh; kn; kn = kn->next)
@@ -478,12 +476,12 @@ kr_redist_remove(struct kroute_node *kh, struct kroute_node *kn)
 			break;
 
 	if (kn == NULL)
-		main_imsg_compose_rde(IMSG_NETWORK_DEL, 0, &rr,
-		    sizeof(struct rroute));
+		main_imsg_compose_rde(IMSG_NETWORK_DEL, 0, rr,
+		    sizeof(struct kroute));
 }
 
 int
-kr_redist_eval(struct kroute *kr, struct rroute *rr)
+kr_redist_eval(struct kroute *kr, struct kroute *rr)
 {
 	u_int32_t	 a, metric = 0;
 
@@ -526,9 +524,10 @@ kr_redist_eval(struct kroute *kr, struct rroute *rr)
 	 * redistribute the best one.
 	 */
 	if (rr->metric > metric) {
-		rr->kr = *kr;
+		*rr = *kr;
 		rr->metric = metric;
 	}
+
 	return (1);
 
 dont_redistribute:
@@ -544,7 +543,7 @@ void
 kr_redistribute(struct kroute_node *kh)
 {
 	struct kroute_node	*kn;
-	struct rroute		 rr;
+	struct kroute		 rr;
 	int			 redistribute = 0;
 
 	/* only the highest prio route can be redistributed */
@@ -560,14 +559,13 @@ kr_redistribute(struct kroute_node *kh)
 	if (!redistribute)
 		return;
 
-	if (rr.kr.flags & F_REDISTRIBUTED) {
+	if (rr.flags & F_REDISTRIBUTED) {
 		main_imsg_compose_rde(IMSG_NETWORK_ADD, 0, &rr,
-		    sizeof(struct rroute));
+		    sizeof(struct kroute));
 	} else {
-		rr.metric = DEFAULT_REDIST_METRIC;	/* some dummy value */
-		rr.kr = kh->r;
+		rr = kh->r;
 		main_imsg_compose_rde(IMSG_NETWORK_DEL, 0, &rr,
-		    sizeof(struct rroute));
+		    sizeof(struct kroute));
 	}
 }
 
@@ -671,20 +669,21 @@ kroute_matchgw(struct kroute_node *kr, struct in_addr nh)
 int
 kroute_insert(struct kroute_node *kr)
 {
-	struct kroute_node	*krm;
+	struct kroute_node	*krm, *krh;
 
 	kr->serial = kr_state.fib_serial;
 
-	if ((krm = RB_INSERT(kroute_tree, &krt, kr)) != NULL) {
+	if ((krh = RB_INSERT(kroute_tree, &krt, kr)) != NULL) {
 		/*
 		 * Multipath route, add at end of list.
 		 */
+		krm = krh;
 		while (krm->next != NULL)
 			krm = krm->next;
 		krm->next = kr;
 		kr->next = NULL; /* to be sure */
 	} else
-		krm = kr;
+		krh = kr;
 
 	if (!(kr->r.flags & F_KERNEL)) {
 		/* don't validate or redistribute ospf route */
@@ -697,7 +696,7 @@ kroute_insert(struct kroute_node *kr)
 	else
 		kr->r.flags |= F_DOWN;
 
-	kr_redistribute(krm);
+	kr_redistribute(krh);
 	return (0);
 }
 
@@ -1441,7 +1440,7 @@ rtmsg_process(char *buf, int len)
 
 				/* just readd, the RDE will care */
 				kr->serial = kr_state.fib_serial;
-				kr_redistribute(kr);
+				kr_redistribute(okr);
 			} else {
 add:
 				if ((kr = calloc(1,

@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_wi_usb.c,v 1.47 2010/07/02 03:13:42 tedu Exp $ */
+/*	$OpenBSD: if_wi_usb.c,v 1.50 2011/01/25 20:03:35 jakemsr Exp $ */
 
 /*
  * Copyright (c) 2003 Dale Rahn. All rights reserved.
@@ -386,9 +386,6 @@ wi_usb_attach(struct device *parent, struct device *self, void *aux)
 	sc->wi_usb_attached = 1;
 
 	kthread_create_deferred(wi_usb_start_thread, sc);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->wi_usb_udev,
-			   &sc->wi_usb_dev);
 }
 
 int
@@ -400,7 +397,10 @@ wi_usb_detach(struct device *self, int flags)
 	int s;
 	int err;
 
-	sc->wi_usb_dying = 1;
+	/* Detached before attach finished, so just bail out. */
+	if (!sc->wi_usb_attached)
+		return (0);
+
 	if (sc->wi_thread_info != NULL) {
 		sc->wi_thread_info->dying = 1;
 
@@ -409,10 +409,6 @@ wi_usb_detach(struct device *self, int flags)
 			wakeup(sc->wi_thread_info);
 	}
 
-	if (!sc->wi_usb_attached) {
-		/* Detached before attach finished, so just bail out. */
-		return (0);
-	}
 	/* tasks? */
 
 	s = splusb();
@@ -428,8 +424,10 @@ wi_usb_detach(struct device *self, int flags)
 
 	wsc->wi_flags = 0;
 
-	ether_ifdetach(ifp);
-	if_detach(ifp);
+	if (ifp->if_softc != NULL) {
+		ether_ifdetach(ifp);
+		if_detach(ifp);
+	}
 
 	sc->wi_usb_attached = 0;
 
@@ -487,8 +485,6 @@ wi_usb_detach(struct device *self, int flags)
 
 	splx(s);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->wi_usb_udev,
-	    &sc->wi_usb_dev);
 	return (0);
 }
 

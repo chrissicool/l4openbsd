@@ -1,4 +1,4 @@
-.\" $OpenBSD: envy.4,v 1.11 2010/07/31 16:56:42 ratchov Exp $
+.\" $OpenBSD: envy.4,v 1.14 2010/10/04 09:32:43 ratchov Exp $
 .\"
 .\" Copyright (c) 2007 Alexandre Ratchov <alex@caoua.org>
 .\"
@@ -14,7 +14,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: July 31 2010 $
+.Dd $Mdocdate: October 4 2010 $
 .Dt ENVY 4
 .Os
 .Sh NAME
@@ -23,6 +23,7 @@
 .Sh SYNOPSIS
 .Cd "envy* at pci?"
 .Cd "audio* at envy?"
+.Cd "midi* at envy?"
 .Sh DESCRIPTION
 The
 .Nm
@@ -30,6 +31,8 @@ driver supports sound cards based on VIA Envy24 and Envy24HT PCI chips.
 The following sound cards are currently supported:
 .Pp
 .Bl -bullet -compact -offset indent
+.It
+ESI Julia
 .It
 M-Audio Delta 1010, 1010LT, 66 and 44
 .It
@@ -39,7 +42,7 @@ M-Audio Revolution 5.1
 .It
 M-Audio Audiophile 192k
 .It
-ESI Julia
+Terratec EWX 24/96
 .It
 VIA Tremor 5.1
 .El
@@ -116,6 +119,7 @@ number of codecs physically present on the card.
 .Sh SEE ALSO
 .Xr audio 4 ,
 .Xr intro 4 ,
+.Xr midi 4 ,
 .Xr pci 4
 .Sh HISTORY
 The
@@ -123,7 +127,7 @@ The
 driver first appeared in
 .Ox 4.3 .
 .Sh BUGS
-MIDI and S/PDIF transmitter/receivers are not yet supported.
+S/PDIF transmitter/receiver is not supported.
 .Pp
 Ring buffer sizes are limited to 64kB,
 which can be limiting at high sample rates.

@@ -1,4 +1,4 @@
-/*	$OpenBSD: ar9003.c,v 1.16 2010/06/22 19:44:22 damien Exp $	*/
+/*	$OpenBSD: ar9003.c,v 1.22 2011/01/01 13:44:42 damien Exp $	*/
 
 /*-
  * Copyright (c) 2010 Damien Bergamini <damien.bergamini@free.fr>
@@ -66,8 +66,11 @@
 #include <dev/ic/ar9003reg.h>
 
 int	ar9003_attach(struct athn_softc *);
-int	ar9003_read_rom_word(struct athn_softc *, uint32_t, uint16_t *);
-int	ar9003_read_rom_data(struct athn_softc *, uint32_t, void *, int);
+int	ar9003_read_eep_word(struct athn_softc *, uint32_t, uint16_t *);
+int	ar9003_read_eep_data(struct athn_softc *, uint32_t, void *, int);
+int	ar9003_read_otp_word(struct athn_softc *, uint32_t, uint32_t *);
+int	ar9003_read_otp_data(struct athn_softc *, uint32_t, void *, int);
+int	ar9003_find_rom(struct athn_softc *);
 int	ar9003_restore_rom_block(struct athn_softc *, uint8_t, uint8_t,
 	    const uint8_t *, int);
 int	ar9003_read_rom(struct athn_softc *);
@@ -208,21 +211,30 @@ ar9003_attach(struct athn_softc *sc)
 	else
 		athn_config_pcie(sc);
 
-	/* Read entire ROM content in memory. */
-	if ((error = ar9003_read_rom(sc)) != 0) {
-		printf(": could not read ROM\n");
+	/* Determine ROM type and location. */
+	if ((error = ar9003_find_rom(sc)) != 0) {
+		printf("%s: could not find ROM\n", sc->sc_dev.dv_xname);
 		return (error);
 	}
+	/* Read entire ROM content in memory. */
+	if ((error = ar9003_read_rom(sc)) != 0) {
+		printf("%s: could not read ROM\n", sc->sc_dev.dv_xname);
+		return (error);
+	}
+
+	/* Determine if it is a non-enterprise AR9003 card. */
+	if (AR_READ(sc, AR_ENT_OTP) & AR_ENT_OTP_MPSD)
+		sc->flags |= ATHN_FLAG_NON_ENTERPRISE;
 
 	ops->setup(sc);
 	return (0);
 }
 
 /*
- * Read 16-bit value from ROM.
+ * Read 16-bit word from EEPROM.
  */
 int
-ar9003_read_rom_word(struct athn_softc *sc, uint32_t addr, uint16_t *val)
+ar9003_read_eep_word(struct athn_softc *sc, uint32_t addr, uint16_t *val)
 {
 	uint32_t reg;
 	int ntries;
@@ -242,11 +254,11 @@ ar9003_read_rom_word(struct athn_softc *sc, uint32_t addr, uint16_t *val)
 }
 
 /*
- * Read an arbitrary number of bytes at a specified address in ROM.
+ * Read an arbitrary number of bytes at a specified address in EEPROM.
  * NB: The address may not be 16-bit aligned.
  */
 int
-ar9003_read_rom_data(struct athn_softc *sc, uint32_t addr, void *buf, int len)
+ar9003_read_eep_data(struct athn_softc *sc, uint32_t addr, void *buf, int len)
 {
 	uint8_t *dst = buf;
 	uint16_t val;
@@ -255,7 +267,7 @@ ar9003_read_rom_data(struct athn_softc *sc, uint32_t addr, void *buf, int len)
 	if (len > 0 && (addr & 1)) {
 		/* Deal with non-aligned reads. */
 		addr >>= 1;
-		error = ar9003_read_rom_word(sc, addr, &val);
+		error = ar9003_read_eep_word(sc, addr, &val);
 		if (error != 0)
 			return (error);
 		*dst++ = val & 0xff;
@@ -264,14 +276,14 @@ ar9003_read_rom_data(struct athn_softc *sc, uint32_t addr, void *buf, int len)
 	} else
 		addr >>= 1;
 	for (; len >= 2; addr--, len -= 2) {
-		error = ar9003_read_rom_word(sc, addr, &val);
+		error = ar9003_read_eep_word(sc, addr, &val);
 		if (error != 0)
 			return (error);
 		*dst++ = val >> 8;
 		*dst++ = val & 0xff;
 	}
 	if (len > 0) {
-		error = ar9003_read_rom_word(sc, addr, &val);
+		error = ar9003_read_eep_word(sc, addr, &val);
 		if (error != 0)
 			return (error);
 		*dst++ = val >> 8;
@@ -279,20 +291,109 @@ ar9003_read_rom_data(struct athn_softc *sc, uint32_t addr, void *buf, int len)
 	return (0);
 }
 
+/*
+ * Read 32-bit word from OTPROM.
+ */
+int
+ar9003_read_otp_word(struct athn_softc *sc, uint32_t addr, uint32_t *val)
+{
+	uint32_t reg;
+	int ntries;
+
+	reg = AR_READ(sc, AR_OTP_BASE(addr));
+	for (ntries = 0; ntries < 1000; ntries++) {
+		reg = AR_READ(sc, AR_OTP_STATUS);
+		if (MS(reg, AR_OTP_STATUS_TYPE) == AR_OTP_STATUS_VALID) {
+			*val = AR_READ(sc, AR_OTP_READ_DATA);
+			return (0);
+		}
+		DELAY(10);
+	}
+	return (ETIMEDOUT);
+}
+
+/*
+ * Read an arbitrary number of bytes at a specified address in OTPROM.
+ * NB: The address may not be 32-bit aligned.
+ */
+int
+ar9003_read_otp_data(struct athn_softc *sc, uint32_t addr, void *buf, int len)
+{
+	uint8_t *dst = buf;
+	uint32_t val;
+	int error;
+
+	/* NB: not optimal for non-aligned reads, but correct. */
+	for (; len > 0; addr--, len--) {
+		error = ar9003_read_otp_word(sc, addr >> 2, &val);
+		if (error != 0)
+			return (error);
+		*dst++ = (val >> ((addr & 3) * 8)) & 0xff;
+	}
+	return (0);
+}
+
+/*
+ * Determine if the chip has an external EEPROM or an OTPROM and its size.
+ */
+int
+ar9003_find_rom(struct athn_softc *sc)
+{
+	struct athn_ops *ops = &sc->ops;
+	uint32_t hdr;
+	int error;
+
+	/* Try EEPROM. */
+	ops->read_rom_data = ar9003_read_eep_data;
+
+	sc->eep_size = AR_SREV_9485(sc) ? 4096 : 1024;
+	sc->eep_base = sc->eep_size - 1;
+	error = ops->read_rom_data(sc, sc->eep_base, &hdr, sizeof(hdr));
+	if (error == 0 && hdr != 0 && hdr != 0xffffffff)
+		return (0);
+
+	sc->eep_size = 512;
+	sc->eep_base = sc->eep_size - 1;
+	error = ops->read_rom_data(sc, sc->eep_base, &hdr, sizeof(hdr));
+	if (error == 0 && hdr != 0 && hdr != 0xffffffff)
+		return (0);
+
+	/* Try OTPROM. */
+	ops->read_rom_data = ar9003_read_otp_data;
+
+	sc->eep_size = 1024;
+	sc->eep_base = sc->eep_size - 1;
+	error = ops->read_rom_data(sc, sc->eep_base, &hdr, sizeof(hdr));
+	if (error == 0 && hdr != 0 && hdr != 0xffffffff)
+		return (0);
+
+	sc->eep_size = 512;
+	sc->eep_base = sc->eep_size - 1;
+	error = ops->read_rom_data(sc, sc->eep_base, &hdr, sizeof(hdr));
+	if (error == 0 && hdr != 0 && hdr != 0xffffffff)
+		return (0);
+
+	return (EIO);	/* Not found. */
+}
+
 int
 ar9003_restore_rom_block(struct athn_softc *sc, uint8_t alg, uint8_t ref,
     const uint8_t *buf, int len)
 {
-	const uint8_t *ptr, *end;
+	const uint8_t *def, *ptr, *end;
 	uint8_t *eep = sc->eep;
 	int off, clen;
 
 	if (alg == AR_EEP_COMPRESS_BLOCK) {
-		/* Block contains chunks of ROM image. */
-		if (ref != 0 && ref != 2) {
-			DPRINTF(("bad reference %d\n", ref));
+		/* Block contains chunks that shadow ROM template. */
+		def = sc->ops.get_rom_template(sc, ref);
+		if (def == NULL) {
+			DPRINTF(("unknown template image %d\n", ref));
 			return (EINVAL);
 		}
+		/* Start with template. */
+		memcpy(eep, def, sc->eep_size);
+		/* Shadow template with chunks. */
 		off = 0;	/* Offset in ROM image. */
 		ptr = buf;	/* Offset in block. */
 		end = buf + len;
@@ -326,6 +427,7 @@ ar9003_restore_rom_block(struct athn_softc *sc, uint8_t alg, uint8_t ref,
 int
 ar9003_read_rom(struct athn_softc *sc)
 {
+	struct athn_ops *ops = &sc->ops;
 	uint8_t *buf, *ptr, alg, ref;
 	uint16_t sum, rsum;
 	uint32_t hdr;
@@ -335,8 +437,6 @@ ar9003_read_rom(struct athn_softc *sc)
 	sc->eep = malloc(sc->eep_size, M_DEVBUF, M_NOWAIT);
 	if (sc->eep == NULL)
 		return (ENOMEM);
-	/* Initialize with default ROM image (little endian.) */
-	memcpy(sc->eep, sc->eep_def, sc->eep_size);
 
 	/* Allocate temporary buffer to store ROM blocks. */
 	buf = malloc(2048, M_DEVBUF, M_NOWAIT);
@@ -347,7 +447,7 @@ ar9003_read_rom(struct athn_softc *sc)
 	addr = sc->eep_base;
 	for (i = 0; i < 100; i++) {
 		/* Read block header. */
-		error = ar9003_read_rom_data(sc, addr, &hdr, sizeof(hdr));
+		error = ops->read_rom_data(sc, addr, &hdr, sizeof(hdr));
 		if (error != 0)
 			break;
 		if (hdr == 0 || hdr == 0xffffffff)
@@ -363,13 +463,13 @@ ar9003_read_rom(struct athn_softc *sc)
 		    i, alg, ref, len));
 
 		/* Read block data (len <= 0x7ff). */
-		error = ar9003_read_rom_data(sc, addr, buf, len);
+		error = ops->read_rom_data(sc, addr, buf, len);
 		if (error != 0)
 			break;
 		addr -= len;
 
 		/* Read block checksum. */
-		error = ar9003_read_rom_data(sc, addr, &sum, sizeof(sum));
+		error = ops->read_rom_data(sc, addr, &sum, sizeof(sum));
 		if (error != 0)
 			break;
 		addr -= sizeof(sum);
@@ -390,7 +490,7 @@ ar9003_read_rom(struct athn_softc *sc)
 #if BYTE_ORDER == BIG_ENDIAN
 	/* NB: ROM is always little endian. */
 	if (error == 0)
-		sc->ops.swap_rom(sc);
+		ops->swap_rom(sc);
 #endif
 	free(buf, M_DEVBUF);
 	return (error);
@@ -418,6 +518,7 @@ ar9003_gpio_write(struct athn_softc *sc, int pin, int set)
 	else
 		reg &= ~(1 << pin);
 	AR_WRITE(sc, AR_GPIO_IN_OUT, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -429,6 +530,7 @@ ar9003_gpio_config_input(struct athn_softc *sc, int pin)
 	reg &= ~(AR_GPIO_OE_OUT_DRV_M << (pin * 2));
 	reg |= AR_GPIO_OE_OUT_DRV_NO << (pin * 2);
 	AR_WRITE(sc, AR_GPIO_OE_OUT, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -449,6 +551,7 @@ ar9003_gpio_config_output(struct athn_softc *sc, int pin, int type)
 	reg &= ~(AR_GPIO_OE_OUT_DRV_M << (pin * 2));
 	reg |= AR_GPIO_OE_OUT_DRV_ALL << (pin * 2);
 	AR_WRITE(sc, AR_GPIO_OE_OUT, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -467,6 +570,7 @@ ar9003_rfsilent_init(struct athn_softc *sc)
 		AR_SETBITS(sc, AR_GPIO_INTR_POL,
 		    AR_GPIO_INTR_POL_PIN(sc->rfsilent_pin));
 	}
+	AR_WRITE_BARRIER(sc);
 }
 
 int
@@ -701,6 +805,7 @@ ar9003_reset_txsring(struct athn_softc *sc)
 	    sc->txsmap->dm_segs[0].ds_addr);
 	AR_WRITE(sc, AR_Q_STATUS_RING_END,
 	    sc->txsmap->dm_segs[0].ds_addr + sc->txsmap->dm_segs[0].ds_len);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -734,11 +839,13 @@ ar9003_rx_enable(struct athn_softc *sc)
 				AR_WRITE(sc, AR_LP_RXDP, bf->bf_daddr);
 			else
 				AR_WRITE(sc, AR_HP_RXDP, bf->bf_daddr);
+			AR_WRITE_BARRIER(sc);
 			SIMPLEQ_INSERT_TAIL(&rxq->head, bf, bf_list);
 		}
 	}
 	/* Enable Rx. */
 	AR_WRITE(sc, AR_CR, 0);
+	AR_WRITE_BARRIER(sc);
 }
 
 #if NBPFILTER > 0
@@ -855,7 +962,7 @@ ar9003_rx_process(struct athn_softc *sc, int qid)
 			ieee80211_michael_mic_failure(ic, 0);
 			/*
 			 * XXX Check that it is not a control frame
-			 * (invalid MIC failures on valid ctl frames.)
+			 * (invalid MIC failures on valid ctl frames).
 			 */
 		}
 		ifp->if_ierrors++;
@@ -949,10 +1056,12 @@ ar9003_rx_process(struct athn_softc *sc, int qid)
 		AR_WRITE(sc, AR_LP_RXDP, bf->bf_daddr);
 	else
 		AR_WRITE(sc, AR_HP_RXDP, bf->bf_daddr);
+	AR_WRITE_BARRIER(sc);
 	SIMPLEQ_INSERT_TAIL(&rxq->head, bf, bf_list);
 
 	/* Re-enable Rx. */
 	AR_WRITE(sc, AR_CR, 0);
+	AR_WRITE_BARRIER(sc);
 	return (0);
 }
 
@@ -1046,6 +1155,7 @@ ar9003_tx_process(struct athn_softc *sc)
 	/* Queue buffers that are waiting if there is new room. */
 	if (--txq->queued < AR9003_TX_QDEPTH && txq->wait != NULL) {
 		AR_WRITE(sc, AR_QTXDP(qid), txq->wait->bf_daddr);
+		AR_WRITE_BARRIER(sc);
 		txq->wait = SIMPLEQ_NEXT(txq->wait, bf_list);
 	}
 	return (0);
@@ -1168,6 +1278,7 @@ ar9003_swba_intr(struct athn_softc *sc)
 
 	/* Kick Tx. */
 	AR_WRITE(sc, AR_Q_TXE, 1 << ATHN_QID_BEACON);
+	AR_WRITE_BARRIER(sc);
 	return (0);
 }
 #endif
@@ -1200,6 +1311,8 @@ ar9003_intr(struct athn_softc *sc)
 			if (intr2 & AR_ISR_S2_TIM)
 				/* TBD */;
 			if (intr2 & AR_ISR_S2_TSFOOR)
+				/* TBD */;
+			if (intr2 & AR_ISR_S2_BB_WATCHDOG)
 				/* TBD */;
 		}
 		intr = AR_READ(sc, AR_ISR_RAC);
@@ -1529,12 +1642,29 @@ ar9003_tx(struct athn_softc *sc, struct mbuf *m, struct ieee80211_node *ni,
 	    SM(AR_TXC16_PACKET_DUR2, series[2].dur) |
 	    SM(AR_TXC16_PACKET_DUR3, series[3].dur);
 
-	/* Use the same Tx chains for all tries. */
-	ds->ds_ctl18 =
-	    SM(AR_TXC18_CHAIN_SEL0, sc->txchainmask) |
-	    SM(AR_TXC18_CHAIN_SEL1, sc->txchainmask) |
-	    SM(AR_TXC18_CHAIN_SEL2, sc->txchainmask) |
-	    SM(AR_TXC18_CHAIN_SEL3, sc->txchainmask);
+	if ((sc->flags & ATHN_FLAG_3TREDUCE_CHAIN) &&
+	    ic->ic_curmode == IEEE80211_MODE_11A) {
+		/*
+		 * In order to not exceed PCIe power requirements, we only
+		 * use two Tx chains for MCS0~15 on 5GHz band on these chips.
+		 */
+		ds->ds_ctl18 =
+		    SM(AR_TXC18_CHAIN_SEL0,
+			(ridx[0] <= ATHN_RIDX_MCS15) ? 0x3 : sc->txchainmask) |
+		    SM(AR_TXC18_CHAIN_SEL1,
+			(ridx[1] <= ATHN_RIDX_MCS15) ? 0x3 : sc->txchainmask) |
+		    SM(AR_TXC18_CHAIN_SEL2,
+			(ridx[2] <= ATHN_RIDX_MCS15) ? 0x3 : sc->txchainmask) |
+		    SM(AR_TXC18_CHAIN_SEL3,
+			(ridx[3] <= ATHN_RIDX_MCS15) ? 0x3 : sc->txchainmask);
+	} else {
+		/* Use the same Tx chains for all tries. */
+		ds->ds_ctl18 =
+		    SM(AR_TXC18_CHAIN_SEL0, sc->txchainmask) |
+		    SM(AR_TXC18_CHAIN_SEL1, sc->txchainmask) |
+		    SM(AR_TXC18_CHAIN_SEL2, sc->txchainmask) |
+		    SM(AR_TXC18_CHAIN_SEL3, sc->txchainmask);
+	}
 #ifdef notyet
 #ifndef IEEE80211_NO_HT
 	/* Use the same short GI setting for all tries. */
@@ -1555,7 +1685,7 @@ ar9003_tx(struct athn_softc *sc, struct mbuf *m, struct ieee80211_node *ni,
 			ds->ds_ctl15 |= AR_TXC15_RTSCTS_QUAL01;
 			ds->ds_ctl16 |= AR_TXC16_RTSCTS_QUAL23;
 		}
-		/* Select protection rate (suboptimal but ok.) */
+		/* Select protection rate (suboptimal but ok). */
 		protridx = (ic->ic_curmode == IEEE80211_MODE_11A) ?
 		    ATHN_RIDX_OFDM6 : ATHN_RIDX_CCK2;
 		if (ds->ds_ctl11 & AR_TXC11_RTS_ENABLE) {
@@ -1606,9 +1736,10 @@ ar9003_tx(struct athn_softc *sc, struct mbuf *m, struct ieee80211_node *ni,
 	SIMPLEQ_INSERT_TAIL(&txq->head, bf, bf_list);
 
 	/* Queue buffer unless hardware FIFO is already full. */
-	if (++txq->queued <= AR9003_TX_QDEPTH)
+	if (++txq->queued <= AR9003_TX_QDEPTH) {
 		AR_WRITE(sc, AR_QTXDP(qid), bf->bf_daddr);
-	else if (txq->wait == NULL)
+		AR_WRITE_BARRIER(sc);
+	} else if (txq->wait == NULL)
 		txq->wait = bf;
 	return (0);
 }
@@ -1625,6 +1756,7 @@ ar9003_set_rf_mode(struct athn_softc *sc, struct ieee80211_channel *c)
 		reg |= AR_PHY_MODE_DYNAMIC | AR_PHY_MODE_DYN_CCK_DISABLE;
 	}
 	AR_WRITE(sc, AR_PHY_MODE, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 static __inline uint32_t
@@ -1664,6 +1796,7 @@ ar9003_rf_bus_release(struct athn_softc *sc)
 
 	/* Release the RF Bus grant. */
 	AR_WRITE(sc, AR_PHY_RFBUS_REQ, 0);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1693,6 +1826,7 @@ ar9003_set_phy(struct athn_softc *sc, struct ieee80211_channel *c,
 	AR_WRITE(sc, AR_GTXTO, SM(AR_GTXTO_TIMEOUT_LIMIT, 25));
 	/* Set carrier sense timeout. */
 	AR_WRITE(sc, AR_CST, SM(AR_CST_TIMEOUT_LIMIT, 15));
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1720,6 +1854,7 @@ ar9003_set_delta_slope(struct athn_softc *sc, struct ieee80211_channel *c,
 	reg = RW(reg, AR_PHY_SGI_DSC_EXP, exp);
 	reg = RW(reg, AR_PHY_SGI_DSC_MAN, man);
 	AR_WRITE(sc, AR_PHY_SGI_DELTA, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1727,6 +1862,7 @@ ar9003_enable_antenna_diversity(struct athn_softc *sc)
 {
 	AR_SETBITS(sc, AR_PHY_CCK_DETECT,
 	    AR_PHY_CCK_DETECT_BB_ENABLE_ANT_FAST_DIV);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1737,6 +1873,7 @@ ar9003_init_baseband(struct athn_softc *sc)
 	synth_delay = ar9003_synth_delay(sc);
 	/* Activate the PHY (includes baseband activate and synthesizer on). */
 	AR_WRITE(sc, AR_PHY_ACTIVE, AR_PHY_ACTIVE_EN);
+	AR_WRITE_BARRIER(sc);
 	DELAY(AR_BASE_PHY_ACTIVE_DELAY + synth_delay);
 }
 
@@ -1744,6 +1881,7 @@ void
 ar9003_disable_phy(struct athn_softc *sc)
 {
 	AR_WRITE(sc, AR_PHY_ACTIVE, AR_PHY_ACTIVE_DIS);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1756,7 +1894,15 @@ ar9003_init_chains(struct athn_softc *sc)
 	AR_WRITE(sc, AR_PHY_RX_CHAINMASK,  sc->rxchainmask);
 	AR_WRITE(sc, AR_PHY_CAL_CHAINMASK, sc->rxchainmask);
 
-	AR_WRITE(sc, AR_SELFGEN_MASK, sc->txchainmask);
+	if (sc->flags & ATHN_FLAG_3TREDUCE_CHAIN) {
+		/*
+		 * All self-generated frames are sent using two Tx chains
+		 * on these chips to not exceed PCIe power requirements.
+		 */
+		AR_WRITE(sc, AR_SELFGEN_MASK, 0x3);
+	} else
+		AR_WRITE(sc, AR_SELFGEN_MASK, sc->txchainmask);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1765,13 +1911,14 @@ ar9003_set_rxchains(struct athn_softc *sc)
 	if (sc->rxchainmask == 0x3 || sc->rxchainmask == 0x5) {
 		AR_WRITE(sc, AR_PHY_RX_CHAINMASK,  sc->rxchainmask);
 		AR_WRITE(sc, AR_PHY_CAL_CHAINMASK, sc->rxchainmask);
+		AR_WRITE_BARRIER(sc);
 	}
 }
 
 void
 ar9003_read_noisefloor(struct athn_softc *sc, int16_t *nf, int16_t *nf_ext)
 {
-/* Sign-extends 9-bit value (assumes upper bits are zeroes.) */
+/* Sign-extends 9-bit value (assumes upper bits are zeroes). */
 #define SIGN_EXT(v)	(((v) ^ 0x100) - 0x100)
 	uint32_t reg;
 	int i;
@@ -1803,6 +1950,7 @@ ar9003_write_noisefloor(struct athn_softc *sc, int16_t *nf, int16_t *nf_ext)
 		reg = RW(reg, AR_PHY_EXT_MAXCCA_PWR, nf_ext[i]);
 		AR_WRITE(sc, AR_PHY_EXT_CCA(i), reg);
 	}
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -1902,14 +2050,18 @@ ar9003_init_calib(struct athn_softc *sc)
 	/* Save chains masks. */
 	txchainmask = sc->txchainmask;
 	rxchainmask = sc->rxchainmask;
-	/* Configure for 3-chain mode before calibration. */
-	txchainmask = rxchainmask = 0x7;
+	/* Configure hardware before calibration. */
+	if (AR_READ(sc, AR_ENT_OTP) & AR_ENT_OTP_CHAIN2_DISABLE)
+		txchainmask = rxchainmask = 0x3;
+	else
+		txchainmask = rxchainmask = 0x7;
 	ar9003_init_chains(sc);
 
 	/* Perform Tx IQ calibration. */
 	ar9003_calib_tx_iq(sc);
 	/* Disable and re-enable the PHY chips. */
 	AR_WRITE(sc, AR_PHY_ACTIVE, AR_PHY_ACTIVE_DIS);
+	AR_WRITE_BARRIER(sc);
 	DELAY(5);
 	AR_WRITE(sc, AR_PHY_ACTIVE, AR_PHY_ACTIVE_EN);
 
@@ -1944,11 +2096,13 @@ ar9003_do_calib(struct athn_softc *sc)
 		AR_WRITE(sc, AR_PHY_TIMING4, reg);
 		AR_WRITE(sc, AR_PHY_CALMODE, AR_PHY_CALMODE_IQ);
 		AR_SETBITS(sc, AR_PHY_TIMING4, AR_PHY_TIMING4_DO_CAL);
+		AR_WRITE_BARRIER(sc);
 	} else if (sc->cur_calib_mask & ATHN_CAL_TEMP) {
 		AR_SETBITS(sc, AR_PHY_65NM_CH0_THERM,
 		    AR_PHY_65NM_CH0_THERM_LOCAL);
 		AR_SETBITS(sc, AR_PHY_65NM_CH0_THERM,
 		    AR_PHY_65NM_CH0_THERM_START);
+		AR_WRITE_BARRIER(sc);
 	}
 }
 
@@ -2023,6 +2177,7 @@ ar9003_calib_iq(struct athn_softc *sc)
 	/* Apply new settings. */
 	AR_SETBITS(sc, AR_PHY_RX_IQCAL_CORR_B(0),
 	    AR_PHY_RX_IQCAL_CORR_IQCORR_ENABLE);
+	AR_WRITE_BARRIER(sc);
 
 	/* IQ calibration done. */
 	sc->cur_calib_mask &= ~ATHN_CAL_IQ;
@@ -2033,7 +2188,7 @@ ar9003_calib_iq(struct athn_softc *sc)
 int
 ar9003_get_iq_corr(struct athn_softc *sc, int32_t res[6], int32_t coeff[2])
 {
-/* Sign-extends 12-bit value (assumes upper bits are zeroes.) */
+/* Sign-extends 12-bit value (assumes upper bits are zeroes). */
 #define SIGN_EXT(v)	(((v) ^ 0x800) - 0x800)
 #define SCALE		(1 << 15)
 #define SHIFT		(1 <<  8)
@@ -2088,7 +2243,7 @@ ar9003_get_iq_corr(struct athn_softc *sc, int32_t res[6], int32_t coeff[2])
 		cos[i] = (cos[i] * SCALE) / div;
 	}
 
-	/* Compute IQ mismatch (solve 4x4 linear equation.) */
+	/* Compute IQ mismatch (solve 4x4 linear equation). */
 	f1 = cos[0] - cos[1];
 	f3 = sin[0] - sin[1];
 	f2 = (f1 * f1 + f3 * f3) / SCALE;
@@ -2110,7 +2265,7 @@ ar9003_get_iq_corr(struct athn_softc *sc, int32_t res[6], int32_t coeff[2])
 	/* Compute Rx phase mismatch. */
 	rxphs = phs[0][0] + (sin[0] * txmag - cos[0] * txphs) / SCALE;
 
-	if (rxmag == SCALE)
+	if (-rxmag == SCALE)
 		return (1);	/* Prevent division by 0. */
 
 	txmag = (txmag * SCALE) / (SCALE - txmag);
@@ -2209,6 +2364,7 @@ ar9003_calib_tx_iq(struct athn_softc *sc)
 		reg = RW(reg, AR_PHY_RX_IQCAL_CORR_LOOPBACK_IQCORR_Q_I_COFF,
 		    coeff[1]);
 		AR_WRITE(sc, AR_PHY_RX_IQCAL_CORR_B(i), reg);
+		AR_WRITE_BARRIER(sc);
 	}
 
 	/* Enable Tx IQ correction. */
@@ -2216,6 +2372,7 @@ ar9003_calib_tx_iq(struct athn_softc *sc)
 	    AR_PHY_TX_IQCAL_CONTROL_3_IQCORR_EN);
 	AR_SETBITS(sc, AR_PHY_RX_IQCAL_CORR_B(0),
 	    AR_PHY_RX_IQCAL_CORR_B0_LOOPBACK_IQCORR_EN);
+	AR_WRITE_BARRIER(sc);
 	return (0);
 }
 #undef DELPT
@@ -2282,6 +2439,7 @@ ar9003_paprd_calib(struct athn_softc *sc, struct ieee80211_channel *c)
 		AR_CLRBITS(sc, AR_PHY_PAPRD_CTRL0_B(i),
 		    AR_PHY_PAPRD_CTRL0_PAPRD_ENABLE);
 	}
+	AR_WRITE_BARRIER(sc);
 
 	/*
 	 * Configure training signal.
@@ -2303,7 +2461,10 @@ ar9003_paprd_calib(struct athn_softc *sc, struct ieee80211_channel *c)
 	reg = RW(reg, AR_PHY_PAPRD_TRAINER_CNTL3_COARSE_CORR_LEN, 4);
 	reg = RW(reg, AR_PHY_PAPRD_TRAINER_CNTL3_NUM_CORR_STAGES, 7);
 	reg = RW(reg, AR_PHY_PAPRD_TRAINER_CNTL3_MIN_LOOPBACK_DEL, 1);
-	reg = RW(reg, AR_PHY_PAPRD_TRAINER_CNTL3_QUICK_DROP, -6);
+	if (AR_SREV_9485(sc))
+		reg = RW(reg, AR_PHY_PAPRD_TRAINER_CNTL3_QUICK_DROP, -3);
+	else
+		reg = RW(reg, AR_PHY_PAPRD_TRAINER_CNTL3_QUICK_DROP, -6);
 	reg = RW(reg, AR_PHY_PAPRD_TRAINER_CNTL3_ADC_DESIRED_SIZE, -15);
 	reg |= AR_PHY_PAPRD_TRAINER_CNTL3_BBTXMIX_DISABLE;
 	AR_WRITE(sc, AR_PHY_PAPRD_TRAINER_CNTL3, reg);
@@ -2324,7 +2485,7 @@ ar9003_paprd_calib(struct athn_softc *sc, struct ieee80211_channel *c)
 	for (i = 0; i < AR9003_TX_GAIN_TABLE_SIZE; i++)
 		sc->txgain[i] = AR_READ(sc, AR_PHY_TXGAIN_TABLE(i));
 
-	/* Set Tx power of training signal (use setting for MCS0.) */
+	/* Set Tx power of training signal (use setting for MCS0). */
 	sc->trainpow = MS(AR_READ(sc, AR_PHY_PWRTX_RATE5),
 	    AR_PHY_PWRTX_RATE5_POWERTXHT20_0) - 4;
 
@@ -2339,6 +2500,7 @@ ar9003_paprd_calib(struct athn_softc *sc, struct ieee80211_channel *c)
 	/* Make sure training done bit is clear. */
 	AR_CLRBITS(sc, AR_PHY_PAPRD_TRAINER_STAT1,
 	    AR_PHY_PAPRD_TRAINER_STAT1_TRAIN_DONE);
+	AR_WRITE_BARRIER(sc);
 
 	/* Transmit training signal. */
 	ar9003_paprd_tx_tone(sc);
@@ -2406,6 +2568,7 @@ ar9003_force_txgain(struct athn_softc *sc, uint32_t txgain)
 	reg = RW(reg, AR_PHY_TPC_1_FORCED_DAC_GAIN, 0);
 	reg &= ~AR_PHY_TPC_1_FORCE_DAC_GAIN;
 	AR_WRITE(sc, AR_PHY_TPC_1, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -2415,7 +2578,7 @@ ar9003_set_training_gain(struct athn_softc *sc, int chain)
 
 	/*
 	 * Get desired gain for training signal power (take into account
-	 * current temperature/voltage.)
+	 * current temperature/voltage).
 	 */
 	gain = ar9003_get_desired_txgain(sc, chain, sc->trainpow);
 	/* Find entry in table. */
@@ -2465,7 +2628,7 @@ get_scale(int val)
 {
 	int log = 0;
 
-	/* Find the log base 2 (position of highest bit set.) */
+	/* Find the log base 2 (position of highest bit set). */
 	while (val >>= 1)
 		log++;
 
@@ -2651,7 +2814,7 @@ ar9003_compute_predistortion(struct athn_softc *sc, const uint32_t *lo,
 		sc->pa_in[chain][i] = in;
 	}
 
-	/* Compute average theta of first 5 bins (linear region.) */
+	/* Compute average theta of first 5 bins (linear region). */
 	tavg = 0;
 	for (i = 1; i <= 5; i++)
 		tavg += t[i];
@@ -2742,7 +2905,7 @@ ar9003_enable_predistorter(struct athn_softc *sc, int chain)
 	reg = RW(reg, AR_PHY_PA_GAIN123_PA_GAIN1, sc->gain1[chain]);
 	AR_WRITE(sc, AR_PHY_PA_GAIN123_B(chain), reg);
 
-	/* Indicate Tx power used for calibration (training signal.) */
+	/* Indicate Tx power used for calibration (training signal). */
 	reg = AR_READ(sc, AR_PHY_PAPRD_CTRL1_B(chain));
 	reg = RW(reg, AR_PHY_PAPRD_CTRL1_POWER_AT_AM2AM_CAL, sc->trainpow);
 	AR_WRITE(sc, AR_PHY_PAPRD_CTRL1_B(chain), reg);
@@ -2750,6 +2913,7 @@ ar9003_enable_predistorter(struct athn_softc *sc, int chain)
 	/* Enable digital predistorter for this chain. */
 	AR_SETBITS(sc, AR_PHY_PAPRD_CTRL0_B(chain),
 	    AR_PHY_PAPRD_CTRL0_PAPRD_ENABLE);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -2870,6 +3034,7 @@ ar9003_write_txpower(struct athn_softc *sc, int16_t power[ATHN_POWER_COUNT])
 	    (power[ATHN_POWER_HT40(15)] & 0x3f) <<  8 |
 	    (power[ATHN_POWER_HT40(14)] & 0x3f));
 #endif
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -2886,6 +3051,7 @@ ar9003_reset_rx_gain(struct athn_softc *sc, struct ieee80211_channel *c)
 		pvals = prog->vals_5g;
 	for (i = 0; i < prog->nregs; i++)
 		AR_WRITE(sc, X(prog->regs[i]), pvals[i]);
+	AR_WRITE_BARRIER(sc);
 #undef X
 }
 
@@ -2903,6 +3069,7 @@ ar9003_reset_tx_gain(struct athn_softc *sc, struct ieee80211_channel *c)
 		pvals = prog->vals_5g;
 	for (i = 0; i < prog->nregs; i++)
 		AR_WRITE(sc, X(prog->regs[i]), pvals[i]);
+	AR_WRITE_BARRIER(sc);
 #undef X
 }
 
@@ -2924,6 +3091,8 @@ ar9003_hw_init(struct athn_softc *sc, struct ieee80211_channel *c,
 	DPRINTFN(4, ("writing pre and core init vals\n"));
 	for (i = 0; i < ini->ncmregs; i++) {
 		AR_WRITE(sc, X(ini->cmregs[i]), ini->cmvals[i]);
+		if (AR_IS_ANALOG_REG(X(ini->cmregs[i])))
+			DELAY(100);
 		if ((i & 0x1f) == 0)
 			DELAY(1);
 	}
@@ -2949,6 +3118,8 @@ ar9003_hw_init(struct athn_softc *sc, struct ieee80211_channel *c,
 	DPRINTFN(4, ("writing post init vals\n"));
 	for (i = 0; i < ini->nregs; i++) {
 		AR_WRITE(sc, X(ini->regs[i]), pvals[i]);
+		if (AR_IS_ANALOG_REG(X(ini->regs[i])))
+			DELAY(100);
 		if ((i & 0x1f) == 0)
 			DELAY(1);
 	}
@@ -2970,6 +3141,8 @@ ar9003_hw_init(struct athn_softc *sc, struct ieee80211_channel *c,
 		DPRINTFN(4, ("writing fast pll clock init vals\n"));
 		for (i = 0; i < ini->nfastregs; i++) {
 			AR_WRITE(sc, X(ini->fastregs[i]), pvals[i]);
+			if (AR_IS_ANALOG_REG(X(ini->fastregs[i])))
+				DELAY(100);
 			if ((i & 0x1f) == 0)
 				DELAY(1);
 		}
@@ -2986,6 +3159,7 @@ ar9003_hw_init(struct athn_softc *sc, struct ieee80211_channel *c,
 	reg |= AR_PCU_MISC_MODE2_AGG_WEP_ENABLE_FIX;
 	reg |= AR_PCU_MISC_MODE2_ENABLE_AGGWEP;
 	AR_WRITE(sc, AR_PCU_MISC_MODE2, reg);
+	AR_WRITE_BARRIER(sc);
 
 	ar9003_set_phy(sc, c, extc);
 	ar9003_init_chains(sc);
@@ -3079,6 +3253,7 @@ ar9003_set_noise_immunity_level(struct athn_softc *sc, int level)
 	reg = AR_READ(sc, AR_PHY_FIND_SIG);
 	reg = RW(reg, AR_PHY_FIND_SIG_FIRPWR, high ? -80 : -78);
 	AR_WRITE(sc, AR_PHY_FIND_SIG, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -3107,6 +3282,7 @@ ar9003_enable_ofdm_weak_signal(struct athn_softc *sc)
 
 	AR_SETBITS(sc, AR_PHY_SFCORR_LOW,
 	    AR_PHY_SFCORR_LOW_USE_SELF_CORR_LOW);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -3135,6 +3311,7 @@ ar9003_disable_ofdm_weak_signal(struct athn_softc *sc)
 
 	AR_CLRBITS(sc, AR_PHY_SFCORR_LOW,
 	    AR_PHY_SFCORR_LOW_USE_SELF_CORR_LOW);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -3145,6 +3322,7 @@ ar9003_set_cck_weak_signal(struct athn_softc *sc, int high)
 	reg = AR_READ(sc, AR_PHY_CCK_DETECT);
 	reg = RW(reg, AR_PHY_CCK_DETECT_WEAK_SIG_THR_CCK, high ? 6 : 8);
 	AR_WRITE(sc, AR_PHY_CCK_DETECT, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -3155,6 +3333,7 @@ ar9003_set_firstep_level(struct athn_softc *sc, int level)
 	reg = AR_READ(sc, AR_PHY_FIND_SIG);
 	reg = RW(reg, AR_PHY_FIND_SIG_FIRSTEP, level * 4);
 	AR_WRITE(sc, AR_PHY_FIND_SIG, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -3165,4 +3344,5 @@ ar9003_set_spur_immunity_level(struct athn_softc *sc, int level)
 	reg = AR_READ(sc, AR_PHY_TIMING5);
 	reg = RW(reg, AR_PHY_TIMING5_CYCPWR_THR1, (level + 1) * 2);
 	AR_WRITE(sc, AR_PHY_TIMING5, reg);
+	AR_WRITE_BARRIER(sc);
 }

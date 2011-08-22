@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile.inc,v 1.10 2010/01/19 19:55:53 miod Exp $
+#	$OpenBSD: Makefile.inc,v 1.12 2011/01/14 17:18:50 deraadt Exp $
 
 kernels: bsd bootblocks
 	cp ${.CURDIR}/../sys/arch/sgi/compile/GENERIC-IP27/bsd \

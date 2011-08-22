@@ -1,4 +1,4 @@
-/*	$OpenBSD: mpcpcibus.c,v 1.40 2009/08/22 02:54:50 mk Exp $ */
+/*	$OpenBSD: mpcpcibus.c,v 1.42 2011/01/08 18:10:23 deraadt Exp $ */
 
 /*
  * Copyright (c) 1997 Per Fogelstrom
@@ -61,6 +61,7 @@ void	mpc_attach_hook(struct device *, struct device *,
 int	mpc_bus_maxdevs(void *, int);
 pcitag_t mpc_make_tag(void *, int, int, int);
 void	mpc_decompose_tag(void *, pcitag_t, int *, int *, int *);
+int	mpc_conf_size(void *, pcitag_t);
 pcireg_t mpc_conf_read(void *, pcitag_t, int);
 void	mpc_conf_write(void *, pcitag_t, int, pcireg_t);
 
@@ -437,6 +438,7 @@ mpcpcibrattach(struct device *parent, struct device *self, void *aux)
 	lcp->lc_pc.pc_bus_maxdevs = mpc_bus_maxdevs;
 	lcp->lc_pc.pc_make_tag = mpc_make_tag;
 	lcp->lc_pc.pc_decompose_tag = mpc_decompose_tag;
+	lcp->lc_pc.pc_conf_size = mpc_conf_size;
 	lcp->lc_pc.pc_conf_read = mpc_conf_read;
 	lcp->lc_pc.pc_conf_write = mpc_conf_write;
 	lcp->lc_pc.pc_ether_hw_addr = of_ether_hw_addr;
@@ -518,11 +520,11 @@ find_node_intr(int parent, u_int32_t *addr, u_int32_t *intr)
 	int iparent, len, mlen, alen, ilen;
 	int match, i, step;
 	u_int32_t map[144], *mp, *mp1;
-	u_int32_t imask[8], maskedaddr[8];
+	u_int32_t cpu_imask[8], maskedaddr[8];
 	u_int32_t address_cells, interrupt_cells, mask_cells;
 
 	len = OF_getprop(parent, "interrupt-map", map, sizeof(map));
-	mlen = OF_getprop(parent, "interrupt-map-mask", imask, sizeof(imask));
+	mlen = OF_getprop(parent, "interrupt-map-mask", cpu_imask, sizeof(cpu_imask));
 	alen = OF_getprop(parent, "#address-cells",
 	    &address_cells, sizeof(address_cells));
 	ilen = OF_getprop(parent, "#interrupt-cells",
@@ -535,7 +537,7 @@ find_node_intr(int parent, u_int32_t *addr, u_int32_t *intr)
 	if (mask_cells != (mlen / sizeof(u_int32_t)))
 		goto nomap;
 	for (i = 0; i < mask_cells; i++)
-		maskedaddr[i] = addr[i] & imask[i];
+		maskedaddr[i] = addr[i] & cpu_imask[i];
 
 	/* interrupt-map is formatted as follows
 	 * int * #address-cells, int * #interrupt-cells, int, int, int
@@ -768,6 +770,12 @@ mpc_gen_config_reg(void *cpv, pcitag_t tag, int offset)
 	return reg;
 }
 
+int
+mpc_conf_size(void *cpv, pcitag_t tag)
+{
+	return PCI_CONFIG_SPACE_SIZE;
+}
+
 /* #define DEBUG_CONFIG  */
 pcireg_t
 mpc_conf_read(void *cpv, pcitag_t tag, int offset)
@@ -780,7 +788,8 @@ mpc_conf_read(void *cpv, pcitag_t tag, int offset)
 	faultbuf env;
 	void *oldh;
 
-	if (offset & 3 || offset < 0 || offset >= 0x100) {
+	if (offset & 3 ||
+	    offset < 0 || offset >= PCI_CONFIG_SPACE_SIZE) {
 #ifdef DEBUG_CONFIG 
 		printf ("pci_conf_read: bad reg %x\n", offset);
 #endif /* DEBUG_CONFIG */

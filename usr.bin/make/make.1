@@ -1,4 +1,4 @@
-.\"	$OpenBSD: make.1,v 1.88 2010/07/19 21:43:17 espie Exp $
+.\"	$OpenBSD: make.1,v 1.91 2011/01/23 20:43:55 schwarze Exp $
 .\"	$NetBSD: make.1,v 1.18 1997/03/10 21:19:53 christos Exp $
 .\"
 .\" Copyright (c) 1990, 1993
@@ -30,7 +30,7 @@
 .\"
 .\"	from: @(#)make.1	8.4 (Berkeley) 3/19/94
 .\"
-.Dd $Mdocdate: July 19 2010 $
+.Dd $Mdocdate: January 23 2011 $
 .Dt MAKE 1
 .Os
 .Sh NAME
@@ -1093,13 +1093,9 @@ is found.
 For loops are typically used to apply a set of rules to a list of files.
 The syntax of a for loop is:
 .Bd -unfilled -offset indent
-.Xo
-.Ic .for Ar variable Op Ar variable ...
-.Ic in
-.Ar expression
-.Xc
+.Ic .for Ar variable Oo Ar variable ... Oc Ic in Ar expression
 	<make-rules>
-.Ic \&.endfor
+.Ic .endfor
 .Ed
 .Pp
 After the for
@@ -1339,6 +1335,25 @@ default
 .Ev MAKEOBJDIRPREFIX
 directory
 .El
+.Sh EXIT STATUS
+If
+.Fl q
+was specified, the
+.Nm
+utility exits with one of the following values:
+.Pp
+.Bl -tag -width Ds -offset indent -compact
+.It 0
+Normal behavior.
+.It 1
+The target was not up-to date.
+.It \*(Gt1
+An error occurred.
+.El
+.Pp
+Otherwise, the
+.Nm
+utility exits with a value of 0 on success, and \*(Gt0 if an error occurred.
 .Sh SEE ALSO
 .Xr ed 1 ,
 .Xr mkdep 1 ,
@@ -1346,9 +1361,6 @@ directory
 .Xr getcwd 3 ,
 .Xr regex 3 ,
 .Xr uname 3
-.Pp
-"Make \(em A Tutorial",
-.Pa /usr/share/doc/psd/12.make/ .
 .Sh STANDARDS
 The
 .Nm

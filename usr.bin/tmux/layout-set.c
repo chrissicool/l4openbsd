@@ -1,4 +1,4 @@
-/* $OpenBSD: layout-set.c,v 1.6 2010/04/25 20:28:13 nicm Exp $ */
+/* $OpenBSD: layout-set.c,v 1.8 2010/12/19 18:35:08 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -135,10 +135,9 @@ layout_set_even_h(struct window *w)
 		return;
 
 	/* How many can we fit? */
-	if (w->sx / n < PANE_MINIMUM + 1)
-		width = PANE_MINIMUM + 1;
-	else
-		width = w->sx / n;
+	width = (w->sx - (n - 1)) / n;
+	if (width < PANE_MINIMUM)
+		width = PANE_MINIMUM;
 
 	/* Free the old root and construct a new. */
 	layout_free(w);
@@ -151,12 +150,12 @@ layout_set_even_h(struct window *w)
 	TAILQ_FOREACH(wp, &w->panes, entry) {
 		/* Create child cell. */
 		lcnew = layout_create_cell(lc);
-		layout_set_size(lcnew, width - 1, w->sy, xoff, 0);
+		layout_set_size(lcnew, width, w->sy, xoff, 0);
 		layout_make_leaf(lcnew, wp);
 		TAILQ_INSERT_TAIL(&lc->cells, lcnew, entry);
 
 		i++;
-		xoff += width;
+		xoff += width + 1;
 	}
 
 	/* Allocate any remaining space. */
@@ -189,10 +188,9 @@ layout_set_even_v(struct window *w)
 		return;
 
 	/* How many can we fit? */
-	if (w->sy / n < PANE_MINIMUM + 1)
-		height = PANE_MINIMUM + 1;
-	else
-		height = w->sy / n;
+	height = (w->sy - (n - 1)) / n;
+	if (height < PANE_MINIMUM)
+		height = PANE_MINIMUM;
 
 	/* Free the old root and construct a new. */
 	layout_free(w);
@@ -205,12 +203,12 @@ layout_set_even_v(struct window *w)
 	TAILQ_FOREACH(wp, &w->panes, entry) {
 		/* Create child cell. */
 		lcnew = layout_create_cell(lc);
-		layout_set_size(lcnew, w->sx, height - 1, 0, yoff);
+		layout_set_size(lcnew, w->sx, height, 0, yoff);
 		layout_make_leaf(lcnew, wp);
 		TAILQ_INSERT_TAIL(&lc->cells, lcnew, entry);
 
 		i++;
-		yoff += height;
+		yoff += height + 1;
 	}
 
 	/* Allocate any remaining space. */
@@ -233,8 +231,8 @@ layout_set_main_h(struct window *w)
 {
 	struct window_pane	*wp;
 	struct layout_cell	*lc, *lcmain, *lcrow, *lcchild;
-	u_int			 n, mainheight, width, height, used;
-	u_int			 i, j, columns, rows, totalrows;
+	u_int			 n, mainheight, otherheight, width, height;
+	u_int			 used, i, j, columns, rows, totalrows;
 
 	layout_print_cell(w->layout_root, __func__, 1);
 
@@ -244,16 +242,26 @@ layout_set_main_h(struct window *w)
 		return;
 	n--;	/* take off main pane */
 
-	/* How many rows and columns will be needed? */
-	columns = w->sx / (PANE_MINIMUM + 1);	/* maximum columns */
+	/* How many rows and columns will be needed, not counting main? */
+	columns = (w->sx + 1) / (PANE_MINIMUM + 1);	/* maximum columns */
 	if (columns == 0)
 		columns = 1;
 	rows = 1 + (n - 1) / columns;
 	columns = 1 + (n - 1) / rows;
-	width = w->sx / columns;
+	width = (w->sx - (n - 1)) / columns;
 
 	/* Get the main pane height and add one for separator line. */
 	mainheight = options_get_number(&w->options, "main-pane-height") + 1;
+
+	/* Get the optional other pane height and add one for separator line. */
+	otherheight = options_get_number(&w->options, "other-pane-height") + 1;
+
+	/*
+	 * If an other pane height was specified, honour it so long as it
+	 * doesn't shrink the main height to less than the main-pane-height
+	 */
+	if (otherheight > 1 && w->sx - otherheight > mainheight)
+		mainheight = w->sx - otherheight;
 	if (mainheight < PANE_MINIMUM + 1)
 		mainheight = PANE_MINIMUM + 1;
 
@@ -264,14 +272,14 @@ layout_set_main_h(struct window *w)
 			mainheight = PANE_MINIMUM + 2;
 		else
 			mainheight = w->sy - totalrows;
-		height = PANE_MINIMUM + 1;
+		height = PANE_MINIMUM;
 	} else
-		height = (w->sy - mainheight) / rows;
+		height = (w->sy - mainheight - (rows - 1)) / rows;
 
 	/* Free old tree and create a new root. */
 	layout_free(w);
 	lc = w->layout_root = layout_create_cell(NULL);
-	layout_set_size(lc, w->sx, mainheight + rows * height, 0, 0);
+	layout_set_size(lc, w->sx, mainheight + rows * (height + 1) - 1, 0, 0);
 	layout_make_node(lc, LAYOUT_TOPBOTTOM);
 
 	/* Create the main pane. */
@@ -289,7 +297,7 @@ layout_set_main_h(struct window *w)
 
 		/* Create the new row. */
 		lcrow = layout_create_cell(lc);
-		layout_set_size(lcrow, w->sx, height - 1, 0, 0);
+		layout_set_size(lcrow, w->sx, height, 0, 0);
 		TAILQ_INSERT_TAIL(&lc->cells, lcrow, entry);
 
 		/* If only one column, just use the row directly. */
@@ -304,7 +312,7 @@ layout_set_main_h(struct window *w)
 		for (i = 0; i < columns; i++) {
 			/* Create and add a pane cell. */
 			lcchild = layout_create_cell(lcrow);
-			layout_set_size(lcchild, width - 1, height - 1, 0, 0);
+			layout_set_size(lcchild, width, height, 0, 0);
 			layout_make_leaf(lcchild, wp);
 			TAILQ_INSERT_TAIL(&lcrow->cells, lcchild, entry);
 
@@ -316,7 +324,7 @@ layout_set_main_h(struct window *w)
 		/* Adjust the row to fit the full width if necessary. */
 		if (i == columns)
 			i--;
-		used = ((i + 1) * width) - 1;
+		used = ((i + 1) * (width + 1)) - 1;
 		if (w->sx <= used)
 			continue;
 		lcchild = TAILQ_LAST(&lcrow->cells, layout_cells);
@@ -324,7 +332,7 @@ layout_set_main_h(struct window *w)
 	}
 
 	/* Adjust the last row height to fit if necessary. */
-	used = mainheight + (rows * height) - 1;
+	used = mainheight + (rows * height) + rows - 1;
 	if (w->sy > used) {
 		lcrow = TAILQ_LAST(&lc->cells, layout_cells);
 		layout_resize_adjust(lcrow, LAYOUT_TOPBOTTOM, w->sy - used);
@@ -344,8 +352,8 @@ layout_set_main_v(struct window *w)
 {
 	struct window_pane	*wp;
 	struct layout_cell	*lc, *lcmain, *lccolumn, *lcchild;
-	u_int			 n, mainwidth, width, height, used;
-	u_int			 i, j, columns, rows, totalcolumns;
+	u_int			 n, mainwidth, otherwidth, width, height;
+	u_int			 used, i, j, columns, rows, totalcolumns;
 
 	layout_print_cell(w->layout_root, __func__, 1);
 
@@ -355,16 +363,26 @@ layout_set_main_v(struct window *w)
 		return;
 	n--;	/* take off main pane */
 
-	/* How many rows and columns will be needed? */
-	rows = w->sy / (PANE_MINIMUM + 1);	/* maximum rows */
+	/* How many rows and columns will be needed, not counting main? */
+	rows = (w->sy + 1) / (PANE_MINIMUM + 1);	/* maximum rows */
 	if (rows == 0)
 		rows = 1;
 	columns = 1 + (n - 1) / rows;
 	rows = 1 + (n - 1) / columns;
-	height = w->sy / rows;
+	height = (w->sy - (n - 1)) / rows;
 
 	/* Get the main pane width and add one for separator line. */
 	mainwidth = options_get_number(&w->options, "main-pane-width") + 1;
+
+	/* Get the optional other pane width and add one for separator line. */
+	otherwidth = options_get_number(&w->options, "other-pane-width") + 1;
+
+	/*
+	 * If an other pane width was specified, honour it so long as it
+	 * doesn't shrink the main width to less than the main-pane-width
+	 */
+	if (otherwidth > 1 && w->sx - otherwidth > mainwidth)
+		mainwidth = w->sx - otherwidth;
 	if (mainwidth < PANE_MINIMUM + 1)
 		mainwidth = PANE_MINIMUM + 1;
 
@@ -375,14 +393,14 @@ layout_set_main_v(struct window *w)
 			mainwidth = PANE_MINIMUM + 2;
 		else
 			mainwidth = w->sx - totalcolumns;
-		width = PANE_MINIMUM + 1;
+		width = PANE_MINIMUM;
 	} else
-		width = (w->sx - mainwidth) / columns;
+		width = (w->sx - mainwidth - (columns - 1)) / columns;
 
 	/* Free old tree and create a new root. */
 	layout_free(w);
 	lc = w->layout_root = layout_create_cell(NULL);
-	layout_set_size(lc, mainwidth + columns * width, w->sy, 0, 0);
+	layout_set_size(lc, mainwidth + columns * (width + 1) - 1, w->sy, 0, 0);
 	layout_make_node(lc, LAYOUT_LEFTRIGHT);
 
 	/* Create the main pane. */
@@ -400,7 +418,7 @@ layout_set_main_v(struct window *w)
 
 		/* Create the new column. */
 		lccolumn = layout_create_cell(lc);
-		layout_set_size(lccolumn, width - 1, w->sy, 0, 0);
+		layout_set_size(lccolumn, width, w->sy, 0, 0);
 		TAILQ_INSERT_TAIL(&lc->cells, lccolumn, entry);
 
 		/* If only one row, just use the row directly. */
@@ -415,7 +433,7 @@ layout_set_main_v(struct window *w)
 		for (i = 0; i < rows; i++) {
 			/* Create and add a pane cell. */
 			lcchild = layout_create_cell(lccolumn);
-			layout_set_size(lcchild, width - 1, height - 1, 0, 0);
+			layout_set_size(lcchild, width, height, 0, 0);
 			layout_make_leaf(lcchild, wp);
 			TAILQ_INSERT_TAIL(&lccolumn->cells, lcchild, entry);
 
@@ -427,7 +445,7 @@ layout_set_main_v(struct window *w)
 		/* Adjust the column to fit the full height if necessary. */
 		if (i == rows)
 			i--;
-		used = ((i + 1) * height) - 1;
+		used = ((i + 1) * (height + 1)) - 1;
 		if (w->sy <= used)
 			continue;
 		lcchild = TAILQ_LAST(&lccolumn->cells, layout_cells);
@@ -435,7 +453,7 @@ layout_set_main_v(struct window *w)
 	}
 
 	/* Adjust the last column width to fit if necessary. */
-	used = mainwidth + (columns * width) - 1;
+	used = mainwidth + (columns * width) + columns - 1;
 	if (w->sx > used) {
 		lccolumn = TAILQ_LAST(&lc->cells, layout_cells);
 		layout_resize_adjust(lccolumn, LAYOUT_LEFTRIGHT, w->sx - used);
@@ -474,17 +492,18 @@ layout_set_tiled(struct window *w)
 	}
 
 	/* What width and height should they be? */
-	width = w->sx / columns;
-	if (width < PANE_MINIMUM + 1)
-		width = PANE_MINIMUM + 1;
-	height = w->sy / rows;
-	if (width < PANE_MINIMUM + 1)
-		width = PANE_MINIMUM + 1;
+	width = (w->sx - (columns - 1)) / columns;
+	if (width < PANE_MINIMUM)
+		width = PANE_MINIMUM;
+	height = (w->sy - (rows - 1)) / rows;
+	if (height < PANE_MINIMUM)
+		height = PANE_MINIMUM;
 
 	/* Free old tree and create a new root. */
 	layout_free(w);
 	lc = w->layout_root = layout_create_cell(NULL);
-	layout_set_size(lc, width * columns, height * rows, 0, 0);
+	layout_set_size(lc, (width + 1) * columns - 1,
+	    (height + 1) * rows - 1, 0, 0);
 	layout_make_node(lc, LAYOUT_TOPBOTTOM);
 
 	/* Create a grid of the cells. */
@@ -496,7 +515,7 @@ layout_set_tiled(struct window *w)
 
 		/* Create the new row. */
 		lcrow = layout_create_cell(lc);
-		layout_set_size(lcrow, w->sx, height - 1, 0, 0);
+		layout_set_size(lcrow, w->sx, height, 0, 0);
 		TAILQ_INSERT_TAIL(&lc->cells, lcrow, entry);
 
 		/* If only one column, just use the row directly. */
@@ -511,7 +530,7 @@ layout_set_tiled(struct window *w)
 		for (i = 0; i < columns; i++) {
 			/* Create and add a pane cell. */
 			lcchild = layout_create_cell(lcrow);
-			layout_set_size(lcchild, width - 1, height - 1, 0, 0);
+			layout_set_size(lcchild, width, height, 0, 0);
 			layout_make_leaf(lcchild, wp);
 			TAILQ_INSERT_TAIL(&lcrow->cells, lcchild, entry);
 
@@ -526,7 +545,7 @@ layout_set_tiled(struct window *w)
 		 */
 		if (i == columns)
 			i--;
-		used = ((i + 1) * width) - 1;
+		used = ((i + 1) * (width + 1)) - 1;
 		if (w->sx <= used)
 			continue;
 		lcchild = TAILQ_LAST(&lcrow->cells, layout_cells);
@@ -534,7 +553,7 @@ layout_set_tiled(struct window *w)
 	}
 
 	/* Adjust the last row height to fit if necessary. */
-	used = (rows * height) - 1;
+	used = (rows * height) + rows - 1;
 	if (w->sy > used) {
 		lcrow = TAILQ_LAST(&lc->cells, layout_cells);
 		layout_resize_adjust(lcrow, LAYOUT_TOPBOTTOM, w->sy - used);

@@ -203,14 +203,14 @@ wav_conv(unsigned char *data, unsigned count, short *map)
 {
 	unsigned i;
 	unsigned char *iptr;
-	short *optr;
+	adata_t *optr;
 
 	iptr = data + count;
-	optr = (short *)data + count;
+	optr = (adata_t *)data + count;
 	for (i = count; i > 0; i--) {
 		--optr;
 		--iptr;
-		*optr = map[*iptr];
+		*optr = (adata_t)(map[*iptr]) << (ADATA_BITS - 16);
 	}
 }
 
@@ -224,7 +224,7 @@ wav_read(struct file *file, unsigned char *data, unsigned count)
 	unsigned n;
 
 	if (f->map)
-		count /= sizeof(short);
+		count /= sizeof(adata_t);
 	if (f->rbytes >= 0 && count > f->rbytes) {
 		count = f->rbytes; /* file->rbytes fits in count */
 		if (count == 0) {
@@ -246,7 +246,7 @@ wav_read(struct file *file, unsigned char *data, unsigned count)
 		f->rbytes -= n;
 	if (f->map) {
 		wav_conv(data, n, f->map);
-		n *= sizeof(short);
+		n *= sizeof(adata_t);
 	}
 	return n;
 }
@@ -699,6 +699,7 @@ wav_new_in(struct fileops *ops,
 #endif
 		close(fd);
 		dev_unref(dev);
+		return NULL;
 	}
 	f->dev = dev;
 	if (hdr == HDR_WAV) {
@@ -787,6 +788,7 @@ wav_new_out(struct fileops *ops,
 #endif
 		close(fd);
 		dev_unref(dev);
+		return NULL;
 	}
 	f->dev = dev;
 	if (hdr == HDR_WAV) {
@@ -871,7 +873,7 @@ rwav_new(struct file *f)
 
 	p = aproc_new(&rwav_ops, f->name);
 	p->u.io.file = f;
-	p->u.io.partial = 0;;
+	p->u.io.partial = 0;
 	f->rproc = p;
 	return p;
 }
@@ -923,7 +925,7 @@ wwav_new(struct file *f)
 
 	p = aproc_new(&wwav_ops, f->name);
 	p->u.io.file = f;
-	p->u.io.partial = 0;;
+	p->u.io.partial = 0;
 	f->wproc = p;
 	return p;
 }

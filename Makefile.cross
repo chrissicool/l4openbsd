@@ -1,4 +1,4 @@
-# $OpenBSD: Makefile.cross,v 1.32 2010/07/09 17:36:08 drahn Exp $
+# $OpenBSD: Makefile.cross,v 1.41 2010/10/17 08:44:15 djm Exp $
 
 cross-tools:	cross-includes cross-binutils cross-gcc cross-lib
 cross-distrib:	cross-tools cross-bin cross-share cross-sys cross-etc-root-var
@@ -16,7 +16,7 @@ TARGET_ARCH=	m68k
 .elif	(${TARGET} == "aviion" || ${TARGET} == "luna88k" || \
 	 ${TARGET} == "mvme88k")
 TARGET_ARCH=	m88k
-.elif	(${TARGET} == "sgi")
+.elif	(${TARGET} == "sgi" || ${TARGET} == "octeon")
 TARGET_ARCH=	mips64
 .elif	(${TARGET} == "loongson")
 TARGET_ARCH=	mips64el
@@ -71,14 +71,16 @@ CROSSOBJ=	${CROSSDIR}/.obj_done
 CROSSINCLUDES=	${CROSSDIR}/.includes_done
 CROSSBINUTILS=	${CROSSDIR}/.binutils_done
 CROSSGCC=	${CROSSDIR}/.gcc_done
-#NO_CROSS=	isakmpd tn3270 keynote sectok ssh
+#NO_CROSS=	isakmpd keynote ssh
 
 # bsd.own.mk can't do it for us
 .if ${TARGET_ARCH} == "m68k" || ${TARGET_ARCH} == "m88k" || \
     ${TARGET_ARCH} == "sparc" || ${TARGET_ARCH} == "vax"
 TARGET_USE_GCC3=No
 COMPILER_VERSION=gcc2
-.elif ${TARGET_ARCH} == "amd64" || ${TARGET_ARCH} == "sparc64"
+.elif ${TARGET_ARCH} == "amd64" || ${TARGET_ARCH} == "hppa" || \
+    ${TARGET_ARCH} == "i386" || ${TARGET_ARCH:Mmips64*} || \
+    ${TARGET_ARCH} == "powerpc" || ${TARGET_ARCH} == "sparc64"
 TARGET_USE_GCC4=Yes
 COMPILER_VERSION=gcc4
 .else
@@ -97,6 +99,7 @@ NO_CROSS+=bind
 NO_CROSS+=httpd
 NO_CROSS+=microcode
 NO_CROSS+=groff lynx binutils perl texinfo gcc cvs
+NO_CROSS+=nsd
 
 cross-dirs:	${CROSSDIRS}
 cross-obj:	${CROSSOBJ}
@@ -270,11 +273,15 @@ ${CROSSGCC}:		${CROSSBINUTILS}
 	    TARGET_ARCH=${TARGET_ARCH} TARGET_CPU=${TARGET_CPU} \
 	    MACHINE=${TARGET} \
 	    PATH=${CROSSPATH} ${MAKE} install)
+	cp -f ${CROSSDIR}/usr/bin/g++  ${CROSSDIR}/usr/bin/${TARGET_CANON}-g++ 
 	cp -f ${CROSSDIR}/usr/bin/${TARGET_CANON}-g++ ${CROSSDIR}/usr/${TARGET_CANON}/bin/${TARGET_CANON}-c++
 	cp -f ${CROSSDIR}/usr/libexec/cpp ${CROSSDIR}/usr/${TARGET_CANON}/bin/${TARGET_CANON}-libexeccpp
-	rm -f ${CROSSDIR}/usr/bin/gcc  ${CROSSDIR}/usr/bin/cc ${CROSSDIR}/usr/libexec/cpp 
+	cp -f ${CROSSDIR}/usr/bin/gcc ${CROSSDIR}/usr/${TARGET_CANON}/bin/${TARGET_CANON}-cc
 	ln -sf ${TARGET_CANON}-cc ${CROSSDIR}/usr/${TARGET_CANON}/bin/cc
-	ln -sf ${TARGET_CANON}-c++ ${CROSSDIR}/usr/${TARGET_CANON}/bin/c++
+
+	cp -f ${CROSSDIR}/usr/bin/gcc ${CROSSDIR}/usr/${TARGET_CANON}/bin/${TARGET_CANON}-cc
+	rm -f ${CROSSDIR}/usr/bin/gcc  ${CROSSDIR}/usr/bin/g++  ${CROSSDIR}/usr/bin/cc ${CROSSDIR}/usr/libexec/cpp 
+	# fix links
 	rm -f ${CROSSDIR}/usr/${TARGET_CANON}/bin/${TARGET_CANON}-cpp 
 	sed -e 's#/usr/libexec/cpp#${CROSSDIR}/usr/${TARGET_CANON}/bin/${TARGET_CANON}-libexeccpp#' \
 	    -e 's/@GNUC@//' \

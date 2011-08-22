@@ -1,4 +1,4 @@
-/*	$OpenBSD: ext2fs_lookup.c,v 1.25 2009/07/09 22:29:56 thib Exp $	*/
+/*	$OpenBSD: ext2fs_lookup.c,v 1.27 2010/11/18 21:18:10 miod Exp $	*/
 /*	$NetBSD: ext2fs_lookup.c,v 1.16 2000/08/03 20:29:26 thorpej Exp $	*/
 
 /* 
@@ -163,7 +163,7 @@ ext2fs_readdir(void *v)
 	dirbuf = malloc(e2fs_count, M_TEMP, M_WAITOK | M_ZERO);
 	if (ap->a_ncookies) {
 		nc = ncookies = e2fs_count / 16;
-		cookies = malloc(sizeof (off_t) * ncookies, M_TEMP, M_WAITOK);
+		cookies = malloc(sizeof(*cookies) * ncookies, M_TEMP, M_WAITOK);
 		*ap->a_cookies = cookies;
 	}
 	aiov.iov_base = dirbuf;
@@ -969,7 +969,7 @@ ext2fs_dirempty(struct inode *ip, ino_t parentino, struct ucred *cred)
 
 	for (off = 0; off < ext2fs_size(ip); off += fs2h16(dp->e2d_reclen)) {
 		error = vn_rdwr(UIO_READ, ITOV(ip), (caddr_t)dp, MINDIRSIZ, off,
-		   UIO_SYSSPACE, IO_NODELOCKED, cred, &count, (struct proc *)0);
+		   UIO_SYSSPACE, IO_NODELOCKED, cred, &count, curproc);
 		/*
 		 * Since we read MINDIRSIZ, residual must
 		 * be 0 unless we're at end of file.
@@ -1033,8 +1033,8 @@ ext2fs_checkpath(struct inode *source, struct inode *target,
 		}
 		error = vn_rdwr(UIO_READ, vp, (caddr_t)&dirbuf,
 			sizeof (struct ext2fs_dirtemplate), (off_t)0,
-			UIO_SYSSPACE, IO_NODELOCKED, cred, (size_t *)0,
-			(struct proc *)0);
+			UIO_SYSSPACE, IO_NODELOCKED, cred, NULL,
+			curproc);
 		if (error != 0)
 			break;
 		namlen = dirbuf.dotdot_namlen;

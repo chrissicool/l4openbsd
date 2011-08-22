@@ -1,4 +1,4 @@
-#	$OpenBSD: rc,v 1.340 2010/07/27 08:37:33 martinh Exp $
+#	$OpenBSD: rc,v 1.348 2011/01/14 00:05:42 deraadt Exp $
 
 # System startup script run by init on autoboot
 # or after single-user.
@@ -102,14 +102,12 @@ wsconsctl_conf()
 random_seed()
 {
 	if [ -f /var/db/host.random -a "X$random_seed_done" = "X" ]; then
-		dd if=/var/db/host.random of=/dev/urandom bs=1024 count=64 \
-		    > /dev/null 2>&1
-		dd if=/var/db/host.random of=/dev/arandom bs=1024 count=64 \
+		dd if=/var/db/host.random of=/dev/arandom bs=65536 count=1 \
 		    > /dev/null 2>&1
 
 		# reset seed file, so that if a shutdown-less reboot occurs,
 		# the next seed is not a repeat
-		dd if=/dev/urandom of=/var/db/host.random bs=1024 count=64 \
+		dd if=/dev/arandom of=/var/db/host.random bs=65536 count=1 \
 		    > /dev/null 2>&1
 
 		random_seed_done=1
@@ -157,8 +155,11 @@ HOME=/; export HOME
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 export PATH
 
+# pick up option configuration
+. /etc/rc.conf
+
 if [ X"$1" = X"shutdown" ]; then
-	dd if=/dev/urandom of=/var/db/host.random bs=1024 count=64 >/dev/null 2>&1
+	dd if=/dev/arandom of=/var/db/host.random bs=65536 count=1 >/dev/null 2>&1
 	chmod 600 /var/db/host.random >/dev/null 2>&1
 	if [ $? -eq 0 -a -f /etc/rc.shutdown ]; then
 		echo /etc/rc.shutdown in progress...
@@ -244,9 +245,6 @@ rm -f /fastboot		# XXX (root now writeable)
 
 random_seed
 
-# pick up option configuration
-. /etc/rc.conf
-
 # set flags on ttys.  (do early, in case they use tty for SLIP in netstart)
 echo 'setting tty flags'
 ttyflags -a
@@ -296,6 +294,7 @@ if [ -f /etc/resolv.conf.save ]; then
 	touch /etc/resolv.conf
 fi
 . /etc/netstart
+echo rekey > /dev/arandom	# any write triggers an RC4 rekey
 
 if [ X"${pf}" != X"NO" ]; then
 	if [ -f ${pf_rules} ]; then
@@ -310,9 +309,9 @@ fi
 mount -s /usr >/dev/null 2>&1
 mount -s /var >/dev/null 2>&1
 
-# if there's no /var/db/host.random, make one through /dev/urandom
+# if there's no /var/db/host.random, use /dev/arandom to create one
 if [ ! -f /var/db/host.random ]; then
-	dd if=/dev/urandom of=/var/db/host.random bs=1024 count=64 \
+	dd if=/dev/arandom of=/var/db/host.random bs=65536 count=1 \
 		>/dev/null 2>&1
 	chmod 600 /var/db/host.random >/dev/null 2>&1
 else
@@ -339,6 +338,10 @@ fi
 if [ X"${named_flags}" != X"NO" ]; then
 	rm -f /var/named/dev/log
 	syslogd_flags="${syslogd_flags} -a /var/named/dev/log"
+fi
+if [ X"${nsd_flags}" != X"NO" ]; then
+	rm -f /var/nsd/dev/log
+	syslogd_flags="${syslogd_flags} -a /var/nsd/dev/log"
 fi
 if [ -d /var/empty ]; then
 	rm -f /var/empty/dev/log
@@ -369,6 +372,10 @@ if [ X"${named_flags}" != X"NO" ]; then
 	fi
 
 	echo 'starting named';		named $named_flags
+fi
+
+if [ X"${nsd_flags}" != X"NO" ]; then
+	echo 'starting nsd';		nsd $nsd_flags
 fi
 
 if [ ! -f /etc/isakmpd/private/local.key ]; then
@@ -607,6 +614,14 @@ if [ ! -f /etc/ssh/ssh_host_dsa_key ]; then
 		echo failed.
 	fi
 fi
+if [ ! -f /etc/ssh/ssh_host_ecdsa_key ]; then
+	echo -n "ssh-keygen: generating new ECDSA host key... "
+	if /usr/bin/ssh-keygen -q -t ecdsa -f /etc/ssh/ssh_host_ecdsa_key -N ''; then
+		echo done.
+	else
+		echo failed.
+	fi
+fi
 if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
 	echo -n "ssh-keygen: generating new RSA host key... "
 	if /usr/bin/ssh-keygen -q -t rsa -f /etc/ssh/ssh_host_rsa_key -N ''; then
@@ -627,7 +642,7 @@ fi
 echo -n starting network daemons:
 
 if [ X"${sshd_flags}" != X"NO" ]; then
-	echo -n ' sshd';		/usr/sbin/sshd ${sshd_flags};
+	echo -n ' sshd';		/usr/sbin/sshd ${sshd_flags}
 fi
 
 if [ X"${snmpd_flags}" != X"NO" ]; then
@@ -699,7 +714,7 @@ if ifconfig lo0 inet6 >/dev/null 2>&1; then
 fi
 
 if [ X"${hostapd_flags}" != X"NO" ]; then
-	echo -n ' hostapd';		/usr/sbin/hostapd ${hostapd_flags};
+	echo -n ' hostapd';		/usr/sbin/hostapd ${hostapd_flags}
 fi
 
 if [ X"${bt}" != X"NO" ]; then
@@ -719,7 +734,7 @@ if [ X"${lpd_flags}" != X"NO" ]; then
 fi
 
 if [ X"${ldapd_flags}" != X"NO" ]; then
-	echo -n ' ldapd';		/usr/sbin/ldapd ${ldapd_flags};
+	echo -n ' ldapd';		/usr/sbin/ldapd ${ldapd_flags}
 fi
 
 # We call sendmail with a full path so that SIGHUP works.
@@ -809,7 +824,7 @@ fi
 # If rc.firstime exists, run it just once, and make sure it is deleted
 if [ -f /etc/rc.firsttime ]; then
 	mv /etc/rc.firsttime /etc/rc.firsttime.run
-	. /etc/rc.firsttime.run 2>&1 | mail -s 'rc.firsttime output' root
+	. /etc/rc.firsttime.run 2>&1 | mail -s 'rc.firsttime output' root >/dev/null
 fi
 rm -f /etc/rc.firsttime.run
 

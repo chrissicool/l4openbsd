@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile.bsd-wrapper,v 1.4 2010/01/17 19:34:41 jakob Exp $
+#	$OpenBSD: Makefile.bsd-wrapper,v 1.6 2011/01/24 10:39:46 jakob Exp $
 
 .include <bsd.own.mk>
 
@@ -15,13 +15,12 @@ CONFIGURE_OPTS=	--prefix=/usr \
 		--with-user=${USER} \
 		--with-nsd-conf-file=/etc/nsd.conf \
 		--with-chroot=${CHROOTDIR} \
-		--with-pidfile=${CHROOTDIR}/nsd.pid \
+		--with-pidfile=${CHROOTDIR}/run/nsd.pid \
 		--with-zonesdir=${CHROOTDIR}/zones \
-		--with-dbfile=${CHROOTDIR}/nsd.db \
-		--with-difffile=${CHROOTDIR}/ixfr.db \
-		--with-xfrdfile=${CHROOTDIR}/xfrd.state \
-		--enable-root-server \
-		--enable-nsid
+		--with-dbfile=${CHROOTDIR}/db/nsd.db \
+		--with-difffile=${CHROOTDIR}/run/ixfr.db \
+		--with-xfrdfile=${CHROOTDIR}/run/xfrd.state \
+		--enable-root-server
 
 PROG=	nsd nsd-zonec nsd-notify nsd-checkconf nsd-patch nsd-xfer
 

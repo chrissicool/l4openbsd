@@ -1,4 +1,4 @@
-/*	$OpenBSD: uberry.c,v 1.17 2010/04/20 22:05:43 tedu Exp $	*/
+/*	$OpenBSD: uberry.c,v 1.19 2011/01/25 20:03:36 jakemsr Exp $	*/
 
 /*-
  * Copyright (c) 2006 Theo de Raadt <deraadt@openbsd.org>
@@ -140,29 +140,27 @@ uberry_attach(struct device *parent, struct device *self, void *aux)
 		 */
 		usb_needs_reattach(sc->sc_udev);
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
 }
 
 int
 uberry_detach(struct device *self, int flags)
 {
-	struct uberry_softc *sc = (struct uberry_softc *)self;
+	/* struct uberry_softc *sc = (struct uberry_softc *)self; */
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
 	return 0;
 }
 
 int
 uberry_activate(struct device *self, int act)
 {
+	struct uberry_softc *sc = (struct uberry_softc *)self;
+
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
 
 	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
 		break;
 	}
 	return 0;

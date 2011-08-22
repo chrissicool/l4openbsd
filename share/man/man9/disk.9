@@ -1,4 +1,4 @@
-.\"	$OpenBSD: disk.9,v 1.26 2007/06/25 17:30:07 jmc Exp $
+.\"	$OpenBSD: disk.9,v 1.29 2010/11/17 15:01:05 bluhm Exp $
 .\"	$NetBSD: disk.9,v 1.2 1996/04/08 20:41:25 jtc Exp $
 .\"
 .\" Copyright (c) 1995, 1996 Jason R. Thorpe.
@@ -31,7 +31,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.Dd $Mdocdate: June 25 2007 $
+.Dd $Mdocdate: November 17 2010 $
 .Dt DISK 9
 .Os
 .Sh NAME
@@ -63,9 +63,14 @@ structure, which is defined as follows:
 struct disk {
 	TAILQ_ENTRY(disk) dk_link;	/* link in global disklist */
 	struct rwlock   dk_lock;        /* disk lock */
+	struct mutex	dk_mtx;		/* busy/unbusy mtx */
 	char	        *dk_name;	/* disk name */
+	struct device	*dk_device;	/* disk device structure. */
+	dev_t		dk_devno;	/* disk device number. */
 	int             dk_flags;       /* disk flags */
 #define DKF_CONSTRUCTED  0x0001
+#define DKF_OPENED       0x0002
+#define DKF_NOLABELREAD  0x0004
 
 	/*
 	 * Metrics data; note that some metrics may have no meaning
@@ -78,7 +83,7 @@ struct disk {
 	u_int64_t dk_rbytes;	/* total bytes read */
 	u_int64_t dk_wbytes;	/* total bytes written */
 	struct timeval	dk_attachtime;	/* time disk was attached */
-	struct timeval	dk_timestamp;	/* timestamp of last unbusy */
+	struct timeval	dk_timestamp; /*time of first busy or any unbusy*/
 	struct timeval	dk_time;	/* total time spent busy */
 
         int             dk_bopenmask;   /* block devices open */
@@ -88,15 +93,12 @@ struct disk {
         int             dk_blkshift; /*shift to convert DEV_BSIZE to blks*/
         int             dk_byteshift; /* shift to convert bytes to blks */
 
-	struct	dkdriver *dk_driver;	/* pointer to driver */
-
 	/*
 	 * Disk label information.  Storage for the in-core disk label
 	 * must be dynamically allocated, otherwise the size of this
 	 * structure becomes machine-dependent.
 	 */
-	daddr64_t	dk_labelsector;	/* sector containing label */
-	struct disklabel *dk_label;	/* label */
+	struct disklabel *dk_label;
 };
 .Ed
 .Pp

@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_msk.c,v 1.87 2010/05/19 15:27:35 oga Exp $	*/
+/*	$OpenBSD: if_msk.c,v 1.91 2010/11/17 10:43:23 kevlo Exp $	*/
 
 /*
  * Copyright (c) 1997, 1998, 1999, 2000
@@ -136,7 +136,6 @@ void mskc_attach(struct device *, struct device *self, void *aux);
 int mskc_detach(struct device *, int);
 int mskc_activate(struct device *, int);
 void mskc_reset(struct sk_softc *);
-void mskc_shutdown(void *);
 int msk_probe(struct device *, void *, void *);
 void msk_attach(struct device *, struct device *self, void *aux);
 int msk_detach(struct device *, int);
@@ -209,6 +208,7 @@ const struct pci_matchid mskc_devices[] = {
 	{ PCI_VENDOR_MARVELL,		PCI_PRODUCT_MARVELL_YUKON_8056 },
 	{ PCI_VENDOR_MARVELL,		PCI_PRODUCT_MARVELL_YUKON_8057 },
 	{ PCI_VENDOR_MARVELL,		PCI_PRODUCT_MARVELL_YUKON_8058 },
+	{ PCI_VENDOR_MARVELL,		PCI_PRODUCT_MARVELL_YUKON_8059 },
 	{ PCI_VENDOR_MARVELL,		PCI_PRODUCT_MARVELL_YUKON_8061CU },
 	{ PCI_VENDOR_MARVELL,		PCI_PRODUCT_MARVELL_YUKON_8061X },
 	{ PCI_VENDOR_MARVELL,		PCI_PRODUCT_MARVELL_YUKON_8062CU },
@@ -538,6 +538,8 @@ msk_newbuf(struct sk_if_softc *sc_if)
 	r->sk_len = htole16(dmamap->dm_segs[0].ds_len);
 	r->sk_ctl = 0;
 
+	MSK_CDRXSYNC(sc_if, head, BUS_DMASYNC_PREWRITE);
+
 	SK_INC(sc_if->sk_cdata.sk_rx_prod, MSK_RX_RING_CNT);
 	sc_if->sk_cdata.sk_rx_cnt++;
 
@@ -549,7 +551,12 @@ msk_newbuf(struct sk_if_softc *sc_if)
 		r->sk_addr = htole32(dmamap->dm_segs[i].ds_addr);
 		r->sk_len = htole16(dmamap->dm_segs[i].ds_len);
 		r->sk_ctl = 0;
+
+		MSK_CDRXSYNC(sc_if, sc_if->sk_cdata.sk_rx_prod,
+		    BUS_DMASYNC_PREWRITE);
+
 		r->sk_opcode = SK_Y2_RXOPC_BUFFER | SK_Y2_RXOPC_OWN;
+
 		MSK_CDRXSYNC(sc_if, sc_if->sk_cdata.sk_rx_prod,
 		    BUS_DMASYNC_PREWRITE|BUS_DMASYNC_PREREAD);
 
@@ -756,6 +763,7 @@ mskc_reset(struct sk_softc *sc)
 	case SK_YUKON_EC:
 	case SK_YUKON_XL:
 	case SK_YUKON_FE:
+	case SK_YUKON_OPTIMA:
 		imtimer_ticks = SK_IMTIMER_TICKS_YUKON_EC;
 		break;
 	default:
@@ -811,6 +819,7 @@ msk_probe(struct device *parent, void *match, void *aux)
 	case SK_YUKON_FE_P:
 	case SK_YUKON_SUPR:
 	case SK_YUKON_ULTRA2:
+	case SK_YUKON_OPTIMA:
 		return (1);
 	}
 
@@ -984,8 +993,6 @@ msk_attach(struct device *parent, struct device *self, void *aux)
 	ether_ifattach(ifp);
 	m_clsetwms(ifp, sc_if->sk_pktlen, 2, MSK_RX_RING_CNT);
 
-	sc_if->sk_sdhook = shutdownhook_establish(mskc_shutdown, sc);
-
 	DPRINTFN(2, ("msk_attach: end\n"));
 	return;
 
@@ -1018,9 +1025,6 @@ msk_detach(struct device *self, int flags)
 
 	msk_stop(sc_if, 1);
 
-	if (sc_if->sk_sdhook != NULL)
-		shutdownhook_disestablish(sc_if->sk_sdhook);
-
 	/* Detach any PHYs we might have. */
 	if (LIST_FIRST(&sc_if->sk_mii.mii_phys) != NULL)
 		mii_detach(&sc_if->sk_mii, MII_PHY_ANY, MII_OFFSET_ANY);
@@ -1049,6 +1053,9 @@ msk_activate(struct device *self, int act)
 	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		rv = config_activate_children(self, act);
 		break;
@@ -1059,7 +1066,6 @@ msk_activate(struct device *self, int act)
 			msk_init(sc_if);
 		break;
 	}
-
 	return (rv);
 }
 
@@ -1233,6 +1239,9 @@ mskc_attach(struct device *parent, struct device *self, void *aux)
 	case SK_YUKON_ULTRA2:
 		sc->sk_name = "Yukon-2 Ultra2";
 		break;
+	case SK_YUKON_OPTIMA:
+		sc->sk_name = "Yukon-2 Optima";
+		break;
 	default:
 		sc->sk_name = "Yukon (Unknown)";
 	}
@@ -1404,6 +1413,9 @@ mskc_activate(struct device *self, int act)
 	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		rv = config_activate_children(self, act);
 		break;
@@ -1412,7 +1424,6 @@ mskc_activate(struct device *self, int act)
 		rv = config_activate_children(self, act);
 		break;
 	}
-
 	return (rv);
 }
 
@@ -1585,23 +1596,6 @@ msk_watchdog(struct ifnet *ifp)
 		msk_reset(sc_if);
 		msk_init(sc_if);
 	}
-}
-
-void
-mskc_shutdown(void *v)
-{
-	struct sk_softc		*sc = v;
-
-	DPRINTFN(2, ("msk_shutdown\n"));
-
-	/* Turn off the 'driver is loaded' LED. */
-	CSR_WRITE_2(sc, SK_LED, SK_LED_GREEN_OFF);
-
-	/*
-	 * Reset the GEnesis controller. Doing this should also
-	 * assert the resets on the attached XMAC(s).
-	 */
-	mskc_reset(sc);
 }
 
 static __inline int
@@ -1849,12 +1843,12 @@ msk_intr(void *xsc)
 
 	if (rx[0]) {
 		msk_fill_rx_ring(sc_if0);
-		SK_IF_WRITE_2(sc_if0, 0,  SK_RXQ1_Y2_PREF_PUTIDX,
+		SK_IF_WRITE_2(sc_if0, 0, SK_RXQ1_Y2_PREF_PUTIDX,
 		    sc_if0->sk_cdata.sk_rx_prod);
 	}
 	if (rx[1]) {
 		msk_fill_rx_ring(sc_if1);
-		SK_IF_WRITE_2(sc_if1, 0,  SK_RXQ1_Y2_PREF_PUTIDX,
+		SK_IF_WRITE_2(sc_if1, 0, SK_RXQ1_Y2_PREF_PUTIDX,
 		    sc_if1->sk_cdata.sk_rx_prod);
 	}
 

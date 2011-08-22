@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_ral.c,v 1.112 2010/04/20 22:05:43 tedu Exp $	*/
+/*	$OpenBSD: if_ral.c,v 1.120 2011/01/25 20:03:35 jakemsr Exp $	*/
 
 /*-
  * Copyright (c) 2005, 2006
@@ -273,7 +273,7 @@ ural_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	usb_init_task(&sc->sc_task, ural_task, sc);
+	usb_init_task(&sc->sc_task, ural_task, sc, USB_TASK_TYPE_GENERIC);
 	timeout_set(&sc->scan_to, ural_next_scan, sc);
 
 	sc->amrr.amrr_min_success_threshold =  1;
@@ -322,7 +322,6 @@ ural_attach(struct device *parent, struct device *self, void *aux)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = ural_init;
 	ifp->if_ioctl = ural_ioctl;
 	ifp->if_start = ural_start;
 	ifp->if_watchdog = ural_watchdog;
@@ -350,9 +349,6 @@ ural_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_txtap.wt_ihdr.it_len = htole16(sc->sc_txtap_len);
 	sc->sc_txtap.wt_ihdr.it_present = htole32(RAL_TX_RADIOTAP_PRESENT);
 #endif
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
 }
 
 int
@@ -364,12 +360,19 @@ ural_detach(struct device *self, int flags)
 
 	s = splusb();
 
-	ieee80211_ifdetach(ifp);	/* free all nodes */
-	if_detach(ifp);
+	if (timeout_initialized(&sc->scan_to))
+		timeout_del(&sc->scan_to);
+	if (timeout_initialized(&sc->amrr_to))
+		timeout_del(&sc->amrr_to);
 
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
-	timeout_del(&sc->scan_to);
-	timeout_del(&sc->amrr_to);
+	usb_rem_wait_task(sc->sc_udev, &sc->sc_task);
+
+	usbd_ref_wait(sc->sc_udev);
+
+	if (ifp->if_softc != NULL) {
+		ieee80211_ifdetach(ifp);	/* free all nodes */
+		if_detach(ifp);
+	}
 
 	if (sc->amrr_xfer != NULL) {
 		usbd_free_xfer(sc->amrr_xfer);
@@ -390,9 +393,6 @@ ural_detach(struct device *self, int flags)
 	ural_free_tx_list(sc);
 
 	splx(s);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
 
 	return 0;
 }
@@ -544,8 +544,15 @@ ural_next_scan(void *arg)
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct ifnet *ifp = &ic->ic_if;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return;
+
+	usbd_ref_incr(sc->sc_udev);
+
 	if (ic->ic_state == IEEE80211_S_SCAN)
 		ieee80211_next_scan(ifp);
+
+	usbd_ref_decr(sc->sc_udev);
 }
 
 void
@@ -555,6 +562,9 @@ ural_task(void *arg)
 	struct ieee80211com *ic = &sc->sc_ic;
 	enum ieee80211_state ostate;
 	struct ieee80211_node *ni;
+
+	if (usbd_is_dying(sc->sc_udev))
+		return;
 
 	ostate = ic->ic_state;
 
@@ -571,7 +581,8 @@ ural_task(void *arg)
 
 	case IEEE80211_S_SCAN:
 		ural_set_chan(sc, ic->ic_bss->ni_chan);
-		timeout_add_msec(&sc->scan_to, 200);
+		if (!usbd_is_dying(sc->sc_udev))
+			timeout_add_msec(&sc->scan_to, 200);
 		break;
 
 	case IEEE80211_S_AUTH:
@@ -1321,6 +1332,11 @@ ural_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	struct ifreq *ifr;
 	int s, error = 0;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return ENXIO;
+
+	usbd_ref_incr(sc->sc_udev);
+
 	s = splnet();
 
 	switch (cmd) {
@@ -1383,6 +1399,8 @@ ural_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	}
 
 	splx(s);
+
+	usbd_ref_decr(sc->sc_udev);
 
 	return error;
 }
@@ -1849,7 +1867,6 @@ ural_read_eeprom(struct ural_softc *sc)
 int
 ural_bbp_init(struct ural_softc *sc)
 {
-#define N(a)	(sizeof (a) / sizeof ((a)[0]))
 	int i, ntries;
 
 	/* wait for BBP to be ready */
@@ -1864,7 +1881,7 @@ ural_bbp_init(struct ural_softc *sc)
 	}
 
 	/* initialize BBP registers to default values */
-	for (i = 0; i < N(ural_def_bbp); i++)
+	for (i = 0; i < nitems(ural_def_bbp); i++)
 		ural_bbp_write(sc, ural_def_bbp[i].reg, ural_def_bbp[i].val);
 
 #if 0
@@ -1877,7 +1894,6 @@ ural_bbp_init(struct ural_softc *sc)
 #endif
 
 	return 0;
-#undef N
 }
 
 void
@@ -1932,7 +1948,6 @@ ural_set_rxantenna(struct ural_softc *sc, int antenna)
 int
 ural_init(struct ifnet *ifp)
 {
-#define N(a)	(sizeof (a) / sizeof ((a)[0]))
 	struct ural_softc *sc = ifp->if_softc;
 	struct ieee80211com *ic = &sc->sc_ic;
 	uint16_t tmp;
@@ -1942,7 +1957,7 @@ ural_init(struct ifnet *ifp)
 	ural_stop(ifp, 0);
 
 	/* initialize MAC registers to default values */
-	for (i = 0; i < N(ural_def_mac); i++)
+	for (i = 0; i < nitems(ural_def_mac); i++)
 		ural_write(sc, ural_def_mac[i].reg, ural_def_mac[i].val);
 
 	/* wait for BBP and RF to wake up (this can take a long time!) */
@@ -2080,7 +2095,6 @@ ural_init(struct ifnet *ifp)
 
 fail:	ural_stop(ifp, 1);
 	return error;
-#undef N
 }
 
 void
@@ -2144,7 +2158,8 @@ ural_amrr_start(struct ural_softc *sc, struct ieee80211_node *ni)
 	     i--);
 	ni->ni_txrate = i;
 
-	timeout_add_sec(&sc->amrr_to, 1);
+	if (!usbd_is_dying(sc->sc_udev))
+		timeout_add_sec(&sc->amrr_to, 1);
 }
 
 void
@@ -2153,6 +2168,11 @@ ural_amrr_timeout(void *arg)
 	struct ural_softc *sc = arg;
 	usb_device_request_t req;
 	int s;
+
+	if (usbd_is_dying(sc->sc_udev))
+		return;
+
+	usbd_ref_incr(sc->sc_udev);
 
 	s = splusb();
 
@@ -2171,6 +2191,8 @@ ural_amrr_timeout(void *arg)
 	(void)usbd_transfer(sc->amrr_xfer);
 
 	splx(s);
+
+	usbd_ref_decr(sc->sc_udev);
 }
 
 void
@@ -2200,17 +2222,21 @@ ural_amrr_update(usbd_xfer_handle xfer, usbd_private_handle priv,
 
 	ieee80211_amrr_choose(&sc->amrr, sc->sc_ic.ic_bss, &sc->amn);
 
-	timeout_add_sec(&sc->amrr_to, 1);
+	if (!usbd_is_dying(sc->sc_udev))
+		timeout_add_sec(&sc->amrr_to, 1);
 }
 
 int
 ural_activate(struct device *self, int act)
 {
+	struct ural_softc *sc = (struct ural_softc *)self;
+
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
 
 	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
 		break;
 	}
 

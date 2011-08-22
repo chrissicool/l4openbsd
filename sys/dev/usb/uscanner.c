@@ -1,4 +1,4 @@
-/*	$OpenBSD: uscanner.c,v 1.42 2010/07/03 03:59:17 krw Exp $ */
+/*	$OpenBSD: uscanner.c,v 1.44 2011/01/25 20:03:36 jakemsr Exp $ */
 /*	$NetBSD: uscanner.c,v 1.40 2003/01/27 00:32:44 wiz Exp $	*/
 
 /*
@@ -321,9 +321,6 @@ uscanner_attach(struct device *parent, struct device *self, void *aux)
 
 	sc->sc_bulkin = ed_bulkin->bEndpointAddress;
 	sc->sc_bulkout = ed_bulkout->bEndpointAddress;
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
 }
 
 int
@@ -581,7 +578,6 @@ uscanner_detach(struct device *self, int flags)
 
 	DPRINTF(("uscanner_detach: sc=%p flags=%d\n", sc, flags));
 
-	sc->sc_dying = 1;
 	sc->sc_dev_flags = 0;	/* make close really close device */
 
 	/* Abort all pipes.  Causes processes waiting for transfer to wake. */
@@ -605,8 +601,6 @@ uscanner_detach(struct device *self, int flags)
 	/* Nuke the vnodes for any open instances (calls close). */
 	mn = self->dv_unit * USB_MAX_ENDPOINTS;
 	vdevgone(maj, mn, mn + USB_MAX_ENDPOINTS - 1, VCHR);
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (0);
 }

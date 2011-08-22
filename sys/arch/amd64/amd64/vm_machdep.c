@@ -1,4 +1,4 @@
-/*	$OpenBSD: vm_machdep.c,v 1.22 2009/06/09 02:56:38 krw Exp $	*/
+/*	$OpenBSD: vm_machdep.c,v 1.24 2010/11/13 04:16:42 guenther Exp $	*/
 /*	$NetBSD: vm_machdep.c,v 1.1 2003/04/26 18:39:33 fvdl Exp $	*/
 
 /*-
@@ -107,19 +107,17 @@ cpu_fork(struct proc *p1, struct proc *p2, void *stack, size_t stacksize,
 	*pcb = p1->p_addr->u_pcb;
 
 	/*
-	 * Activate the address space.  Note this will refresh pcb_ldt_sel.
+	 * Activate the address space.
 	 */
 	pmap_activate(p2);
 
-	/* Fix up the TSS. */
-	pcb->pcb_tss.tss_rsp0 = (u_int64_t)p2->p_addr + USPACE - 16;
-	pcb->pcb_tss.tss_ist[0] = (u_int64_t)p2->p_addr + PAGE_SIZE - 16;
-	p2->p_md.md_tss_sel = tss_alloc(pcb);
+	/* Record where this process's kernel stack is */
+	pcb->pcb_kstack = (u_int64_t)p2->p_addr + USPACE - 16;
 
 	/*
 	 * Copy the trapframe.
 	 */
-	p2->p_md.md_regs = tf = (struct trapframe *)pcb->pcb_tss.tss_rsp0 - 1;
+	p2->p_md.md_regs = tf = (struct trapframe *)pcb->pcb_kstack - 1;
 	*tf = *p1->p_md.md_regs;
 
 	setredzone(p2);
@@ -160,7 +158,6 @@ cpu_exit(struct proc *p)
 		mtrr_clean(p);
 
 	pmap_deactivate(p);
-	tss_free(p->p_md.md_tss_sel);
 	sched_exit(p);
 }
 

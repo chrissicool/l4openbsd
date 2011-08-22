@@ -1,4 +1,4 @@
-/*	$OpenBSD: in_proto.c,v 1.53 2010/05/11 09:36:07 claudio Exp $	*/
+/*	$OpenBSD: in_proto.c,v 1.55 2011/01/07 17:50:42 bluhm Exp $	*/
 /*	$NetBSD: in_proto.c,v 1.14 1996/02/18 18:58:32 christos Exp $	*/
 
 /*
@@ -149,9 +149,9 @@
 
 #ifdef IPSEC
 #include <netinet/ip_ipsp.h>
-#include <netinet/ip_ether.h>
 #endif
 
+#include <netinet/ip_ether.h>
 #include <netinet/ip_ipip.h>
 
 #include "gre.h"
@@ -189,7 +189,7 @@ struct protosw inetsw[] = {
   udp_usrreq,
   udp_init,	0,		0,		0,		udp_sysctl
 },
-{ SOCK_STREAM,	&inetdomain,	IPPROTO_TCP,	PR_CONNREQUIRED|PR_WANTRCVD|PR_ABRTACPTDIS,
+{ SOCK_STREAM,	&inetdomain,	IPPROTO_TCP,	PR_CONNREQUIRED|PR_WANTRCVD|PR_ABRTACPTDIS|PR_SPLICE,
   tcp_input,	0,		tcp_ctlinput,	tcp_ctloutput,
   tcp_usrreq,
   tcp_init,	0,		tcp_slowtimo,	0,		tcp_sysctl

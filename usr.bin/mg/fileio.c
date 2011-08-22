@@ -1,4 +1,4 @@
-/*	$OpenBSD: fileio.c,v 1.82 2008/09/15 16:11:35 kjell Exp $	*/
+/*	$OpenBSD: fileio.c,v 1.84 2011/01/21 19:10:13 kjell Exp $	*/
 
 /* This file is in the public domain. */
 
@@ -6,7 +6,6 @@
  *	POSIX fileio.c
  */
 #include "def.h"
-
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -529,10 +528,8 @@ make_file_list(char *buf)
 
 	while ((dent = readdir(dirp)) != NULL) {
 		int isdir;
-
-		if (dent->d_namlen < len || memcmp(cp, dent->d_name, len) != 0)
+		if (strncmp(cp, dent->d_name, len) != 0)
 			continue;
-
 		isdir = 0;
 		if (dent->d_type == DT_DIR) {
 			isdir = 1;

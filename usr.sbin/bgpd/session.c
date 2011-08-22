@@ -1,4 +1,4 @@
-/*	$OpenBSD: session.c,v 1.310 2010/06/27 19:53:34 claudio Exp $ */
+/*	$OpenBSD: session.c,v 1.316 2010/12/23 17:41:40 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004, 2005 Henning Brauer <henning@openbsd.org>
@@ -21,6 +21,8 @@
 
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <sys/un.h>
 #include <net/if_types.h>
 #include <netinet/in.h>
@@ -50,7 +52,8 @@
 #define PFD_PIPE_ROUTE_CTL	2
 #define PFD_SOCK_CTL		3
 #define PFD_SOCK_RCTL		4
-#define PFD_LISTENERS_START	5
+#define PFD_SOCK_PFKEY		5
+#define PFD_LISTENERS_START	6
 
 void	session_sighdlr(int);
 int	setup_listeners(u_int *);
@@ -174,10 +177,11 @@ setup_listeners(u_int *la_cnt)
 }
 
 pid_t
-session_main(int pipe_m2s[2], int pipe_s2r[2], int pipe_m2r[2], 
+session_main(int pipe_m2s[2], int pipe_s2r[2], int pipe_m2r[2],
     int pipe_s2rctl[2])
 {
-	int			 nfds, timeout;
+	struct rlimit		 rl;
+	int			 nfds, timeout, pfkeysock;
 	unsigned int		 i, j, idx_peers, idx_listeners, idx_mrts;
 	pid_t			 pid;
 	u_int			 pfd_elms = 0, peer_l_elms = 0, mrt_l_elms = 0;
@@ -213,8 +217,13 @@ session_main(int pipe_m2s[2], int pipe_s2r[2], int pipe_m2r[2],
 	setproctitle("session engine");
 	bgpd_process = PROC_SE;
 
-	if (pfkey_init(&sysdep) == -1)
-		fatalx("pfkey setup failed");
+	if (getrlimit(RLIMIT_NOFILE, &rl) == -1)
+		fatal("getrlimit");
+	rl.rlim_cur = rl.rlim_max;
+	if (setrlimit(RLIMIT_NOFILE, &rl) == -1)
+		fatal("setrlimit");
+
+	pfkeysock = pfkey_init(&sysdep);
 
 	if (setgroups(1, &pw->pw_gid) ||
 	    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
@@ -247,7 +256,7 @@ session_main(int pipe_m2s[2], int pipe_s2r[2], int pipe_m2r[2],
 	peer_cnt = 0;
 	ctl_cnt = 0;
 
-	if ((conf = malloc(sizeof(struct bgpd_config))) == NULL)
+	if ((conf = calloc(1, sizeof(struct bgpd_config))) == NULL)
 		fatal(NULL);
 	if ((conf->listen_addrs = calloc(1, sizeof(struct listen_addrs))) ==
 	    NULL)
@@ -369,13 +378,15 @@ session_main(int pipe_m2s[2], int pipe_s2r[2], int pipe_m2r[2],
 		if (ctl_queued < SESSION_CTL_QUEUE_MAX)
 			/*
 			 * Do not act as unlimited buffer. Don't read in more
-			 * messages if the ctl sockets are getting full. 
+			 * messages if the ctl sockets are getting full.
 			 */
 			pfd[PFD_PIPE_ROUTE_CTL].events = POLLIN;
 		pfd[PFD_SOCK_CTL].fd = csock;
 		pfd[PFD_SOCK_CTL].events = POLLIN;
 		pfd[PFD_SOCK_RCTL].fd = rcsock;
 		pfd[PFD_SOCK_RCTL].events = POLLIN;
+		pfd[PFD_SOCK_PFKEY].fd = pfkeysock;
+		pfd[PFD_SOCK_PFKEY].events = POLLIN;
 
 		i = PFD_LISTENERS_START;
 		TAILQ_FOREACH(la, conf->listen_addrs, entry) {
@@ -507,6 +518,14 @@ session_main(int pipe_m2s[2], int pipe_s2r[2], int pipe_m2r[2],
 		if (nfds > 0 && pfd[PFD_SOCK_RCTL].revents & POLLIN) {
 			nfds--;
 			ctl_cnt += control_accept(rcsock, 1);
+		}
+
+		if (nfds > 0 && pfd[PFD_SOCK_PFKEY].revents & POLLIN) {
+			nfds--;
+			if (pfkey_read(pfkeysock, NULL) == -1) {
+				log_warnx("pfkey_read failed, exiting...");
+				session_quit = 1;
+			}
 		}
 
 		for (j = PFD_LISTENERS_START; nfds > 0 && j < idx_listeners;
@@ -753,7 +772,8 @@ bgp_fsm(struct peer *peer, enum session_events event)
 				change_state(peer, STATE_IDLE, event);
 			break;
 		default:
-			session_notification(peer, ERR_FSM, 0, NULL, 0);
+			session_notification(peer,
+			    ERR_FSM, ERR_FSM_UNEX_OPENSENT, NULL, 0);
 			change_state(peer, STATE_IDLE, event);
 			break;
 		}
@@ -787,7 +807,8 @@ bgp_fsm(struct peer *peer, enum session_events event)
 			change_state(peer, STATE_IDLE, event);
 			break;
 		default:
-			session_notification(peer, ERR_FSM, 0, NULL, 0);
+			session_notification(peer,
+			    ERR_FSM, ERR_FSM_UNEX_OPENCONFIRM, NULL, 0);
 			change_state(peer, STATE_IDLE, event);
 			break;
 		}
@@ -827,7 +848,8 @@ bgp_fsm(struct peer *peer, enum session_events event)
 			change_state(peer, STATE_IDLE, event);
 			break;
 		default:
-			session_notification(peer, ERR_FSM, 0, NULL, 0);
+			session_notification(peer,
+			    ERR_FSM, ERR_FSM_UNEX_ESTABLISHED, NULL, 0);
 			change_state(peer, STATE_IDLE, event);
 			break;
 		}
@@ -1455,6 +1477,8 @@ session_notification(struct peer *p, u_int8_t errcode, u_int8_t subcode,
 	if (p->stats.last_sent_errcode)	/* some notification already sent */
 		return;
 
+	log_notification(p, errcode, subcode, data, datalen, "sending");
+
 	if ((buf = session_newmsg(NOTIFICATION,
 	    MSGSIZE_NOTIFICATION_MIN + datalen)) == NULL) {
 		bgp_fsm(p, EVNT_CON_FATAL);
@@ -2054,7 +2078,7 @@ parse_notification(struct peer *peer)
 	p += sizeof(subcode);
 	datalen -= sizeof(subcode);
 
-	log_notification(peer, errcode, subcode, p, datalen);
+	log_notification(peer, errcode, subcode, p, datalen, "received");
 	peer->errcnt++;
 
 	if (errcode == ERR_OPEN && subcode == ERR_OPEN_CAPA) {

@@ -1,4 +1,4 @@
-/*	$OpenBSD: mfa.c,v 1.49 2010/06/02 19:16:53 chl Exp $	*/
+/*	$OpenBSD: mfa.c,v 1.54 2010/11/28 14:35:58 gilles Exp $	*/
 
 /*
  * Copyright (c) 2008 Gilles Chehade <gilles@openbsd.org>
@@ -23,29 +23,24 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 
-#include <ctype.h>
 #include <event.h>
+#include <imsg.h>
 #include <pwd.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "smtpd.h"
+#include "log.h"
 
 void		mfa_imsg(struct smtpd *, struct imsgev *, struct imsg *);
 __dead void	mfa_shutdown(void);
 void		mfa_sig_handler(int, short, void *);
-void		mfa_setup_events(struct smtpd *);
-void		mfa_disable_events(struct smtpd *);
-
 void		mfa_test_mail(struct smtpd *, struct message *);
 void		mfa_test_rcpt(struct smtpd *, struct message *);
-
-int		strip_source_route(char *, size_t);
-
-struct rule    *ruleset_match(struct smtpd *, struct path *, struct sockaddr_storage *);
+void		mfa_test_rcpt_resume(struct smtpd *, struct submit_status *);
+int		mfa_strip_source_route(char *, size_t);
 
 void
 mfa_imsg(struct smtpd *env, struct imsgev *iev, struct imsg *imsg)
@@ -65,15 +60,14 @@ mfa_imsg(struct smtpd *env, struct imsgev *iev, struct imsg *imsg)
 	if (iev->proc == PROC_LKA) {
 		switch (imsg->hdr.type) {
 		case IMSG_LKA_MAIL:
-			imsg_compose_event(env->sc_ievs[PROC_SMTP],
-			    IMSG_MFA_MAIL, imsg->hdr.peerid, 0, -1, imsg->data,
-			    imsg->hdr.len - sizeof imsg->hdr);
-			return;
-
 		case IMSG_LKA_RCPT:
 			imsg_compose_event(env->sc_ievs[PROC_SMTP],
-			    IMSG_MFA_RCPT, imsg->hdr.peerid, 0, -1, imsg->data,
-			    imsg->hdr.len - sizeof imsg->hdr);
+			    IMSG_MFA_MAIL, 0, 0, -1, imsg->data,
+			    sizeof(struct submit_status));
+			return;
+
+		case IMSG_LKA_RULEMATCH:
+			mfa_test_rcpt_resume(env, imsg->data);
 			return;
 		}
 	}
@@ -109,15 +103,6 @@ mfa_shutdown(void)
 	_exit(0);
 }
 
-void
-mfa_setup_events(struct smtpd *env)
-{
-}
-
-void
-mfa_disable_events(struct smtpd *env)
-{
-}
 
 pid_t
 mfa(struct smtpd *env)
@@ -174,7 +159,6 @@ mfa(struct smtpd *env)
 	config_pipes(env, peers, nitems(peers));
 	config_peers(env, peers, nitems(peers));
 
-	mfa_setup_events(env);
 	if (event_dispatch() < 0)
 		fatal("event_dispatch");
 	mfa_shutdown();
@@ -185,17 +169,21 @@ mfa(struct smtpd *env)
 void
 mfa_test_mail(struct smtpd *env, struct message *m)
 {
-	int status;
+	struct submit_status	 ss;
 
-	if (strip_source_route(m->sender.user, sizeof(m->sender.user)))
+	ss.id = m->id;
+	ss.code = 530;
+	ss.u.path = m->sender;
+
+	if (mfa_strip_source_route(ss.u.path.user, sizeof(ss.u.path.user)))
 		goto refuse;
 
-	if (! valid_localpart(m->sender.user) ||
-	    ! valid_domainpart(m->sender.domain)) {
+	if (! valid_localpart(ss.u.path.user) ||
+	    ! valid_domainpart(ss.u.path.domain)) {
 		/*
 		 * "MAIL FROM:<>" is the exception we allow.
 		 */
-		if (!(m->sender.user[0] == '\0' && m->sender.domain[0] == '\0'))
+		if (!(ss.u.path.user[0] == '\0' && ss.u.path.domain[0] == '\0'))
 			goto refuse;
 	}
 
@@ -203,43 +191,66 @@ mfa_test_mail(struct smtpd *env, struct message *m)
 	goto accept;
 
 refuse:
-	status = S_MESSAGE_PERMFAILURE;
-	imsg_compose_event(env->sc_ievs[PROC_SMTP], IMSG_MFA_MAIL, m->id, 0, -1,
-	    &status, sizeof status);
+	imsg_compose_event(env->sc_ievs[PROC_SMTP], IMSG_MFA_MAIL, 0, 0, -1, &ss,
+	    sizeof(ss));
 	return;
 
 accept:
+	ss.code = 250;
 	imsg_compose_event(env->sc_ievs[PROC_LKA], IMSG_LKA_MAIL, 0,
-	    0, -1, m, sizeof *m);
+	    0, -1, &ss, sizeof(ss));
 }
 
 void
 mfa_test_rcpt(struct smtpd *env, struct message *m)
 {
-	int status;
+	struct submit_status	 ss;
 
-	m->recipient = m->session_rcpt;
+	if (! valid_message_id(m->message_id))
+		fatalx("mfa_test_rcpt: received corrupted message_id");
 
-	strip_source_route(m->recipient.user, sizeof(m->recipient.user));
+	ss.id = m->session_id;
+	ss.code = 530;
+	ss.u.path = m->session_rcpt;
+	ss.ss = m->session_ss;
+	ss.msg = *m;
+	ss.msg.recipient = m->session_rcpt;
+	ss.flags = m->flags;
 
-	if (! valid_localpart(m->recipient.user) ||
-	    ! valid_domainpart(m->recipient.domain))
+	mfa_strip_source_route(ss.u.path.user, sizeof(ss.u.path.user));
+
+	if (! valid_localpart(ss.u.path.user) ||
+	    ! valid_domainpart(ss.u.path.domain))
 		goto refuse;
 
-	if (m->flags & F_MESSAGE_AUTHENTICATED)
-		m->recipient.flags |= F_PATH_AUTHENTICATED;
+	if (ss.flags & F_MESSAGE_AUTHENTICATED)
+		ss.u.path.flags |= F_PATH_AUTHENTICATED;
 
-	imsg_compose_event(env->sc_ievs[PROC_LKA], IMSG_LKA_RCPT, 0, 0, -1,
-	    m, sizeof *m);
+	imsg_compose_event(env->sc_ievs[PROC_LKA], IMSG_LKA_RULEMATCH, 0, 0, -1,
+	    &ss, sizeof(ss));
+
 	return;
 refuse:
-	status = S_MESSAGE_PERMFAILURE;
-	imsg_compose_event(env->sc_ievs[PROC_SMTP], IMSG_MFA_RCPT, m->id, 0, -1,
-	    &status, sizeof status);
+	imsg_compose_event(env->sc_ievs[PROC_SMTP], IMSG_MFA_RCPT, 0, 0, -1, &ss,
+	    sizeof(ss));
+}
+
+void
+mfa_test_rcpt_resume(struct smtpd *env, struct submit_status *ss) {
+	if (ss->code != 250) {
+		imsg_compose_event(env->sc_ievs[PROC_SMTP], IMSG_MFA_RCPT, 0, 0, -1, ss,
+		    sizeof(*ss));
+		return;
+	}
+
+	ss->msg.recipient = ss->u.path;
+	ss->msg.expire = ss->msg.recipient.rule.r_qexpire;
+	imsg_compose_event(env->sc_ievs[PROC_LKA], IMSG_LKA_RCPT, 0, 0, -1,
+	    ss, sizeof(*ss));
 }
 
 int
-strip_source_route(char *buf, size_t len)
+mfa_strip_source_route(char *buf, size_t len)
 {
 	char *p;
 

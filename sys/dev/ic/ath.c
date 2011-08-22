@@ -1,4 +1,4 @@
-/*      $OpenBSD: ath.c,v 1.87 2010/08/04 21:02:24 deraadt Exp $  */
+/*      $OpenBSD: ath.c,v 1.91 2010/09/07 16:21:42 deraadt Exp $  */
 /*	$NetBSD: ath.c,v 1.37 2004/08/18 21:59:39 dyoung Exp $	*/
 
 /*-
@@ -162,25 +162,30 @@ struct cfdriver ath_cd = {
 	NULL, "ath", DV_IFNET
 };
 
-#if 0
 int
 ath_activate(struct device *self, int act)
 {
 	struct ath_softc *sc = (struct ath_softc *)self;
-	int rv = 0, s;
+	struct ifnet *ifp = &sc->sc_ic.ic_if;
 
-	s = splnet();
 	switch (act) {
-	case DVACT_ACTIVATE:
+	case DVACT_SUSPEND:
+		if (ifp->if_flags & IFF_RUNNING) {
+			ath_stop(ifp);
+			if (sc->sc_power != NULL)
+				(*sc->sc_power)(sc, act);
+		}
 		break;
-	case DVACT_DEACTIVATE:
-		if_deactivate(&sc->sc_ic.ic_if);
+	case DVACT_RESUME:
+		if (ifp->if_flags & IFF_UP) {
+			ath_init(ifp);
+			if (ifp->if_flags & IFF_RUNNING)
+				ath_start(ifp);
+		}
 		break;
 	}
-	splx(s);
-	return rv;
+	return 0;
 }
-#endif
 
 int
 ath_enable(struct ath_softc *sc)
@@ -350,7 +355,6 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 	ifp->if_watchdog = ath_watchdog;
 	ifp->if_ioctl = ath_ioctl;
 #ifndef __OpenBSD__
-	ifp->if_init = ath_init;
 	ifp->if_stop = ath_stop;		/* XXX */
 #endif
 	IFQ_SET_MAXLEN(&ifp->if_snd, ATH_TXBUF * ATH_TXDESC);
@@ -422,12 +426,6 @@ ath_attach(u_int16_t devid, struct ath_softc *sc)
 #endif
 
 	sc->sc_flags |= ATH_ATTACHED;
-	/*
-	 * Make sure the interface is shutdown during reboot.
-	 */
-	sc->sc_powerhook = powerhook_establish(ath_power, sc);
-	if (sc->sc_powerhook == NULL)
-		printf(": WARNING: unable to establish power hook\n");
 
 	/*
 	 * Print regulation domain and the mac address. The regulation domain
@@ -477,61 +475,12 @@ ath_detach(struct ath_softc *sc, int flags)
 	if_detach(ifp);
 
 	splx(s);
-	if (sc->sc_powerhook != NULL)
-		powerhook_disestablish(sc->sc_powerhook);
 #ifdef __FreeBSD__
 	ATH_TXBUF_LOCK_DESTROY(sc);
 	ATH_TXQ_LOCK_DESTROY(sc);
 #endif
 
 	return 0;
-}
-
-void
-ath_power(int why, void *arg)
-{
-	struct ath_softc *sc = arg;
-	int s;
-
-	DPRINTF(ATH_DEBUG_ANY, ("ath_power(%d)\n", why));
-
-	s = splnet();
-	switch (why) {
-	case PWR_SUSPEND:
-	case PWR_STANDBY:
-		ath_suspend(sc, why);
-		break;
-	case PWR_RESUME:
-		ath_resume(sc, why);
-		break;
-	}
-	splx(s);
-}
-
-void
-ath_suspend(struct ath_softc *sc, int why)
-{
-	struct ifnet *ifp = &sc->sc_ic.ic_if;
-
-	DPRINTF(ATH_DEBUG_ANY, ("%s: if_flags %x\n", __func__, ifp->if_flags));
-
-	ath_stop(ifp);
-	if (sc->sc_power != NULL)
-		(*sc->sc_power)(sc, why);
-}
-
-void
-ath_resume(struct ath_softc *sc, int why)
-{
-	struct ifnet *ifp = &sc->sc_ic.ic_if;
-
-	DPRINTF(ATH_DEBUG_ANY, ("%s: if_flags %x\n", __func__, ifp->if_flags));
-
-	if (ifp->if_flags & IFF_UP) {
-		ath_init(ifp);
-		if (ifp->if_flags & IFF_RUNNING)
-			ath_start(ifp);
-	}
 }
 
 int

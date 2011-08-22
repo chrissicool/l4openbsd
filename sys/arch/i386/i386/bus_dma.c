@@ -1,4 +1,4 @@
-/*	$OpenBSD: bus_dma.c,v 1.21 2010/03/27 00:37:15 oga Exp $	*/
+/*	$OpenBSD: bus_dma.c,v 1.24 2010/12/26 15:40:59 miod Exp $	*/
 /*-
  * Copyright (c) 1996, 1997 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -81,8 +81,6 @@
 #ifdef L4
 #include <machine/l4/setup.h>
 #endif
-
-extern paddr_t avail_end;
 
 int	_bus_dmamap_load_buffer(bus_dma_tag_t, bus_dmamap_t, void *,
     bus_size_t, struct proc *, int, paddr_t *, int *, int);
@@ -375,6 +373,17 @@ _bus_dmamap_unload(bus_dma_tag_t t, bus_dmamap_t map)
 }
 
 /*
+ * Common function for DMA map synchronization.  May be called
+ * by bus-specific DMA map synchronization functions.
+ */
+void
+_bus_dmamap_sync(bus_dma_tag_t t, bus_dmamap_t map, bus_addr_t addr,
+    bus_size_t size, int op)
+{
+	/* Nothing to do here. */
+}
+
+/*
  * Common function for DMA-safe memory allocation.  May be called
  * by bus-specific DMA memory allocation functions.
  */
@@ -548,7 +557,7 @@ _bus_dmamem_mmap(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs, off_t off,
 			continue;
 		}
 
-		return (atop(segs[i].ds_addr + off));
+		return (segs[i].ds_addr + off);
 	}
 
 	/* Page not found. */

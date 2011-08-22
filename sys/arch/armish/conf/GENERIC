@@ -1,4 +1,4 @@
-# $OpenBSD: GENERIC,v 1.33 2010/08/02 14:13:23 deraadt Exp $ 
+# $OpenBSD: GENERIC,v 1.39 2011/02/17 20:14:30 miod Exp $ 
 #
 # For further information on compiling OpenBSD kernels, see the config(8)
 # man page.
@@ -144,7 +144,7 @@ udav*	at uhub?		# Davicom DM9601 based Ethernet
 url*	at uhub?		# Realtek RTL8150L based adapters
 wi*	at uhub?		# WaveLAN IEEE 802.11DS
 urio*	at uhub?		# Diamond Multimedia Rio 500
-uscanner* at uhub?		# USB Scanners
+uscanner* at uhub? disable	# USB Scanners
 #uyap*	at uhub?		# Y@P firmware loader
 udsbr*	at uhub?		# D-Link DSB-R100 radio
 radio*	at udsbr?		# USB radio
@@ -152,13 +152,17 @@ ugen*	at uhub?		# USB Generic driver
 ural*	at uhub?		# Ralink RT2500USB
 rum*	at uhub?		# Ralink RT2501USB/RT2601USB
 run*	at uhub?		# Ralink RT2700U/RT2800U/RT3000U
+rsu*	at uhub?		# Realtek RTL8188SU/RTL8191SU/RTL8192SU
+urtwn*	at uhub?		# Realtek RTL8188CU/RTL8192CU
+athn*	at uhub?		# Atheros AR9002U
 #udcf*	at uhub?		# Gude Expert mouseCLOCK
 uthum*	at uhidev?		# TEMPerHUM sensor
+utwitch* at uhidev?		# YUREX BBU sensor
 uow*	at uhub?		# Maxim/Dallas DS2490 1-Wire adapter
 onewire* at uow?
 
 # Bluetooth controllers
-ubt*	at uhub?		# USB Bluetooth
+ubt*	at uhub? disable	# USB Bluetooth
 bthub*	at ubt?
 
 bthidev* at bthub?		# Bluetooth HID support

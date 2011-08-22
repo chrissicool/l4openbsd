@@ -3,8 +3,8 @@
 # THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
 # generated from:
 #
-#	OpenBSD: etc.amd64/MAKEDEV.md,v 1.41 2010/07/03 03:59:15 krw Exp 
-#	OpenBSD: MAKEDEV.common,v 1.51 2010/08/03 20:12:01 miod Exp 
+#	OpenBSD: etc.amd64/MAKEDEV.md,v 1.43 2010/09/30 15:27:54 claudio Exp 
+#	OpenBSD: MAKEDEV.common,v 1.53 2010/09/30 15:27:54 claudio Exp 
 #	OpenBSD: MAKEDEV.mi,v 1.79 2009/01/25 17:30:48 miod Exp 
 #	OpenBSD: MAKEDEV.sub,v 1.14 2005/02/07 06:14:18 david Exp 
 #
@@ -49,8 +49,8 @@
 #	pty*	Set of 62 master pseudo terminals
 #	tty*	Set of 62 slave pseudo terminals
 # Console ports:
-#	wscons	Minimal wscons devices
 #	ttyC-J*	wscons display devices
+#	wscons	Minimal wscons devices
 #	wskbd*	wscons keyboards
 #	wsmux	wscons keyboard/mouse mux devices
 # Pointing devices:
@@ -59,8 +59,8 @@
 #	lpa*	Polled printer port
 #	lpt*	IEEE 1284 centronics printer
 # USB devices:
-#	uall	All USB devices
 #	ttyU*	USB serial ports
+#	uall	All USB devices
 #	ugen*	Generic USB devices
 #	uhid*	Generic HID devices
 #	ulpt*	Printer devices
@@ -76,6 +76,7 @@
 #	bpf*	Berkeley Packet Filter
 #	bthub*	Bluetooth Hubs
 #	crypto	Hardware crypto access driver
+#	diskmap	Disk mapper
 #	drm*	Direct Rendering Manager
 #	fd	fd/* nodes
 #	gpio*	General Purpose Input/Output
@@ -84,22 +85,22 @@
 #	iop*	I2O controller devices
 #	lkm	Loadable kernel modules interface
 #	music*	MIDI sequencer
+#	nnpfs*	NNPFS filesystem node
 #	nvram	NVRAM access
 #	pci*	PCI bus devices
 #	pctr*	PC Performance Tuning Register access device
 #	pf*	Packet Filter
+#	pppx*	PPP Multiplexer
 #	radio*	FM tuner devices
-#	rmidi*	Raw MIDI devices
 #	*random	In-kernel random data source
+#	rmidi*	Raw MIDI devices
 #	speaker	PC speaker
 #	systrace*	System call tracing device
 #	tun*	Network tunnel driver
 #	tuner*	Tuner devices
 #	uk*	Unknown SCSI devices
 #	video*	Video V4L2 devices
-#	nnpfs*	NNPFS filesystem node
 #	vscsi*	Virtual SCSI controller
-#	diskmap	Disk mapper
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 T=$0
 
@@ -250,16 +251,8 @@ ttyc*)
 	M cuac$U c 38 $(($U+128)) 660 dialer uucp
 	;;
 
-diskmap)
-	M diskmap c 90 0 640 operator
-	;;
-
 vscsi*)
 	M vscsi$U c 89 $U 600
-	;;
-
-nnpfs*)
-	M nnpfs$U c 51 $U 600
 	;;
 
 video*)
@@ -287,6 +280,10 @@ speaker)
 	M speaker c 27 0 600
 	;;
 
+rmidi*)
+	M rmidi$U c 52 $U 666
+	;;
+
 *random)
 	n=0
 	for pre in " " s u a
@@ -296,13 +293,13 @@ speaker)
 	done
 	;;
 
-rmidi*)
-	M rmidi$U c 52 $U 666
-	;;
-
 radio*)
 	M radio$U     c 76 $U
 	MKlist[${#MKlist[*]}]=";[ -e radio ] || ln -s radio$U radio"
+	;;
+
+pppx*)
+	M pppx$U c 91 $U 600
 	;;
 
 pf*)
@@ -320,6 +317,10 @@ pci*)
 
 nvram)
 	M nvram c 85 0 440 kmem
+	;;
+
+nnpfs*)
+	M nnpfs$U c 51 $U 600
 	;;
 
 music*)
@@ -357,6 +358,10 @@ fd)
 
 drm*)
 	M drm$U c 87 $U 660
+	;;
+
+diskmap)
+	M diskmap c 90 0 640 operator
 	;;
 
 crypto)
@@ -429,17 +434,17 @@ ugen*)
 	done
 	;;
 
+uall)
+	R ttyU0 ttyU1 ttyU2 ttyU3 ugen0 ugen1 ulpt0 ulpt1 uhid0 uhid1
+	R uhid2 uhid3 uscanner0 urio0 usb0 usb1 usb2 usb3 usb4 usb5
+	R usb6 usb7
+	;;
+
 ttyU[0-9a-zA-Z])
 	U=${i#ttyU*}
 	o=$(alph2d $U)
 	M ttyU$U c 66 $o 660 dialer uucp
 	M cuaU$U c 66 $(($o+128)) 660 dialer uucp
-	;;
-
-uall)
-	R ttyU0 ttyU1 ttyU2 ttyU3 ugen0 ugen1 ulpt0 ulpt1 uhid0 uhid1
-	R uhid2 uhid3 uscanner0 urio0 usb0 usb1 usb2 usb3 usb4 usb5
-	R usb6 usb7
 	;;
 
 lpt*|lpa*)
@@ -463,6 +468,12 @@ wskbd[0-9]*)
 	M wskbd$U c 67 $U 600
 	;;
 
+wscons)
+	R wsmouse0 wsmouse1 wsmouse2 wsmouse3 wskbd0 wskbd1 wskbd2
+	R wskbd3 wsmux ttyCcfg ttyC0 ttyC1 ttyC2 ttyC3 ttyC4 ttyC5
+	R ttyC6 ttyC7 ttyC8 ttyC9 ttyCa ttyCb
+	;;
+
 tty[C-J]*)
 	U=${i##tty[C-J]}
 	case $i in
@@ -480,12 +491,6 @@ tty[C-J]*)
 	cfg) M tty${n}cfg c 12 $((255+$m)) 600;;
 	*) echo bad unit $U for $i; exit 1;;
 	esac
-	;;
-
-wscons)
-	R wsmouse0 wsmouse1 wsmouse2 wsmouse3 wskbd0 wskbd1 wskbd2
-	R wskbd3 wsmux ttyCcfg ttyC0 ttyC1 ttyC2 ttyC3 ttyC4 ttyC5
-	R ttyC6 ttyC7 ttyC8 ttyC9 ttyCa ttyCb
 	;;
 
 pty*)

@@ -1,4 +1,4 @@
-/*	$OpenBSD: unvis.c,v 1.12 2005/08/08 08:05:34 espie Exp $ */
+/*	$OpenBSD: unvis.c,v 1.14 2010/08/24 23:49:06 djm Exp $ */
 /*-
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -190,7 +190,7 @@ unvis(char *cp, char c, int *astate, int flag)
 		 * we were done, push back passed char
 		 */
 		return (UNVIS_VALIDPUSH);
-			
+
 	default:	
 		/* 
 		 * decoder in unknown state - (probably uninitialized) 

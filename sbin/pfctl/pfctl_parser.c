@@ -1,4 +1,4 @@
-/*	$OpenBSD: pfctl_parser.c,v 1.269 2010/07/13 13:11:57 sthen Exp $ */
+/*	$OpenBSD: pfctl_parser.c,v 1.273 2011/01/23 11:19:55 bluhm Exp $ */
 
 /*
  * Copyright (c) 2001 Daniel Hartmeier
@@ -318,7 +318,7 @@ string_to_loglevel(const char *name)
 	}
 	*p = '\0';
 	for (c = prioritynames; c->c_name; c++)
-		if (!strcmp(buf, c->c_name))
+		if (!strcmp(buf, c->c_name) && c->c_val != INTERNAL_NOPRI)
 			return (c->c_val);
 
 	return (-1);
@@ -328,11 +328,11 @@ const char *
 loglevel_to_string(int level)
 {
 	CODE *c;
-	
+
 	for (c = prioritynames; c->c_name; c++)
 		if (c->c_val == level)
 			return (c->c_name);
-	
+
 	return ("unknown");
 }
 
@@ -753,6 +753,8 @@ print_rule(struct pf_rule *r, const char *anchor_call, int verbose)
 			printf(" (");
 			if (r->log & PF_LOG_ALL)
 				printf("%sall", count++ ? ", " : "");
+			if (r->log & PF_LOG_MATCHES)
+				printf("%smatches", count++ ? ", " : "");
 			if (r->log & PF_LOG_SOCKET_LOOKUP)
 				printf("%suser", count++ ? ", " : "");
 			if (r->logif)
@@ -1020,7 +1022,7 @@ print_rule(struct pf_rule *r, const char *anchor_call, int verbose)
 	if (r->rtableid != -1)
 		printf(" rtable %u", r->rtableid);
 	if (r->divert.port) {
-		if (PF_AZERO(&r->divert.addr, r->af)) {
+		if (PF_AZERO(&r->divert.addr, AF_INET6)) {
 			printf(" divert-reply");
 		} else {
 			/* XXX cut&paste from print_addr */
@@ -1447,7 +1449,7 @@ host(const char *s)
 	if ((if_name = strrchr(ps, '@')) != NULL) {
 		if_name[0] = '\0';
 		if_name++;
-	} 
+	}
 
 	if ((p = strrchr(ps, '/')) != NULL) {
 		if ((r = strdup(ps)) == NULL)

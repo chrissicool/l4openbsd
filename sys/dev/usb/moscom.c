@@ -1,4 +1,4 @@
-/*	$OpenBSD: moscom.c,v 1.13 2009/10/13 19:33:17 pirofti Exp $	*/
+/*	$OpenBSD: moscom.c,v 1.15 2011/01/25 20:03:36 jakemsr Exp $	*/
 
 /*
  * Copyright (c) 2006 Jonathan Gray <jsg@openbsd.org>
@@ -260,9 +260,6 @@ moscom_attach(struct device *parent, struct device *self, void *aux)
 	uca.methods = &moscom_methods;
 	uca.arg = sc;
 	uca.info = NULL;
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
 	
 	sc->sc_subdev = config_found_sm(self, &uca, ucomprint, ucomsubmatch);
 }
@@ -273,14 +270,10 @@ moscom_detach(struct device *self, int flags)
 	struct moscom_softc *sc = (struct moscom_softc *)self;
 	int rv = 0;
 
-	sc->sc_dying = 1;
 	if (sc->sc_subdev != NULL) {
 		rv = config_detach(sc->sc_subdev, flags);
 		sc->sc_subdev = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (rv);
 }

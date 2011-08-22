@@ -1,4 +1,4 @@
-.\"	$OpenBSD: cpio.1,v 1.29 2010/07/22 08:09:29 jmc Exp $
+.\"	$OpenBSD: cpio.1,v 1.32 2011/01/23 21:33:22 schwarze Exp $
 .\"
 .\" Copyright (c) 1997 SigmaSoft, Th. Lockert
 .\" All rights reserved.
@@ -23,9 +23,7 @@
 .\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 .\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.\"	$OpenBSD: cpio.1,v 1.29 2010/07/22 08:09:29 jmc Exp $
-.\"
-.Dd $Mdocdate: July 22 2010 $
+.Dd $Mdocdate: January 23 2011 $
 .Dt CPIO 1
 .Os
 .Sh NAME
@@ -39,8 +37,8 @@
 .Op Fl F Ar archive
 .Op Fl H Ar format
 .Op Fl O Ar archive
-.Ar \*(Lt name-list
-.Op Ar \*(Gt archive
+.No \*(Lt Ar name-list
+.Op \*(Gt Ar archive
 .Nm cpio
 .Fl i
 .Op Fl 6BbcdfjmrSstuvZz
@@ -50,12 +48,12 @@
 .Op Fl H Ar format
 .Op Fl I Ar archive
 .Op Ar pattern ...
-.Op Ar \*(Lt archive
+.Op \*(Lt Ar archive
 .Nm cpio
 .Fl p
 .Op Fl adLlmuv
 .Ar destination-directory
-.Ar \*(Lt name-list
+.No \*(Lt Ar name-list
 .Sh DESCRIPTION
 The
 .Nm
@@ -240,21 +238,21 @@ Be verbose about operations.
 List filenames as they are copied.
 .El
 .El
-.Pp
-The
-.Nm
-utility exits with one of the following values:
-.Pp
-.Bl -tag -width Ds -compact
-.It 0
-All files were processed successfully.
-.It 1
-An error occurred.
-.El
 .Sh ENVIRONMENT
 .Bl -tag -width Fl
 .It Ev TMPDIR
 Path in which to store temporary files.
+.El
+.Sh EXIT STATUS
+The
+.Nm
+utility exits with one of the following values:
+.Pp
+.Bl -tag -width Ds -offset indent -compact
+.It 0
+All files were processed successfully.
+.It 1
+An error occurred.
 .El
 .Sh DIAGNOSTICS
 Whenever

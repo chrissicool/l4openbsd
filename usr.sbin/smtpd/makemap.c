@@ -1,4 +1,4 @@
-/*	$OpenBSD: makemap.c,v 1.26 2010/04/27 09:49:23 gilles Exp $	*/
+/*	$OpenBSD: makemap.c,v 1.28 2010/11/28 14:35:58 gilles Exp $	*/
 
 /*
  * Copyright (c) 2008 Gilles Chehade <gilles@openbsd.org>
@@ -24,19 +24,21 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 
-#include <ctype.h>
 #include <db.h>
+#include <ctype.h>
 #include <err.h>
 #include <errno.h>
 #include <event.h>
 #include <fcntl.h>
+#include <imsg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <util.h>
+#include <unistd.h>
 
 #include "smtpd.h"
+#include "log.h"
 
 #define	PATH_ALIASES	"/etc/mail/aliases"
 

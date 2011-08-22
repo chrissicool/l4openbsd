@@ -1,4 +1,4 @@
-/*	$OpenBSD: control.c,v 1.3 2010/06/24 20:15:30 reyk Exp $	*/
+/*	$OpenBSD: control.c,v 1.5 2010/12/22 16:37:52 reyk Exp $	*/
 /*	$vantronix: control.c,v 1.4 2010/05/14 07:35:52 reyk Exp $	*/
 
 /*
@@ -117,7 +117,7 @@ control_listen(struct control_sock *cs)
 		return (0);
 
 	if (listen(cs->cs_fd, CONTROL_BACKLOG) == -1) {
-		log_warn("%s: listen");
+		log_warn("%s: listen", __func__);
 		return (-1);
 	}
 
@@ -150,7 +150,7 @@ control_accept(int listenfd, short event, void *arg)
 	if ((connfd = accept(listenfd,
 	    (struct sockaddr *)&sun, &len)) == -1) {
 		if (errno != EWOULDBLOCK && errno != EINTR)
-			log_warn("%s: accept");
+			log_warn("%s: accept", __func__);
 		return;
 	}
 
@@ -165,8 +165,9 @@ control_accept(int listenfd, short event, void *arg)
 	imsg_init(&c->iev.ibuf, connfd);
 	c->iev.handler = control_dispatch_imsg;
 	c->iev.events = EV_READ;
+	c->iev.data = env;
 	event_set(&c->iev.ev, c->iev.ibuf.fd, c->iev.events,
-	    c->iev.handler, env);
+	    c->iev.handler, c->iev.data);
 	event_add(&c->iev.ev, NULL);
 
 	TAILQ_INSERT_TAIL(&ctl_conns, c, entry);

@@ -1,4 +1,4 @@
-/*	$OpenBSD: process_machdep.c,v 1.14 2010/06/26 23:24:43 guenther Exp $	*/
+/*	$OpenBSD: process_machdep.c,v 1.16 2010/11/24 21:01:03 miod Exp $	*/
 
 /*
  * Copyright (c) 1994 Adam Glass
@@ -40,7 +40,7 @@
  * From:
  *	Id: procfs_i386.c,v 4.1 1993/12/17 10:47:45 jsp Rel
  *
- *	$Id: process_machdep.c,v 1.14 2010/06/26 23:24:43 guenther Exp $
+ *	$Id: process_machdep.c,v 1.16 2010/11/24 21:01:03 miod Exp $
  */
 
 /*
@@ -72,12 +72,11 @@
 #include <sys/proc.h>
 #include <sys/vnode.h>
 #include <sys/ptrace.h>
+#include <machine/fpu.h>
 #include <machine/frame.h>
 #include <machine/reg.h>
 
 #define	REGSIZE (sizeof(struct trap_frame) - sizeof(register_t))
-
-extern void cpu_singlestep(struct proc *);
 
 int
 process_read_regs(p, regs)
@@ -111,20 +110,14 @@ process_write_regs(p, regs)
 	ic = p->p_md.md_regs->ic;
 	ipl = p->p_md.md_regs->ipl;
 	bcopy(&regs->r_regs[AST], &p->p_md.md_regs->ast, REGSIZE);
+	p->p_md.md_regs->fsr &= ~FPCSR_C_MASK;
 	p->p_md.md_regs->sr = sr;
 	p->p_md.md_regs->ic = ic;
 	p->p_md.md_regs->ipl = ipl;
 	return (0);
 }
 
-int
-process_sstep(p, sstep)
-	struct proc *p;
-{
-	if (sstep)
-		cpu_singlestep(p);
-	return (0);
-}
+/* process_sstep is in trap.c */
 
 int
 process_set_pc(p, addr)

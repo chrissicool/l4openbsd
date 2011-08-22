@@ -1,4 +1,4 @@
-/*	$OpenBSD: uftdi.c,v 1.56 2010/02/23 23:31:54 jsg Exp $ 	*/
+/*	$OpenBSD: uftdi.c,v 1.58 2011/01/25 20:03:36 jakemsr Exp $ 	*/
 /*	$NetBSD: uftdi.c,v 1.14 2003/02/23 04:20:07 simonb Exp $	*/
 
 /*
@@ -874,9 +874,6 @@ uftdi_attach(struct device *parent, struct device *self, void *aux)
 	uca.arg = sc;
 	uca.info = NULL;
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
-
 	DPRINTF(("uftdi: in=0x%x out=0x%x\n", uca.bulkin, uca.bulkout));
 	sc->sc_subdev = config_found_sm(self, &uca, ucomprint, ucomsubmatch);
 
@@ -912,14 +909,10 @@ uftdi_detach(struct device *self, int flags)
 	struct uftdi_softc *sc = (struct uftdi_softc *)self;
 
 	DPRINTF(("uftdi_detach: sc=%p flags=%d\n", sc, flags));
-	sc->sc_dying = 1;
 	if (sc->sc_subdev != NULL) {
 		config_detach(sc->sc_subdev, flags);
 		sc->sc_subdev = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (0);
 }

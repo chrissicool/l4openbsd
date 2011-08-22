@@ -1,4 +1,4 @@
-/*	$OpenBSD: ca.c,v 1.10 2010/06/29 21:04:42 reyk Exp $	*/
+/*	$OpenBSD: ca.c,v 1.12 2010/12/22 17:53:54 reyk Exp $	*/
 /*	$vantronix: ca.c,v 1.29 2010/06/02 12:22:58 reyk Exp $	*/
 
 /*
@@ -846,7 +846,7 @@ ca_validate_pubkey(struct iked *env, struct iked_static_id *id,
 
 	idp.id_type = id->id_type;
 	idp.id_offset = id->id_offset;
-	if (print_id(&idp, idstr, sizeof(idstr)) == -1)
+	if (ikev2_print_id(&idp, idstr, sizeof(idstr)) == -1)
 		goto done;
 
 	if (len == 0) {
@@ -1014,7 +1014,7 @@ ca_x509_subjectaltname_cmp(X509 *cert, struct iked_static_id *id)
 	if (ca_x509_subjectaltname(cert, &sanid) != 0)
 		return (-1);
 
-	print_id(&sanid, idstr, sizeof(idstr));
+	ikev2_print_id(&sanid, idstr, sizeof(idstr));
 
 	/* Compare id types, length and data */
 	if ((id->id_type != sanid.id_type) ||
@@ -1098,7 +1098,7 @@ ca_x509_subjectaltname(X509 *cert, struct iked_id *id)
 	}
 	id->id_offset = 0;
 
-	print_id(id, idstr, sizeof(idstr));
+	ikev2_print_id(id, idstr, sizeof(idstr));
 	log_debug("%s: %s", __func__, idstr);
 
 	return (0);
@@ -1119,12 +1119,8 @@ void
 ca_sslerror(void)
 {
 	u_long		 error;
-	extern int 	 verbose;
-
-	if (verbose < 3)
-		return;
 
 	while ((error = ERR_get_error()) != 0)
-		log_debug("%s: %.100s", __func__,
+		log_warn("%s: %.100s", __func__,
 		    ERR_error_string(error, NULL));
 }

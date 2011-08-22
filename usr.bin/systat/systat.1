@@ -1,4 +1,4 @@
-.\"	$OpenBSD: systat.1,v 1.87 2010/07/21 05:29:57 lum Exp $
+.\"	$OpenBSD: systat.1,v 1.90 2011/01/18 03:38:05 lum Exp $
 .\"	$NetBSD: systat.1,v 1.6 1996/05/10 23:16:39 thorpej Exp $
 .\"
 .\" Copyright (c) 1985, 1990, 1993
@@ -30,7 +30,7 @@
 .\"
 .\"	@(#)systat.1	8.2 (Berkeley) 12/30/93
 .\"
-.Dd $Mdocdate: July 21 2010 $
+.Dd $Mdocdate: January 18 2011 $
 .Dt SYSTAT 1
 .Os
 .Sh NAME
@@ -87,7 +87,7 @@ The options are as follows:
 .It Fl a
 Display all lines.
 .It Fl b
-Raw, non interactive mode.
+Raw, non-interactive mode.
 .It Fl d Ar count
 Exit after
 .Ar count
@@ -477,7 +477,7 @@ handled by the per process name translation cache.
 At the bottom left is the disk usage display.
 It reports the number of seeks, transfers, number
 of kilobyte blocks transferred per second averaged over the
-refresh period of the display (by default, five seconds), and
+refresh period of the display, and
 the time spent in disk accesses.
 .Pp
 Under the date in the upper right hand quadrant are statistics
@@ -501,8 +501,9 @@ The rest of the column breaks down the total on a device
 by device basis.
 Only devices that have interrupted at least once since boot time are shown.
 .Pp
-Below the Interrupts display is a summary of
-total number of input packets and output packets for all interfaces.
+Below the Interrupts display are
+the average number of input and output packets per second
+for all interfaces over the last refresh interval.
 .Pp
 Below the SWAPPING display and slightly to the left of the Interrupts
 display is a list of virtual memory statistics.

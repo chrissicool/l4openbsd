@@ -1,4 +1,4 @@
-/* $OpenBSD: server-client.c,v 1.37 2010/07/28 22:15:15 nicm Exp $ */
+/* $OpenBSD: server-client.c,v 1.51 2011/01/26 01:54:56 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -30,6 +30,7 @@
 void	server_client_handle_key(int, struct mouse_event *, void *);
 void	server_client_repeat_timer(int, short, void *);
 void	server_client_check_exit(struct client *);
+void	server_client_check_backoff(struct client *);
 void	server_client_check_redraw(struct client *);
 void	server_client_set_title(struct client *);
 void	server_client_reset_state(struct client *);
@@ -52,15 +53,9 @@ void
 server_client_create(int fd)
 {
 	struct client	*c;
-	int		 mode;
 	u_int		 i;
 
-	if ((mode = fcntl(fd, F_GETFL)) == -1)
-		fatal("fcntl failed");
-	if (fcntl(fd, F_SETFL, mode|O_NONBLOCK) == -1)
-		fatal("fcntl failed");
-	if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1)
-		fatal("fcntl failed");
+	setblocking(fd, 0);
 
 	c = xcalloc(1, sizeof *c);
 	c->references = 0;
@@ -71,8 +66,6 @@ server_client_create(int fd)
 		fatal("gettimeofday failed");
 	memcpy(&c->activity_time, &c->creation_time, sizeof c->activity_time);
 
-	ARRAY_INIT(&c->prompt_hdata);
-
 	c->stdin_event = NULL;
 	c->stdout_event = NULL;
 	c->stderr_event = NULL;
@@ -81,11 +74,13 @@ server_client_create(int fd)
 	c->title = NULL;
 
 	c->session = NULL;
+	c->last_session = NULL;
 	c->tty.sx = 80;
 	c->tty.sy = 24;
 
 	screen_init(&c->status, c->tty.sx, 1, 0);
-	job_tree_init(&c->status_jobs);
+	RB_INIT(&c->status_new);
+	RB_INIT(&c->status_old);
 
 	c->message_string = NULL;
 	ARRAY_INIT(&c->message_log);
@@ -126,21 +121,28 @@ server_client_lost(struct client *c)
 	if (c->flags & CLIENT_TERMINAL)
 		tty_free(&c->tty);
 
-	if (c->stdin_fd != -1)
+	if (c->stdin_fd != -1) {
+		setblocking(c->stdin_fd, 1);
 		close(c->stdin_fd);
+	}
 	if (c->stdin_event != NULL)
 		bufferevent_free(c->stdin_event);
-	if (c->stdout_fd != -1)
+	if (c->stdout_fd != -1) {
+		setblocking(c->stdout_fd, 1);
 		close(c->stdout_fd);
+	}
 	if (c->stdout_event != NULL)
 		bufferevent_free(c->stdout_event);
-	if (c->stderr_fd != -1)
+	if (c->stderr_fd != -1) {
+		setblocking(c->stderr_fd, 1);
 		close(c->stderr_fd);
+	}
 	if (c->stderr_event != NULL)
 		bufferevent_free(c->stderr_event);
 
+	status_free_jobs(&c->status_new);
+	status_free_jobs(&c->status_old);
 	screen_free(&c->status);
-	job_tree_free(&c->status_jobs);
 
 	if (c->title != NULL)
 		xfree(c->title);
@@ -162,9 +164,6 @@ server_client_lost(struct client *c)
 		xfree(c->prompt_string);
 	if (c->prompt_buffer != NULL)
 		xfree(c->prompt_buffer);
-	for (i = 0; i < ARRAY_LENGTH(&c->prompt_hdata); i++)
-		xfree(ARRAY_ITEM(&c->prompt_hdata, i));
-	ARRAY_FREE(&c->prompt_hdata);
 
 	if (c->cwd != NULL)
 		xfree(c->cwd);
@@ -184,6 +183,7 @@ server_client_lost(struct client *c)
 	c->flags |= CLIENT_DEAD;
 
 	recalculate_sizes();
+	server_check_unattached();
 	server_update_socket();
 }
 
@@ -223,7 +223,6 @@ server_client_status_timer(void)
 {
 	struct client	*c;
 	struct session	*s;
-	struct job	*job;
 	struct timeval	 tv;
 	u_int		 i;
 	int		 interval;
@@ -252,8 +251,7 @@ server_client_status_timer(void)
 
 		difference = tv.tv_sec - c->status_timer.tv_sec;
 		if (difference >= interval) {
-			RB_FOREACH(job, jobs, &c->status_jobs)
-				job_run(job);
+			status_update_jobs(c);
 			c->flags |= CLIENT_STATUS;
 		}
 	}
@@ -451,10 +449,30 @@ server_client_reset_state(struct client *c)
 	else
 		tty_cursor(&c->tty, wp->xoff + s->cx, wp->yoff + s->cy);
 
+	/*
+	 * Any mode will do for mouse-select-pane, but set standard mode if
+	 * none.
+	 */
 	mode = s->mode;
 	if (TAILQ_NEXT(TAILQ_FIRST(&w->panes), entry) != NULL &&
-	    options_get_number(oo, "mouse-select-pane"))
-		mode |= MODE_MOUSE;
+	    options_get_number(oo, "mouse-select-pane") &&
+	    (mode & ALL_MOUSE_MODES) == 0)
+		mode |= MODE_MOUSE_STANDARD;
+
+	/*
+	 * Set UTF-8 mouse input if required. If the terminal is UTF-8, the
+	 * user has set mouse-utf8 and any mouse mode is in effect, turn on
+	 * UTF-8 mouse input. If the receiving terminal hasn't requested it
+	 * (that is, it isn't in s->mode), then it'll be converted in
+	 * input_mouse.
+	 */
+	if ((c->tty.flags & TTY_UTF8) &&
+	    (mode & ALL_MOUSE_MODES) && options_get_number(oo, "mouse-utf8"))
+		mode |= MODE_MOUSE_UTF8;
+	else
+		mode &= ~MODE_MOUSE_UTF8;
+
+	/* Set the terminal mode and reset attributes. */
 	tty_update_mode(&c->tty, mode);
 	tty_reset(&c->tty);
 }
@@ -492,6 +510,50 @@ server_client_check_exit(struct client *c)
 	c->flags &= ~CLIENT_EXIT;
 }
 
+/*
+ * Check if the client should backoff. During backoff, data from external
+ * programs is not written to the terminal. When the existing data drains, the
+ * client is redrawn.
+ *
+ * There are two backoff phases - both the tty and client have backoff flags -
+ * the first to allow existing data to drain and the latter to ensure backoff
+ * is disabled until the redraw has finished and prevent the redraw triggering
+ * another backoff.
+ */
+void
+server_client_check_backoff(struct client *c)
+{
+	struct tty	*tty = &c->tty;
+	size_t		 used;
+
+	used = EVBUFFER_LENGTH(tty->event->output);
+
+	/*
+	 * If in the second backoff phase (redrawing), don't check backoff
+	 * until the redraw has completed (or enough of it to drop below the
+	 * backoff threshold).
+	 */
+	if (c->flags & CLIENT_BACKOFF) {
+		if (used > BACKOFF_THRESHOLD)
+			return;
+		c->flags &= ~CLIENT_BACKOFF;
+		return;
+	}
+
+	/* Once drained, allow data through again and schedule redraw. */
+	if (tty->flags & TTY_BACKOFF) {
+		if (used != 0)
+			return;
+		tty->flags &= ~TTY_BACKOFF;
+		c->flags |= (CLIENT_BACKOFF|CLIENT_REDRAWWINDOW|CLIENT_STATUS);
+		return;
+	}
+
+	/* If too much data, start backoff. */
+	if (used > BACKOFF_THRESHOLD)
+		tty->flags |= TTY_BACKOFF;
+}
+
 /* Check for client redraws. */
 void
 server_client_check_redraw(struct client *c)
@@ -520,6 +582,10 @@ server_client_check_redraw(struct client *c)
 	if (c->flags & CLIENT_REDRAW) {
 		screen_redraw_screen(c, 0, 0);
 		c->flags &= ~(CLIENT_STATUS|CLIENT_BORDERS);
+	} else if (c->flags & CLIENT_REDRAWWINDOW) {
+		TAILQ_FOREACH(wp, &c->session->curw->window->panes, entry)
+			screen_redraw_pane(c, wp);
+		c->flags &= ~CLIENT_REDRAWWINDOW;
 	} else {
 		TAILQ_FOREACH(wp, &c->session->curw->window->panes, entry) {
 			if (wp->flags & PANE_REDRAW)
@@ -573,6 +639,7 @@ server_client_in_callback(
 		return;
 
 	bufferevent_disable(c->stdin_event, EV_READ|EV_WRITE);
+	setblocking(c->stdin_fd, 1);
 	close(c->stdin_fd);
 	c->stdin_fd = -1;
 
@@ -588,6 +655,7 @@ server_client_out_callback(
 	struct client	*c = data;
 
 	bufferevent_disable(c->stdout_event, EV_READ|EV_WRITE);
+	setblocking(c->stdout_fd, 1);
 	close(c->stdout_fd);
 	c->stdout_fd = -1;
 }
@@ -600,6 +668,7 @@ server_client_err_callback(
 	struct client	*c = data;
 
 	bufferevent_disable(c->stderr_event, EV_READ|EV_WRITE);
+	setblocking(c->stderr_fd, 1);
 	close(c->stderr_fd);
 	c->stderr_fd = -1;
 }
@@ -613,7 +682,6 @@ server_client_msg_dispatch(struct client *c)
 	struct msg_identify_data identifydata;
 	struct msg_environ_data	 environdata;
 	ssize_t			 n, datalen;
-	int			 mode;
 
 	if ((n = imsg_read(&c->ibuf)) == -1 || n == 0)
 		return (-1);
@@ -648,18 +716,12 @@ server_client_msg_dispatch(struct client *c)
 				fatalx("MSG_IDENTIFY missing fd");
 			memcpy(&identifydata, imsg.data, sizeof identifydata);
 
-			c->stdin_fd = dup(imsg.fd);
-			if (c->stdin_fd == -1)
-				fatal("dup failed");
+			c->stdin_fd = imsg.fd;
 			c->stdin_event = bufferevent_new(c->stdin_fd,
 			    NULL, NULL, server_client_in_callback, c);
 			if (c->stdin_event == NULL)
 				fatalx("failed to create stdin event");
-
-			if ((mode = fcntl(imsg.fd, F_GETFL)) != -1)
-				fcntl(imsg.fd, F_SETFL, mode|O_NONBLOCK);
-			if (fcntl(imsg.fd, F_SETFD, FD_CLOEXEC) == -1)
-				fatal("fcntl failed");
+			setblocking(c->stdin_fd, 0);
 
 			server_client_msg_identify(c, &identifydata, imsg.fd);
 			break;
@@ -674,11 +736,8 @@ server_client_msg_dispatch(struct client *c)
 			    NULL, NULL, server_client_out_callback, c);
 			if (c->stdout_event == NULL)
 				fatalx("failed to create stdout event");
+			setblocking(c->stdout_fd, 0);
 
-			if ((mode = fcntl(c->stdout_fd, F_GETFL)) != -1)
-				fcntl(c->stdout_fd, F_SETFL, mode|O_NONBLOCK);
-			if (fcntl(c->stdout_fd, F_SETFD, FD_CLOEXEC) == -1)
-				fatal("fcntl failed");
 			break;
 		case MSG_STDERR:
 			if (datalen != 0)
@@ -691,11 +750,8 @@ server_client_msg_dispatch(struct client *c)
 			    NULL, NULL, server_client_err_callback, c);
 			if (c->stderr_event == NULL)
 				fatalx("failed to create stderr event");
+			setblocking(c->stderr_fd, 0);
 
-			if ((mode = fcntl(c->stderr_fd, F_GETFL)) != -1)
-				fcntl(c->stderr_fd, F_SETFL, mode|O_NONBLOCK);
-			if (fcntl(c->stderr_fd, F_SETFD, FD_CLOEXEC) == -1)
-				fatal("fcntl failed");
 			break;
 		case MSG_RESIZE:
 			if (datalen != 0)
@@ -725,11 +781,8 @@ server_client_msg_dispatch(struct client *c)
 
 			if (gettimeofday(&c->activity_time, NULL) != 0)
 				fatal("gettimeofday");
-			if (c->session != NULL) {
-				memcpy(&c->session->activity_time,
-				    &c->activity_time,
-				    sizeof c->session->activity_time);
-			}
+			if (c->session != NULL)
+				session_update_activity(c->session);
 
 			tty_start_tty(&c->tty);
 			server_redraw_client(c);

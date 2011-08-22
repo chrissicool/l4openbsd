@@ -1,4 +1,4 @@
-/*	$OpenBSD: isr.c,v 1.7 2008/06/26 05:42:11 ray Exp $	*/
+/*	$OpenBSD: isr.c,v 1.9 2010/12/21 14:56:24 claudio Exp $	*/
 /*	$NetBSD: isr.c,v 1.5 2000/07/09 08:08:20 nisimura Exp $	*/
 
 /*-
@@ -41,8 +41,6 @@
 #include <sys/evcount.h>
 
 #include <uvm/uvm_extern.h>
-
-#include <net/netisr.h>
 
 #include <machine/cpu.h>
 
@@ -87,8 +85,7 @@ isrlink_autovec(int (*func)(void *), void *arg, int ipl, int priority,
 	newisr->isr_arg = arg;
 	newisr->isr_ipl = ipl;
 	newisr->isr_priority = priority;
-	evcount_attach(&newisr->isr_count, name, (void *)&newisr->isr_ipl,
-	    &evcount_intr);
+	evcount_attach(&newisr->isr_count, name, &newisr->isr_ipl);
 
 	/*
 	 * Some devices are particularly sensitive to interrupt

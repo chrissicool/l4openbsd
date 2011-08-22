@@ -1,4 +1,4 @@
-#	$OpenBSD: GENERIC,v 1.695 2010/08/08 14:27:42 kettenis Exp $
+#	$OpenBSD: GENERIC,v 1.709 2011/02/17 20:14:30 miod Exp $
 #
 # For further information on compiling OpenBSD kernels, see the config(8)
 # man page.
@@ -29,7 +29,7 @@ option		COMPAT_FREEBSD	# binary compatibility with FreeBSD
 option		COMPAT_AOUT	# a.out binaries are emulated
 
 option		PROCFS		# /proc
-#option		NTFS		# Experimental NTFS support
+option		NTFS		# NTFS support
 
 # or use		root on nfs swap on nfs
 config		bsd	swap generic
@@ -44,7 +44,7 @@ acpi0	at bios?
 mpbios0	at bios0
 pcibios0 at bios0 flags 0x0000	# use 0x30 for a total verbose
 ipmi0	at mainbus? disable	# IPMI
-#vmt0	at mainbus?		# VMware Tools
+vmt0	at mainbus?		# VMware Tools
 esm0	at mainbus? 		# Dell Embedded Server Management
 amdmsr0	at mainbus?		# MSR access for AMD Geode LX CPUs with GP
 
@@ -57,6 +57,7 @@ acpicpu*	at acpi?
 acpidock*	at acpi?
 acpiec*		at acpi?
 acpimadt0	at acpi?
+acpimcfg*	at acpi?
 acpiprt*	at acpi?
 acpitz*		at acpi?
 acpiasus*	at acpi?
@@ -266,8 +267,8 @@ ukbd*	at uhidev?		# USB keyboard
 wskbd*	at ukbd? mux 1
 ucycom*	at uhidev?		# Cypress serial
 ucom*	at ucycom?
-#uticom* at uhub?		# TI serial
-#ucom*	at uticom?
+uticom* at uhub?		# TI serial
+ucom*	at uticom?
 uhid*	at uhidev?		# USB generic HID support
 aue*	at uhub?		# ADMtek AN986 Pegasus Ethernet
 atu*	at uhub?		# Atmel AT76c50x based 802.11b
@@ -282,7 +283,7 @@ mos*	at uhub?		# MOSCHIP MCS7730/7830 10/100 Ethernet
 url*	at uhub?		# Realtek RTL8150L based adapters
 wi*	at uhub?		# WaveLAN IEEE 802.11DS
 urio*	at uhub?		# Diamond Multimedia Rio 500
-uscanner* at uhub?		# USB Scanners
+uscanner* at uhub? disable	# USB Scanners
 #uyap*	at uhub?		# Y@P firmware loader
 udsbr*	at uhub?		# D-Link DSB-R100 radio
 radio*	at udsbr?		# USB radio
@@ -293,15 +294,19 @@ ural*	at uhub?		# Ralink RT2500USB
 rum*	at uhub?		# Ralink RT2501USB/RT2601USB
 run*	at uhub?		# Ralink RT2700U/RT2800U/RT3000U
 otus*	at uhub?		# Atheros AR9001U
+athn*	at uhub?		# Atheros AR9002U
 zyd*	at uhub?		# Zydas ZD1211
 upgt*	at uhub?		# Conexant/Intersil PrismGT SoftMAC USB
 urtw*	at uhub?		# RealTek 8187
+rsu*	at uhub?		# RealTek RTL8188SU/RTL8191SU/RTL8192SU
+urtwn*	at uhub?		# RealTek RTL8188CU/RTL8192CU
 #option	NATM
 #ueagle* at uhub?		# Analog Devices Eagle ADSL
 udcf*	at uhub?		# Gude Expert mouseCLOCK
 umbg*	at uhub?		# Meinberg Funkuhren USB5131
 uthum*	at uhidev?		# TEMPerHUM sensor
 utrh*	at uhidev?		# USBRH sensor
+utwitch* at uhidev?		# YUREX BBU sensor
 uow*	at uhub?		# Maxim/Dallas DS2490 1-Wire adapter
 onewire* at uow?
 uvideo* at uhub?		# USB video
@@ -317,9 +322,9 @@ sdmmc*	at sdhc?		# SD/MMC bus
 scsibus* at sdmmc?		# SCSI emulation
 
 # Bluetooth controllers
-sbt*	at sdmmc?		# SDIO Bluetooth
+sbt*	at sdmmc? disable	# SDIO Bluetooth
 bthub*	at sbt?
-ubt*	at uhub?		# USB Bluetooth
+ubt*	at uhub? disable	# USB Bluetooth
 bthub*	at ubt?
 bthidev* at bthub?		# Bluetooth HID support
 btkbd*	at bthidev?
@@ -341,7 +346,6 @@ option	WSDISPLAY_COMPAT_PCVT		# emulate some ioctls; needed for X11
 pckbc0		at isa? flags 0x00	# PC keyboard controller
 pckbd*		at pckbc?	# PC keyboard
 pms*		at pckbc?	# PS/2 mouse for wsmouse
-pmsi*		at pckbc?	# PS/2 "Intelli"mouse for wsmouse
 vga0		at isa?
 option		X86EMU		# to POST video cards
 vga*		at pci?
@@ -350,7 +354,6 @@ wsdisplay*	at vga?
 wsdisplay*	at pcdisplay?
 wskbd*		at pckbd? mux 1
 wsmouse*	at pms? mux 0
-wsmouse*	at pmsi? mux 0
 
 intagp*		at vga?		# intel integrated graphics agp
 aliagp*		at pchb?
@@ -570,7 +573,6 @@ sm0	at isa? port 0x300 irq 10		# SMC 91cxx-based ethernet
 #tr0	at isa? port 0xa20 iomem 0xd8000	# IBM TROPIC based Token-Ring
 #tr1	at isa? port 0xa24 iomem 0xd0000	# IBM TROPIC based Token-Ring
 #tr*	at isa?				# 3COM TROPIC based Token-Ring
-ep0	at eisa?
 ep*	at eisa?			# 3C579 ethernet
 fea*	at eisa?			# DEC DEFEA FDDI
 lmc*	at pci?				# Lan Media Corp SSI/T3/HSSI
@@ -581,7 +583,6 @@ de*	at pci?				# DC21X4X-based ethernet
 fxp*	at pci?				# EtherExpress 10/100B ethernet
 fxp*	at cardbus?			# Intel PRO/100 ethernet
 ne*	at pci?				# NE2000-compat ethernet
-ep0	at pci?				# 3C59x ethernet
 ep*	at pci?				# 3C59x ethernet
 ne*	at pcmcia?			# PCMCIA based NE2000 ethernet
 ep*	at pcmcia?			# PCMCIA based 3C5xx ethernet
@@ -637,6 +638,7 @@ alc*	at pci?				# Attansic L1C/L2C Ethernet
 ale*	at pci?				# Attansic L1E Ethernet
 lii*	at pci?				# Attansic L2 Ethernet
 jme*	at pci?				# JMicron JMC250/JMC260 Ethernet
+vte*	at pci?				# RDC R6040 Ethernet
 
 # Wireless network cards
 acx*	at pci?				# TI ACX100/ACX111 (802.11b/g)
@@ -700,6 +702,7 @@ gentbi*	at mii?				# Generic 1000BASE-X ten-bit PHY
 etphy*	at mii?				# Agere/LSI ET1011 TruePHY
 jmphy*	at mii?				# JMicron JMP202/JMP211 PHYs
 atphy*	at mii?				# Attansic F1 PHYs
+rdcphy*	at mii?				# RDC R6040 PHY
 ipgphy*	at mii?				# IC Plus IP1000A PHYs
 ukphy*	at mii?				# "unknown" PHYs
 
@@ -743,6 +746,7 @@ midi*	at ym?
 midi*	at mpu?
 midi*	at autri?
 midi*	at eap?
+midi*	at envy?
 
 spkr0	at pcppi?		# PC speaker
 

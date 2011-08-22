@@ -1,4 +1,4 @@
-/*	$OpenBSD: uvisor.c,v 1.40 2010/07/02 03:13:42 tedu Exp $	*/
+/*	$OpenBSD: uvisor.c,v 1.43 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*	$NetBSD: uvisor.c,v 1.21 2003/08/03 21:59:26 nathanw Exp $	*/
 
 /*
@@ -289,9 +289,6 @@ uvisor_attach(struct device *parent, struct device *self, void *aux)
 		goto bad;
 	}
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
-
 	if (sc->sc_flags & VISOR) {
 		sc->sc_numcon = UGETW(coninfo.num_ports);
 		if (sc->sc_numcon > UVISOR_MAX_CONN)
@@ -382,17 +379,18 @@ int
 uvisor_activate(struct device *self, int act)
 {
 	struct uvisor_softc *sc = (struct uvisor_softc *)self;
-	int rv = 0;
-	int i;
+	int i, rv = 0, r;
 
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
-
 	case DVACT_DEACTIVATE:
 		for (i = 0; i < sc->sc_numcon; i++)
-			if (sc->sc_subdevs[i] != NULL)
-				rv = config_deactivate(sc->sc_subdevs[i]);
+			if (sc->sc_subdevs[i] != NULL) {
+				r = config_deactivate(sc->sc_subdevs[i]);
+				if (r)
+					rv = r;
+			}
 		sc->sc_dying = 1;
 		break;
 	}
@@ -407,16 +405,12 @@ uvisor_detach(struct device *self, int flags)
 	int i;
 
 	DPRINTF(("uvisor_detach: sc=%p flags=%d\n", sc, flags));
-	sc->sc_dying = 1;
 	for (i = 0; i < sc->sc_numcon; i++) {
 		if (sc->sc_subdevs[i] != NULL) {
 			rv |= config_detach(sc->sc_subdevs[i], flags);
 			sc->sc_subdevs[i] = NULL;
 		}
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (rv);
 }

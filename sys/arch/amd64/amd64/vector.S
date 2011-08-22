@@ -1,4 +1,4 @@
-/*	$OpenBSD: vector.S,v 1.25 2010/04/05 19:04:32 kettenis Exp $	*/
+/*	$OpenBSD: vector.S,v 1.27 2010/12/21 14:56:23 claudio Exp $	*/
 /*	$NetBSD: vector.S,v 1.5 2004/06/28 09:13:11 fvdl Exp $	*/
 
 /*
@@ -78,8 +78,6 @@
 #include <machine/intr.h>
 #include <machine/psl.h>
 
-#include <net/netisr.h>
-
 #include "ioapic.h"
 #include "lapic.h"
 #include "assym.h"
@@ -137,8 +135,46 @@ IDTVEC(trap0b)
 	TRAP(T_SEGNPFLT)
 IDTVEC(trap0c)
 	TRAP(T_STKFLT)
+
+	/*
+	 * If iretq faults, we'll get a trap at doreti_iret with CPL==0 but
+	 * the user's GS.base, which INTRENTRY wouldn't handle correctly
+	 * (it would skip the swapgs), so locally expand both it and
+	 * INTR_SAVE_GPRS, but add an extra test comparing %rip to doreti_iret
+	 * so that we can do the necessary swapgs in that case.
+	 */
 IDTVEC(trap0d)
-	TRAP(T_PROTFLT)
+	subq	$TF_ERR,%rsp
+	movl	$T_PROTFLT,TF_TRAPNO(%rsp)
+	movq	%rdi,TF_RDI(%rsp)
+	leaq	_C_LABEL(doreti_iret)(%rip),%rdi
+	cmpq	%rdi,TF_RIP(%rsp)
+	je	1f
+	testq	$SEL_UPL,TF_CS(%rsp)
+	jz	2f
+1:	swapgs
+2:	movw	%gs,TF_GS(%rsp)
+	movw	%fs,TF_FS(%rsp)
+	movw	%es,TF_ES(%rsp)
+	movw	%ds,TF_DS(%rsp)
+	movq	%r15,TF_R15(%rsp)
+	movq	%r14,TF_R14(%rsp)
+	movq	%r13,TF_R13(%rsp)
+	movq	%r12,TF_R12(%rsp)
+	movq	%r11,TF_R11(%rsp)
+	movq	%r10,TF_R10(%rsp)
+	movq	%r9,TF_R9(%rsp)
+	movq	%r8,TF_R8(%rsp)
+	/*movq	%rdi,TF_RDI(%rsp)	done above */
+	movq	%rsi,TF_RSI(%rsp)
+	movq	%rbp,TF_RBP(%rsp)
+	movq	%rbx,TF_RBX(%rsp)
+	movq	%rdx,TF_RDX(%rsp)
+	movq	%rcx,TF_RCX(%rsp)
+	movq	%rax,TF_RAX(%rsp)
+	sti
+	jmp	calltrap
+
 IDTVEC(trap0e)
 	TRAP(T_PAGEFLT)
 IDTVEC(intrspurious)
@@ -187,12 +223,21 @@ IDTVEC(exceptions)
 
 /*
  * If an error is detected during trap, syscall, or interrupt exit, trap() will
- * change %eip to point to one of these labels.  We clean up the stack, if
- * necessary, and resume as if we were handling a general protection fault.
- * This will cause the process to get a SIGBUS.
+ * change %rip to point to this label.  At that point, we'll be running with
+ * the kernel GS.base, but the trap frame will be from CPL==3, so we can't
+ * go through INTRENTRY as it would do the swapgs that we don't want/need.
+ * So, locally expand INTRENTRY but without the swapgs: manually
+ * clean up the stack and resume as if we were handling a general
+ * protection fault.  This will cause the process to get a SIGBUS.
  */
 NENTRY(resume_iret)
-	ZTRAP(T_PROTFLT)
+	pushq	$0
+	pushq	$T_PROTFLT
+	subq	$32,%rsp
+	INTR_SAVE_GPRS
+	sti
+	jmp	calltrap
+
 /*
  * All traps go through here. Call the generic trap handler, and
  * check for ASTs afterwards.
@@ -754,10 +799,6 @@ _C_LABEL(ioapic_level_stubs):
 /*
  * Soft interrupt handlers
  */
-	.globl	_C_LABEL(netisr)
-_C_LABEL(netisr):
-	.word	0
-
 	.text
 IDTVEC(softtty)
 	movl	$IPL_SOFTTTY, CPUVAR(ILEVEL)
@@ -783,19 +824,6 @@ IDTVEC(softnet)
 	call	_C_LABEL(x86_softintlock)
 #endif
 	movq	CPUVAR(ISOURCES) + SIR_NET * 8, %r12
-
-	xorq	%r12,%r12
-	xchgl	_C_LABEL(netisr),%r12d
-
-	/* XXX Do the legacy netisrs here for now. */
-#define DONETISR(s, c) \
-	.globl  _C_LABEL(c)	;\
-	testl	$(1 << s),%r12d	;\
-	jz	1f		;\
-	call	_C_LABEL(c)	;\
-1:
-#include <net/netisr_dispatch.h>
-	
 	movl	$X86_SOFTINTR_SOFTNET,%edi
 	call	_C_LABEL(softintr_dispatch)
 #ifdef MULTIPROCESSOR	

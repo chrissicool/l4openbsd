@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_uath.c,v 1.42 2010/06/29 07:12:31 matthew Exp $	*/
+/*	$OpenBSD: if_uath.c,v 1.49 2011/01/25 20:03:35 jakemsr Exp $	*/
 
 /*-
  * Copyright (c) 2006
@@ -19,8 +19,6 @@
 
 /*-
  * Driver for Atheros AR5005UG/AR5005UX chipsets.
- * http://www.atheros.com/pt/bulletins/AR5005UGBulletin.pdf
- * http://www.atheros.com/pt/bulletins/AR5005UXBulletin.pdf
  *
  * IMPORTANT NOTICE:
  * This driver was written without any documentation or support from Atheros
@@ -298,7 +296,7 @@ uath_attach(struct device *parent, struct device *self, void *aux)
 	/*
 	 * Only post-firmware devices here.
 	 */
-	usb_init_task(&sc->sc_task, uath_task, sc);
+	usb_init_task(&sc->sc_task, uath_task, sc, USB_TASK_TYPE_GENERIC);
 	timeout_set(&sc->scan_to, uath_next_scan, sc);
 	timeout_set(&sc->stat_to, uath_stat, sc);
 
@@ -391,7 +389,6 @@ uath_attach(struct device *parent, struct device *self, void *aux)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = uath_init;
 	ifp->if_ioctl = uath_ioctl;
 	ifp->if_start = uath_start;
 	ifp->if_watchdog = uath_watchdog;
@@ -419,15 +416,13 @@ uath_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_txtap.wt_ihdr.it_present = htole32(UATH_TX_RADIOTAP_PRESENT);
 #endif
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
-
 	return;
 
 fail4:	uath_free_tx_data_list(sc);
 fail3:	uath_free_rx_cmd_list(sc);
 fail2:	uath_free_tx_cmd_list(sc);
 fail1:	uath_close_pipes(sc);
+	usbd_deactivate(sc->sc_udev);
 }
 
 int
@@ -448,8 +443,10 @@ uath_detach(struct device *self, int flags)
 	/* post-firmware device */
 
 	usb_rem_task(sc->sc_udev, &sc->sc_task);
-	timeout_del(&sc->scan_to);
-	timeout_del(&sc->stat_to);
+	if (timeout_initialized(&sc->scan_to))
+		timeout_del(&sc->scan_to);
+	if (timeout_initialized(&sc->stat_to))
+		timeout_del(&sc->stat_to);
 
 	/* abort and free xfers */
 	uath_free_tx_data_list(sc);
@@ -460,13 +457,12 @@ uath_detach(struct device *self, int flags)
 	/* close Tx/Rx pipes */
 	uath_close_pipes(sc);
 
-	ieee80211_ifdetach(ifp);	/* free all nodes */
-	if_detach(ifp);
+	if (ifp->if_softc != NULL) {
+		ieee80211_ifdetach(ifp);	/* free all nodes */
+		if_detach(ifp);
+	}
 
 	splx(s);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
 
 	return 0;
 }
@@ -2127,11 +2123,14 @@ fail1:	return error;
 int
 uath_activate(struct device *self, int act)
 {
+	struct uath_softc *sc = (struct uath_softc *)self;
+
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
 
 	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
 		break;
 	}
 	return 0;

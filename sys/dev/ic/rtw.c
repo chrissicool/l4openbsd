@@ -1,4 +1,4 @@
-/*	$OpenBSD: rtw.c,v 1.78 2009/11/24 00:28:22 deraadt Exp $	*/
+/*	$OpenBSD: rtw.c,v 1.81 2010/09/07 16:21:43 deraadt Exp $	*/
 /*	$NetBSD: rtw.c,v 1.29 2004/12/27 19:49:16 dyoung Exp $ */
 
 /*-
@@ -184,8 +184,6 @@ void	 rtw_enable_interrupts(struct rtw_softc *);
 int	 rtw_dequeue(struct ifnet *, struct rtw_txsoft_blk **,
 	    struct rtw_txdesc_blk **, struct mbuf **,
 	    struct ieee80211_node **);
-void	 rtw_establish_hooks(struct rtw_hooks *, const char *, void *);
-void	 rtw_disestablish_hooks(struct rtw_hooks *, const char *, void *);
 int	 rtw_txsoft_blk_setup(struct rtw_txsoft_blk *, u_int);
 void	 rtw_rxdesc_init_all(struct rtw_rxdesc_blk *, struct rtw_rxsoft *,
 	    int);
@@ -3593,57 +3591,29 @@ rtw_media_status(struct ifnet *ifp, struct ifmediareq *imr)
 	ieee80211_media_status(ifp, imr);
 }
 
-void
-rtw_power(int why, void *arg)
+int
+rtw_activate(struct device *self, int act)
 {
-	struct rtw_softc *sc = arg;
+	struct rtw_softc *sc = (struct rtw_softc *)self;
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
-	int s;
 
-	DPRINTF(sc, RTW_DEBUG_PWR,
-	    ("%s: rtw_power(%d,)\n", sc->sc_dev.dv_xname, why));
-
-	s = splnet();
-	switch (why) {
-	case PWR_STANDBY:
-		/* XXX do nothing. */
+	switch (act) {
+	case DVACT_SUSPEND:
+		if (ifp->if_flags & IFF_RUNNING) {
+			rtw_stop(ifp, 1);
+			if (sc->sc_power != NULL)
+				(*sc->sc_power)(sc, act);
+		}
 		break;
-	case PWR_SUSPEND:
-		rtw_stop(ifp, 1);
-		if (sc->sc_power != NULL)
-			(*sc->sc_power)(sc, why);
-		break;
-	case PWR_RESUME:
+	case DVACT_RESUME:
 		if (ifp->if_flags & IFF_UP) {
 			if (sc->sc_power != NULL)
-				(*sc->sc_power)(sc, why);
+				(*sc->sc_power)(sc, act);
 			rtw_init(ifp);
 		}
 		break;
 	}
-	splx(s);
-}
-
-void
-rtw_establish_hooks(struct rtw_hooks *hooks, const char *dvname,
-    void *arg)
-{
-	/*
-	 * Add a suspend hook to make sure we come back up after a
-	 * resume.
-	 */
-	hooks->rh_power = powerhook_establish(rtw_power, arg);
-	if (hooks->rh_power == NULL)
-		printf("%s: WARNING: unable to establish power hook\n",
-		    dvname);
-}
-
-void
-rtw_disestablish_hooks(struct rtw_hooks *hooks, const char *dvname,
-    void *arg)
-{
-	if (hooks->rh_power != NULL)
-		powerhook_disestablish(hooks->rh_power);
+	return 0;
 }
 
 int
@@ -4105,9 +4075,6 @@ rtw_attach(struct rtw_softc *sc)
 	bpfattach(&sc->sc_radiobpf, &sc->sc_ic.ic_if, DLT_IEEE802_11_RADIO,
 	    sizeof(struct ieee80211_frame) + 64);
 #endif
-
-	rtw_establish_hooks(&sc->sc_hooks, sc->sc_dev.dv_xname, (void*)sc);
-
 	return;
 
 fail8:
@@ -4151,8 +4118,6 @@ rtw_detach(struct rtw_softc *sc)
 {
 	sc->sc_flags |= RTW_F_INVALID;
 
-	rtw_disestablish_hooks(&sc->sc_hooks, sc->sc_dev.dv_xname,
-	    (void*)sc);
 	timeout_del(&sc->sc_scan_to);
 
 	rtw_stop(&sc->sc_if, 1);

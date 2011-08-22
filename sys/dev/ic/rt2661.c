@@ -1,4 +1,4 @@
-/*	$OpenBSD: rt2661.c,v 1.55 2010/08/04 19:48:33 damien Exp $	*/
+/*	$OpenBSD: rt2661.c,v 1.64 2011/02/22 20:05:03 kettenis Exp $	*/
 
 /*-
  * Copyright (c) 2006
@@ -156,7 +156,6 @@ int		rt2661_prepare_beacon(struct rt2661_softc *);
 #endif
 void		rt2661_enable_tsf_sync(struct rt2661_softc *);
 int		rt2661_get_rssi(struct rt2661_softc *, uint8_t);
-void		rt2661_power(int, void *);
 
 static const struct {
 	uint32_t	reg;
@@ -247,12 +246,6 @@ rt2661_attach(void *xsc, int id)
 	else
 		rt2661_attachhook(sc);
 
-	sc->sc_powerhook = powerhook_establish(rt2661_power, sc);
-	if (sc->sc_powerhook == NULL) {
-		printf("%s: WARNING: unable to establish power hook\n",
-		    sc->sc_dev.dv_xname);
-	}
-
 	return 0;
 
 fail2:	rt2661_free_tx_ring(sc, &sc->mgtq);
@@ -342,7 +335,6 @@ rt2661_attachhook(void *xsc)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = rt2661_init;
 	ifp->if_ioctl = rt2661_ioctl;
 	ifp->if_start = rt2661_start;
 	ifp->if_watchdog = rt2661_watchdog;
@@ -384,9 +376,6 @@ rt2661_detach(void *xsc)
 	timeout_del(&sc->scan_to);
 	timeout_del(&sc->amrr_to);
 
-	if (sc->sc_powerhook != NULL)
-		powerhook_disestablish(sc->sc_powerhook);
-
 	ieee80211_ifdetach(ifp);	/* free all nodes */
 	if_detach(ifp);
 
@@ -408,15 +397,17 @@ rt2661_suspend(void *xsc)
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
 
 	if (ifp->if_flags & IFF_RUNNING)
-		rt2661_stop(ifp, 0);
+		rt2661_stop(ifp, 1);
 }
 
 void
 rt2661_resume(void *xsc)
 {
 	struct rt2661_softc *sc = xsc;
+	struct ifnet *ifp = &sc->sc_ic.ic_if;
 
-	rt2661_power(PWR_RESUME, sc);
+	if (ifp->if_flags & IFF_UP)
+		rt2661_init(ifp);	
 }
 
 int
@@ -1013,19 +1004,19 @@ rt2661_tx_dma_intr(struct rt2661_softc *sc, struct rt2661_tx_ring *txq)
 		    !(letoh32(desc->flags) & RT2661_TX_VALID))
 			break;
 
-		bus_dmamap_sync(sc->sc_dmat, data->map, 0,
-		    data->map->dm_mapsize, BUS_DMASYNC_POSTWRITE);
-		bus_dmamap_unload(sc->sc_dmat, data->map);
-		m_freem(data->m);
-		data->m = NULL;
-		/* node reference is released in rt2661_tx_intr() */
-
 		/* descriptor is no longer valid */
 		desc->flags &= ~htole32(RT2661_TX_VALID);
 
 		bus_dmamap_sync(sc->sc_dmat, txq->map,
 		    txq->next * RT2661_TX_DESC_SIZE, RT2661_TX_DESC_SIZE,
 		    BUS_DMASYNC_PREWRITE);
+
+		bus_dmamap_sync(sc->sc_dmat, data->map, 0,
+		    data->map->dm_mapsize, BUS_DMASYNC_POSTWRITE);
+		bus_dmamap_unload(sc->sc_dmat, data->map);
+		m_freem(data->m);
+		data->m = NULL;
+		/* node reference is released in rt2661_tx_intr() */
 
 		DPRINTFN(15, ("tx dma done q=%p idx=%u\n", txq, txq->next));
 
@@ -1246,6 +1237,8 @@ rt2661_intr(void *arg)
 
 	r1 = RAL_READ(sc, RT2661_INT_SOURCE_CSR);
 	r2 = RAL_READ(sc, RT2661_MCU_INT_SOURCE_CSR);
+	if (__predict_false(r1 == 0xffffffff && r2 == 0xffffffff))
+		return 0;	/* device likely went away */
 	if (r1 == 0 && r2 == 0)
 		return 0;	/* not for us */
 
@@ -2921,30 +2914,4 @@ rt2661_get_rssi(struct rt2661_softc *sc, uint8_t raw)
 			rssi -= 100;
 	}
 	return rssi;
-}
-
-void
-rt2661_power(int why, void *arg)
-{
-	struct rt2661_softc *sc = arg;
-	struct ifnet *ifp = &sc->sc_ic.ic_if;
-	int s;
-
-	s = splnet();
-	switch (why) {
-	case PWR_SUSPEND:
-	case PWR_STANDBY:
-		rt2661_stop(ifp, 0);
-		if (sc->sc_power != NULL)
-			(*sc->sc_power)(sc, why);
-		break;
-	case PWR_RESUME:
-		if (ifp->if_flags & IFF_UP) {
-			rt2661_init(ifp);	
-			if (sc->sc_power != NULL)
-				(*sc->sc_power)(sc, why);
-		}
-		break;
-	}
-	splx(s);
 }

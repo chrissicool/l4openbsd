@@ -1,4 +1,4 @@
-.\"	$OpenBSD: write.1,v 1.14 2010/07/21 19:53:45 jmc Exp $
+.\"	$OpenBSD: write.1,v 1.16 2010/10/28 21:32:54 jmc Exp $
 .\"
 .\" Copyright (c) 1989, 1993
 .\"	The Regents of the University of California.  All rights reserved.
@@ -32,7 +32,7 @@
 .\"
 .\"     from: @(#)write.1	8.1 (Berkeley) 6/6/93
 .\"
-.Dd $Mdocdate: July 21 2010 $
+.Dd $Mdocdate: October 28 2010 $
 .Dt WRITE 1
 .Os
 .Sh NAME
@@ -68,11 +68,9 @@ You can prevent people (other than the superuser) from writing to you
 with the
 .Xr mesg 1
 command.
-Some commands, for example
-.Xr nroff 1
-and
+Some commands, such as
 .Xr pr 1 ,
-disallow writing automatically, so that your output isn't overwritten.
+disallow writing automatically, so that output isn't overwritten.
 .Pp
 If the user you want to write to is logged in on more than one terminal,
 you can specify which terminal to write to by specifying the terminal
@@ -94,12 +92,12 @@ The string
 .Dq oo
 means that the person believes the conversation to be
 over.
-.Pp
+.Sh EXIT STATUS
 The
 .Nm
 utility exits with one of the following values:
 .Pp
-.Bl -tag -width Ds -compact -offset indent
+.Bl -tag -width Ds -offset indent -compact
 .It 0
 Normal behavior.
 .It \*(Gt0

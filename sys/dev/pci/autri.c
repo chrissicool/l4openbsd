@@ -1,4 +1,4 @@
-/*	$OpenBSD: autri.c,v 1.25 2010/07/15 03:43:11 jakemsr Exp $	*/
+/*	$OpenBSD: autri.c,v 1.28 2010/09/21 02:53:14 jakemsr Exp $	*/
 
 /*
  * Copyright (c) 2001 SOMEYA Yoshihiko and KUROSAWA Takahiro.
@@ -72,6 +72,7 @@ int autridebug = 0;
 
 int	autri_match(struct device *, void *, void *);
 void	autri_attach(struct device *, struct device *, void *);
+int	autri_activate(struct device *, int);
 int	autri_intr(void *);
 
 #define DMAADDR(p) ((p)->map->dm_segs[0].ds_addr)
@@ -98,7 +99,6 @@ int	autri_write_codec(void *sc, u_int8_t a, u_int16_t d);
 void	autri_reset_codec(void *sc);
 enum ac97_host_flags	autri_flags_codec(void *);
 
-void autri_powerhook(int why,void *addr);
 int  autri_init(void *sc);
 struct autri_dma *autri_find_dma(struct autri_softc *, void *);
 void autri_setup_channel(struct autri_softc *sc,int mode,
@@ -117,7 +117,8 @@ struct cfdriver autri_cd = {
 };
 
 struct cfattach autri_ca = {
-	sizeof(struct autri_softc), autri_match, autri_attach
+	sizeof(struct autri_softc), autri_match, autri_attach, NULL,
+	autri_activate
 };
 
 int	autri_open(void *, int);
@@ -615,23 +616,31 @@ autri_attach(parent, self, aux)
 #if NMIDI > 0
 	midi_attach_mi(&autri_midi_hw_if, sc, &sc->sc_dev);
 #endif
-
-	sc->sc_old_power = PWR_RESUME;
-	powerhook_establish(autri_powerhook, sc);
 }
 
-void
-autri_powerhook(int why,void *addr)
+int
+autri_activate(struct device *self, int act)
 {
-	struct autri_softc *sc = addr;
+	struct autri_softc *sc = (struct autri_softc *)self;
+	int rv = 0;
 
-	if (why == PWR_RESUME && sc->sc_old_power == PWR_SUSPEND) {
-		DPRINTF(("PWR_RESUME\n"));
+	switch (act) {
+	case DVACT_ACTIVATE:
+		break;
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_SUSPEND:
+		break;
+	case DVACT_RESUME:
 		autri_init(sc);
-		/*autri_reset_codec(&sc->sc_codec);*/
-		(sc->sc_codec.codec_if->vtbl->restore_ports)(sc->sc_codec.codec_if);
+		ac97_resume(&sc->sc_codec.host_if, sc->sc_codec.codec_if);
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_DEACTIVATE:
+		break;
 	}
-	sc->sc_old_power = why;
+	return (rv);
 }
 
 int

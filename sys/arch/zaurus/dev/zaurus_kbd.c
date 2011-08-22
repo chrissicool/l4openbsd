@@ -1,4 +1,4 @@
-/* $OpenBSD: zaurus_kbd.c,v 1.29 2007/09/17 01:33:33 krw Exp $ */
+/* $OpenBSD: zaurus_kbd.c,v 1.31 2010/09/07 16:21:41 deraadt Exp $ */
 /*
  * Copyright (c) 2005 Dale Rahn <drahn@openbsd.org>
  *
@@ -109,25 +109,25 @@ struct zkbd_softc {
 	char sc_rep[MAXKEYS];
 	int sc_nrep;
 #endif
-	void *sc_powerhook;
 };
 
 struct zkbd_softc *zkbd_dev; /* XXX */
 
 int zkbd_match(struct device *, void *, void *);
 void zkbd_attach(struct device *, struct device *, void *);
+int zkbd_activate(struct device *, int);
 
 int zkbd_irq(void *v);
 void zkbd_poll(void *v);
 int zkbd_on(void *v);
 int zkbd_sync(void *v);
 int zkbd_hinge(void *v);
-void zkbd_power(int why, void *arg);
 
 int zkbd_modstate;
 
 struct cfattach zkbd_ca = {
-	sizeof(struct zkbd_softc), zkbd_match, zkbd_attach
+	sizeof(struct zkbd_softc), zkbd_match, zkbd_attach, NULL,
+	zkbd_activate
 };
 
 struct cfdriver zkbd_cd = {
@@ -181,12 +181,6 @@ zkbd_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_rawkbd = 0;
 #endif
 	/* Determine which system we are - XXX */
-
-	sc->sc_powerhook = powerhook_establish(zkbd_power, sc);
-	if (sc->sc_powerhook == NULL) {
-		printf(": unable to establish powerhook\n");
-		return;
-	}
 
 	if (1 /* C3000 */) {
 		sc->sc_sense_array = gpio_sense_pins_c3000;
@@ -572,8 +566,16 @@ zkbd_cnpollc(void *v, int on)
 {
 }
 
-void
-zkbd_power(int why, void *arg)
+int
+zkbd_activate(struct device *self, int act)
 {
-	zkbd_hinge(arg);
+	switch (act) {
+	case DVACT_SUSPEND:
+		zkbd_hinge(self);
+		break;
+	case DVACT_RESUME:
+		zkbd_hinge(self);
+		break;
+	}
+	return 0;
 }

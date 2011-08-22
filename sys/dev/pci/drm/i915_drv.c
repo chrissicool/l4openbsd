@@ -65,7 +65,9 @@ void	inteldrm_attach(struct device *, struct device *, void *);
 int	inteldrm_detach(struct device *, int);
 int	inteldrm_activate(struct device *, int);
 int	inteldrm_ioctl(struct drm_device *, u_long, caddr_t, struct drm_file *);
+int	inteldrm_doioctl(struct drm_device *, u_long, caddr_t, struct drm_file *);
 int	inteldrm_intr(void *);
+void	inteldrm_error(struct inteldrm_softc *);
 int	inteldrm_ironlake_intr(void *);
 void	inteldrm_lastclose(struct drm_device *);
 
@@ -81,6 +83,7 @@ int	inteldrm_fault(struct drm_obj *, struct uvm_faultinfo *, off_t,
 void	inteldrm_wipe_mappings(struct drm_obj *);
 void	inteldrm_purge_obj(struct drm_obj *);
 void	inteldrm_set_max_obj_size(struct inteldrm_softc *);
+void	inteldrm_quiesce(struct inteldrm_softc *);
 
 /* For reset and suspend */
 int	inteldrm_save_state(struct inteldrm_softc *);
@@ -159,7 +162,7 @@ int	i915_gem_init_ringbuffer(struct inteldrm_softc *);
 int	inteldrm_start_ring(struct inteldrm_softc *);
 void	i915_gem_cleanup_ringbuffer(struct inteldrm_softc *);
 int	i915_gem_ring_throttle(struct drm_device *, struct drm_file *);
-int	i915_gem_evict_inactive(struct inteldrm_softc *);
+int	i915_gem_evict_inactive(struct inteldrm_softc *, int);
 int	i915_gem_get_relocs_from_user(struct drm_i915_gem_exec_object2 *,
 	    u_int32_t, struct drm_i915_gem_relocation_entry **);
 int	i915_gem_put_relocs_to_user(struct drm_i915_gem_exec_object2 *,
@@ -327,7 +330,7 @@ inteldrm_attach(struct device *parent, struct device *self, void *aux)
 	struct inteldrm_softc	*dev_priv = (struct inteldrm_softc *)self;
 	struct pci_attach_args	*pa = aux, bpa;
 	struct vga_pci_bar	*bar;
-	struct drm_device 	*dev;
+	struct drm_device	*dev;
 	const struct drm_pcidev	*id_entry;
 	int			 i;
 
@@ -349,7 +352,7 @@ inteldrm_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	dev_priv->regs = vga_pci_bar_map((struct vga_pci_softc *)parent, 
+	dev_priv->regs = vga_pci_bar_map((struct vga_pci_softc *)parent,
 	    bar->addr, 0, 0);
 	if (dev_priv->regs == NULL) {
 		printf(": can't map mmio space\n");
@@ -401,6 +404,20 @@ inteldrm_attach(struct device *parent, struct device *self, void *aux)
 	dev_priv->mm.next_gem_seqno = 1;
 	dev_priv->mm.suspended = 1;
 
+	/* On GEN3 we really need to make sure the ARB C3 LP bit is set */
+	if (IS_GEN3(dev_priv)) {
+		u_int32_t tmp = I915_READ(MI_ARB_STATE);
+		if (!(tmp & MI_ARB_C3_LP_WRITE_ENABLE)) {
+			/*
+			 * arb state is a masked write, so set bit + bit
+			 * in mask
+			 */
+			tmp = MI_ARB_C3_LP_WRITE_ENABLE |
+			    (MI_ARB_C3_LP_WRITE_ENABLE << MI_ARB_MASK_SHIFT);
+			I915_WRITE(MI_ARB_STATE, tmp);
+		}
+	}
+
 	/* For the X server, in kms mode this will not be needed */
 	dev_priv->fence_reg_start = 3;
 
@@ -431,7 +448,7 @@ inteldrm_attach(struct device *parent, struct device *self, void *aux)
 	if (dev_priv->flags & (CHIP_I915G|CHIP_I915GM|CHIP_I945G|CHIP_I945GM)) {
 		i915_alloc_ifp(dev_priv, &bpa);
 	} else if (IS_I965G(dev_priv) || IS_G33(dev_priv)) {
-		i965_alloc_ifp(dev_priv, &bpa);	
+		i965_alloc_ifp(dev_priv, &bpa);
 	} else {
 		int nsegs;
 		/*
@@ -535,11 +552,17 @@ inteldrm_activate(struct device *arg, int act)
 	struct inteldrm_softc	*dev_priv = (struct inteldrm_softc *)arg;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		inteldrm_quiesce(dev_priv);
+		break;
 	case DVACT_SUSPEND:
 		inteldrm_save_state(dev_priv);
 		break;
 	case DVACT_RESUME:
 		inteldrm_restore_state(dev_priv);
+		/* entrypoints can stop sleeping now */
+		atomic_clearbits_int(&dev_priv->sc_flags, INTELDRM_QUIET);
+		wakeup(&dev_priv->flags);
 		break;
 	}
 
@@ -557,6 +580,27 @@ struct cfdriver inteldrm_cd = {
 
 int
 inteldrm_ioctl(struct drm_device *dev, u_long cmd, caddr_t data,
+    struct drm_file *file_priv)
+{
+	struct inteldrm_softc	*dev_priv = dev->dev_private;
+	int			 error = 0;
+
+	while ((dev_priv->sc_flags & INTELDRM_QUIET) && error == 0)
+		error = tsleep(&dev_priv->flags, PCATCH, "intelioc", 0);
+	if (error)
+		return (error);
+	dev_priv->entries++;
+
+	error = inteldrm_doioctl(dev, cmd, data, file_priv);
+
+	dev_priv->entries--;
+	if (dev_priv->sc_flags & INTELDRM_QUIET)
+		wakeup(&dev_priv->entries);
+	return (error);
+}
+
+int
+inteldrm_doioctl(struct drm_device *dev, u_long cmd, caddr_t data,
     struct drm_file *file_priv)
 {
 	struct inteldrm_softc	*dev_priv = dev->dev_private;
@@ -640,6 +684,8 @@ inteldrm_ironlake_intr(void *arg)
 		dev_priv->mm.hang_cnt = 0;
 		timeout_add_msec(&dev_priv->mm.hang_timer, 750);
 	}
+	if (gt_iir & GT_MASTER_ERROR)
+		inteldrm_error(dev_priv);
 
 	if (de_iir & DE_PIPEA_VBLANK)
 		drm_handle_vblank(dev, 0);
@@ -652,11 +698,12 @@ inteldrm_ironlake_intr(void *arg)
 	I915_WRITE(DEIIR, de_iir);
 
 done:
-	I915_WRITE(DEIIR, de_ier);
+	I915_WRITE(DEIER, de_ier);
 	(void)I915_READ(DEIER);
 
 	return (ret);
 }
+
 int
 inteldrm_intr(void *arg)
 {
@@ -730,7 +777,7 @@ inteldrm_read_hws(struct inteldrm_softc *dev_priv, int reg)
 	}
 
 	bus_dmamap_sync(tag, map, 0, PAGE_SIZE, BUS_DMASYNC_POSTREAD);
-	
+
 	val = ((volatile u_int32_t *)(dev_priv->hw_status_page))[reg];
 	bus_dmamap_sync(tag, map, 0, PAGE_SIZE, BUS_DMASYNC_PREREAD);
 
@@ -893,7 +940,7 @@ i915_alloc_ifp(struct inteldrm_softc *dev_priv, struct pci_attach_args *bpa)
 		goto nope;
 
 	pci_conf_write(bpa->pa_pc, bpa->pa_tag, I915_IFPADDR, addr | 0x1);
-	
+
 	return;
 
 nope:
@@ -928,7 +975,7 @@ i965_alloc_ifp(struct inteldrm_softc *dev_priv, struct pci_attach_args *bpa)
 	    upper_32_bits(addr));
 	pci_conf_write(bpa->pa_pc, bpa->pa_tag, I965_IFPADDR,
 	    (addr & 0xffffffff) | 0x1);
-	
+
 	return;
 
 nope:
@@ -948,17 +995,19 @@ inteldrm_chipset_flush(struct inteldrm_softc *dev_priv)
 		bus_space_write_4(dev_priv->ifp.i9xx.bst,
 		    dev_priv->ifp.i9xx.bsh, 0, 1);
 	} else {
-		/*
-		 * I8XX don't have a flush page mechanism, but do have the
-		 * cache. Do it the bruteforce way. we write 1024 byes into
-		 * the cache, then clflush them out so they'll kick the stuff
-		 * we care about out of the chipset cache.
-		 */
-		if (dev_priv->ifp.i8xx.kva != NULL) {
-			memset(dev_priv->ifp.i8xx.kva, 0, 1024);
-			agp_flush_cache_range((vaddr_t)dev_priv->ifp.i8xx.kva,
-			    1024);
+		int i;
+
+		wbinvd();
+
+#define I830_HIC        0x70
+
+		I915_WRITE(I830_HIC, (I915_READ(I830_HIC) | (1<<31)));
+		for (i = 1000; i; i--) {
+			if (!(I915_READ(I830_HIC) & (1<<31)))
+				break;
+			delay(100);
 		}
+
 	}
 }
 
@@ -1159,8 +1208,8 @@ i915_gem_pread_ioctl(struct drm_device *dev, void *data,
 	struct drm_obj			*obj;
 	struct inteldrm_obj		*obj_priv;
 	char				*vaddr;
-	bus_space_handle_t	 	 bsh;
-	bus_size_t		 	 bsize;
+	bus_space_handle_t		 bsh;
+	bus_size_t			 bsize;
 	voff_t				 offset;
 	int				 ret;
 
@@ -1229,10 +1278,10 @@ i915_gem_pwrite_ioctl(struct drm_device *dev, void *data,
 	struct drm_i915_gem_pwrite	*args = data;
 	struct drm_obj			*obj;
 	struct inteldrm_obj		*obj_priv;
-	char 				*vaddr;
-	bus_space_handle_t	 	 bsh;
-	bus_size_t		 	 bsize;
-	off_t			 	 offset;
+	char				*vaddr;
+	bus_space_handle_t		 bsh;
+	bus_size_t			 bsize;
+	off_t				 offset;
 	int				 ret = 0;
 
 	obj = drm_gem_object_lookup(dev, file_priv, args->handle);
@@ -1308,7 +1357,7 @@ i915_gem_set_domain_ioctl(struct drm_device *dev, void *data,
 	if ((write_domain | read_domains)  & ~I915_GEM_DOMAIN_GTT ||
 	    (write_domain != 0 && read_domains != write_domain))
 		return (EINVAL);
-		
+
 	obj = drm_gem_object_lookup(dev, file_priv, args->handle);
 	if (obj == NULL)
 		return (EBADF);
@@ -1368,12 +1417,10 @@ i915_gem_gtt_map_ioctl(struct drm_device *dev, void *data,
 	    UVM_INH_SHARE, UVM_ADV_RANDOM, 0), curproc);
 
 done:
-	if (ret != 0)
-		drm_unref(&obj->uobj);
-	DRM_UNLOCK();
-
 	if (ret == 0)
 		args->addr_ptr = (uint64_t) addr + (args->offset & PAGE_MASK);
+	else
+		drm_unref(&obj->uobj);
 
 	return (ret);
 }
@@ -1419,7 +1466,7 @@ i915_gem_object_move_off_active(struct drm_obj *obj)
 
 	MUTEX_ASSERT_LOCKED(&dev_priv->list_lock);
 	DRM_OBJ_ASSERT_LOCKED(obj);
-	
+
 	obj_priv->last_rendering_seqno = 0;
 	/* if we have a fence register, then reset the seqno */
 	if (obj_priv->fence_reg != I915_FENCE_REG_NONE) {
@@ -1466,7 +1513,7 @@ i915_gem_object_move_to_inactive_locked(struct drm_obj *obj)
 	atomic_clearbits_int(&obj->do_flags, I915_FENCED_EXEC);
 
 	KASSERT((obj->do_flags & I915_GPU_WRITE) == 0);
-	/* unlock becauase this unref could recurse */
+	/* unlock because this unref could recurse */
 	mtx_leave(&dev_priv->list_lock);
 	if (inteldrm_is_active(obj_priv)) {
 		atomic_clearbits_int(&obj->do_flags,
@@ -1533,7 +1580,7 @@ inteldrm_process_flushing(struct inteldrm_softc *dev_priv,
 				 */
 				i915_gem_get_fence_reg(obj, 1);
 			}
-				
+
 		}
 	}
 	mtx_leave(&dev_priv->list_lock);
@@ -1956,7 +2003,8 @@ i915_gem_evict_something(struct inteldrm_softc *dev_priv, size_t min_size,
 		 * everything and start again. (This should be rare.)
 		 */
 		if (!TAILQ_EMPTY(&dev_priv->mm.inactive_list))
-			return (i915_gem_evict_inactive(dev_priv));
+			return (i915_gem_evict_inactive(dev_priv,
+			    interruptible));
 		else
 			return (i915_gem_evict_everything(dev_priv,
 			    interruptible));
@@ -2024,7 +2072,7 @@ i915_gem_evict_everything(struct inteldrm_softc *dev_priv, int interruptible)
 		return (ENOMEM);
 
 	if ((ret = i915_wait_request(dev_priv, seqno, interruptible)) != 0 ||
-	    (ret = i915_gem_evict_inactive(dev_priv)) != 0)
+	    (ret = i915_gem_evict_inactive(dev_priv, interruptible)) != 0)
 		return (ret);
 
 	/*
@@ -2323,7 +2371,7 @@ i915_gem_object_put_fence_reg(struct drm_obj *obj, int interruptible)
 	if (obj_priv->fence_reg == I915_FENCE_REG_NONE)
 		return (0);
 
-	/* 
+	/*
 	 * If the last execbuffer we did on the object needed a fence then
 	 * we must emit a flush.
 	 */
@@ -2358,7 +2406,7 @@ i915_gem_object_put_fence_reg(struct drm_obj *obj, int interruptible)
 
 		if (obj_priv->fence_reg < 8)
 			fence_reg = FENCE_REG_830_0 + obj_priv->fence_reg * 4;
-		else 
+		else
 			fence_reg = FENCE_REG_945_8 +
 			    (obj_priv->fence_reg - 8) * 4;
 		I915_WRITE(fence_reg , 0);
@@ -2379,12 +2427,37 @@ inteldrm_fault(struct drm_obj *obj, struct uvm_faultinfo *ufi, off_t offset,
     vm_prot_t access_type, int flags)
 {
 	struct drm_device	*dev = obj->dev;
+	struct inteldrm_softc	*dev_priv = dev->dev_private;
 	struct inteldrm_obj	*obj_priv = (struct inteldrm_obj *)obj;
 	paddr_t			 paddr;
 	int			 lcv, ret;
 	int			 write = !!(access_type & VM_PROT_WRITE);
 	vm_prot_t		 mapprot;
 	boolean_t		 locked = TRUE;
+
+	/* Are we about to suspend?, if so wait until we're done */
+	if (dev_priv->sc_flags & INTELDRM_QUIET) {
+		/* we're about to sleep, unlock the map etc */
+		uvmfault_unlockall(ufi, NULL, &obj->uobj, NULL);
+		while (dev_priv->sc_flags & INTELDRM_QUIET)
+			tsleep(&dev_priv->flags, 0, "intelflt", 0);
+		dev_priv->entries++;
+		/*
+		 * relock so we're in the same state we would be in if we
+		 * were not quiesced before
+		 */
+		locked = uvmfault_relock(ufi);
+		if (locked) {
+			drm_lock_obj(obj);
+		} else {
+			dev_priv->entries--;
+			if (dev_priv->sc_flags & INTELDRM_QUIET)
+				wakeup(&dev_priv->entries);
+			return (VM_PAGER_REFAULT);
+		}
+	} else {
+		dev_priv->entries++;
+	}
 
 	if (rw_enter(&dev->dev_lock, RW_NOSLEEP | RW_READ) != 0) {
 		uvmfault_unlockall(ufi, NULL, &obj->uobj, NULL);
@@ -2396,6 +2469,9 @@ inteldrm_fault(struct drm_obj *obj, struct uvm_faultinfo *ufi, off_t offset,
 	if (locked)
 		drm_hold_object_locked(obj);
 	else { /* obj already unlocked */
+		dev_priv->entries--;
+		if (dev_priv->sc_flags & INTELDRM_QUIET)
+			wakeup(&dev_priv->entries);
 		return (VM_PAGER_REFAULT);
 	}
 
@@ -2403,7 +2479,6 @@ inteldrm_fault(struct drm_obj *obj, struct uvm_faultinfo *ufi, off_t offset,
 	 * sleep in binding and flushing.
 	 */
 	drm_unlock_obj(obj);
-	
 
 	if (obj_priv->dmamap != NULL &&
 	    (obj_priv->gtt_offset & (i915_gem_get_gtt_alignment(obj) - 1) ||
@@ -2429,7 +2504,7 @@ inteldrm_fault(struct drm_obj *obj, struct uvm_faultinfo *ufi, off_t offset,
 	/*
 	 * We could only do this on bind so allow for map_buffer_range
 	 * unsynchronised objects (where buffer suballocation
-	 * is done by the GL application, however it gives coherency problems
+	 * is done by the GL application), however it gives coherency problems
 	 * normally.
 	 */
 	ret = i915_gem_object_set_to_gtt_domain(obj, write, 0);
@@ -2468,27 +2543,33 @@ inteldrm_fault(struct drm_obj *obj, struct uvm_faultinfo *ufi, off_t offset,
 			uvmfault_unlockall(ufi, ufi->entry->aref.ar_amap,
 			    NULL, NULL);
 			DRM_READUNLOCK();
+			dev_priv->entries--;
+			if (dev_priv->sc_flags & INTELDRM_QUIET)
+				wakeup(&dev_priv->entries);
 			uvm_wait("intelflt");
 			return (VM_PAGER_REFAULT);
 		}
 	}
-	drm_unhold_object(obj);
-	uvmfault_unlockall(ufi, ufi->entry->aref.ar_amap, NULL, NULL);
-	DRM_READUNLOCK();
-	pmap_update(ufi->orig_map->pmap);
-	return (VM_PAGER_OK);
-
 error:
-	/*
-	 * EIO means we're wedged so when we reset the gpu this will
-	 * work, so don't segfault. XXX only on resettable chips
-	 */
 	drm_unhold_object(obj);
 	uvmfault_unlockall(ufi, ufi->entry->aref.ar_amap, NULL, NULL);
 	DRM_READUNLOCK();
+	dev_priv->entries--;
+	if (dev_priv->sc_flags & INTELDRM_QUIET)
+		wakeup(&dev_priv->entries);
 	pmap_update(ufi->orig_map->pmap);
-	return ((ret == EIO) ?  VM_PAGER_REFAULT : VM_PAGER_ERROR);
-		
+	if (ret == EIO) {
+		/*
+		 * EIO means we're wedged, so upon resetting the gpu we'll
+		 * be alright and can refault. XXX only on resettable chips.
+		 */
+		ret = VM_PAGER_REFAULT;
+	} else if (ret) {
+		ret = VM_PAGER_ERROR;
+	} else {
+		ret = VM_PAGER_OK;
+	}
+	return (ret);
 }
 
 void
@@ -2548,7 +2629,7 @@ i915_gem_object_bind_to_gtt(struct drm_obj *obj, bus_size_t alignment,
 
  search_free:
 	/*
-	 * the helper function wires the uao then binds it to the aperture for 
+	 * the helper function wires the uao then binds it to the aperture for
 	 * us, so all we have to do is set up the dmamap then load it.
 	 */
 	ret = drm_gem_load_uao(dev_priv->agpdmat, obj_priv->dmamap, obj->uao,
@@ -2598,7 +2679,7 @@ error:
 
 /*
  * Flush the GPU write domain for the object if dirty, then wait for the
- * rendering to complete. When this returns it is safe to unbind from the 
+ * rendering to complete. When this returns it is safe to unbind from the
  * GTT or access from the CPU.
  */
 int
@@ -2634,7 +2715,7 @@ i915_gem_object_flush_gpu_write_domain(struct drm_obj *obj, int pipelined,
 	return (ret);
 }
 
-/* 
+/*
  * Moves a single object to the GTT and possibly write domain.
  *
  * This function returns when the move is complete, including waiting on
@@ -2981,7 +3062,7 @@ i915_gem_object_pin_and_relocate(struct drm_obj *obj,
 			ret = EBADF;
 			goto err;
 		}
-			
+
 		target_obj_priv = (struct inteldrm_obj *)target_obj;
 
 		/* The target buffer should have appeared before us in the
@@ -3140,11 +3221,6 @@ i915_dispatch_gem_execbuffer(struct drm_device *dev,
 	(void)i915_add_request(dev_priv);
 
 	inteldrm_verify_inactive(dev_priv, __FILE__, __LINE__);
-#if 0
-	/* The sampler always gets flushed on i965 (sigh) */
-	if (IS_I965G(dev_priv))
-		inteldrm_process_flushing(dev_priv, I915_GEM_DOMAIN_SAMPLER);
-#endif
 }
 
 /* Throttle our rendering by waiting until the ring has completed our requests
@@ -3159,7 +3235,7 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file_priv)
 #if 0
 	struct inteldrm_file	*intel_file = (struct inteldrm_file *)file_priv;
 	u_int32_t		 seqno;
-#endif 
+#endif
 	int			 ret = 0;
 
 	return ret;
@@ -3424,7 +3500,7 @@ i915_gem_execbuffer2(struct drm_device *dev, void *data,
 			atomic_clearbits_int(&obj->do_flags,
 			    I915_FENCED_EXEC);
 		}
-			
+
 		i915_gem_object_move_to_active(object_list[i]);
 		drm_unlock_obj(obj);
 	}
@@ -3660,29 +3736,27 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 			  args->handle);
 		return (EBADF);
 	}
-
-	/*
-	 * Update the active list for the hardware's current position.
-	 * otherwise this will only update on a delayed timer or when
-	 * the irq is unmasked. This keeps our working set smaller.
-	 */
-	i915_gem_retire_requests(dev_priv);
-
+	
 	obj_priv = (struct inteldrm_obj *)obj;
-	/* Count all active objects as busy, even if they are currently not
-	 * used by the gpu. Users of this interface expect objects to eventually
-	 * become non-busy without any further actions, therefore emit any
-	 * necessary flushes here.
-	 */
 	args->busy = inteldrm_is_active(obj_priv);
-
-	/* Unconditionally flush objects, even when the gpu still uses them.
-	 * Userspace calling this function indicates that it wants to use
-	 * this buffer sooner rather than later, so flushing now helps.
-	 */
-	if (obj->write_domain && i915_gem_flush(dev_priv,
-	    obj->write_domain, obj->write_domain) == 0)
-		ret = ENOMEM;
+	if (args->busy) {
+		/*
+		 * Unconditionally flush objects write domain if they are
+		 * busy. The fact userland is calling this ioctl means that
+		 * it wants to use this buffer sooner rather than later, so
+		 * flushing now shoul reduce latency.
+		 */
+		if (obj->write_domain)
+			(void)i915_gem_flush(dev_priv, obj->write_domain,
+			    obj->write_domain);
+		/*
+		 * Update the active list after the flush otherwise this is
+		 * only updated on a delayed timer. Updating now reduces 
+		 * working set size.
+		 */
+		i915_gem_retire_requests(dev_priv);
+		args->busy = inteldrm_is_active(obj_priv);
+	}
 
 	drm_unref(&obj->uobj);
 	return (ret);
@@ -3734,7 +3808,7 @@ i915_gem_madvise_ioctl(struct drm_device *dev, void *data,
 	/* if the object is no longer bound, discard its backing storage */
 	if (i915_obj_purgeable(obj_priv) && obj_priv->dmamap == NULL)
 		inteldrm_purge_obj(obj);
-		
+
 	args->retained = !i915_obj_purged(obj_priv);
 
 out:
@@ -3785,7 +3859,7 @@ i915_gem_free_object(struct drm_obj *obj)
 
 /* Clear out the inactive list and unbind everything in it. */
 int
-i915_gem_evict_inactive(struct inteldrm_softc *dev_priv)
+i915_gem_evict_inactive(struct inteldrm_softc *dev_priv, int interruptible)
 {
 	struct inteldrm_obj	*obj_priv;
 	int			 ret = 0;
@@ -3802,7 +3876,7 @@ i915_gem_evict_inactive(struct inteldrm_softc *dev_priv)
 		mtx_leave(&dev_priv->list_lock);
 
 		drm_hold_object(&obj_priv->obj);
-		ret = i915_gem_object_unbind(&obj_priv->obj, 1);
+		ret = i915_gem_object_unbind(&obj_priv->obj, interruptible);
 		drm_unhold_and_unref(&obj_priv->obj);
 
 		mtx_enter(&dev_priv->list_lock);
@@ -3814,6 +3888,34 @@ i915_gem_evict_inactive(struct inteldrm_softc *dev_priv)
 	return (ret);
 }
 
+void
+inteldrm_quiesce(struct inteldrm_softc *dev_priv)
+{
+	/*
+	 * Right now we depend on X vt switching, so we should be
+	 * already suspended, but fallbacks may fault, etc.
+	 * Since we can't readback the gtt to reset what we have, make
+	 * sure that everything is unbound.
+	 */
+	KASSERT(dev_priv->mm.suspended);
+	KASSERT(dev_priv->ring.ring_obj == NULL);
+	atomic_setbits_int(&dev_priv->sc_flags, INTELDRM_QUIET);
+	while (dev_priv->entries)
+		tsleep(&dev_priv->entries, 0, "intelquiet", 0);
+	/*
+	 * nothing should be dirty WRT the chip, only stuff that's bound
+	 * for gtt mapping. Nothing should be pinned over vt switch, if it
+	 * is then rendering corruption will occur due to api misuse, shame.
+	 */
+	KASSERT(TAILQ_EMPTY(&dev_priv->mm.flushing_list));
+	KASSERT(TAILQ_EMPTY(&dev_priv->mm.active_list));
+	/* Disabled because root could panic the kernel if this was enabled */
+	/* KASSERT(dev->pin_count == 0); */
+
+	/* can't fail since uninterruptible */
+	(void)i915_gem_evict_inactive(dev_priv, 0);
+}
+
 int
 i915_gem_idle(struct inteldrm_softc *dev_priv)
 {
@@ -3821,16 +3923,18 @@ i915_gem_idle(struct inteldrm_softc *dev_priv)
 	int			 ret;
 
 	DRM_LOCK();
-	if (dev_priv->mm.suspended || dev_priv->ring.ring_obj == NULL) { 
+	if (dev_priv->mm.suspended || dev_priv->ring.ring_obj == NULL) {
 		DRM_UNLOCK();
 		return (0);
 	}
 
 	/*
-	 * If we're wedged, the workq will clear everything, else this will
-	 * empty out the lists for us.
+	 * To idle the gpu, flush anything pending then unbind the whole
+	 * shebang. If we're wedged, assume that the reset workq will clear
+	 * everything out and continue as normal.
 	 */
-	if ((ret = i915_gem_evict_everything(dev_priv, 1)) != 0 && ret != ENOSPC) {
+	if ((ret = i915_gem_evict_everything(dev_priv, 1)) != 0 &&
+	    ret != ENOSPC && ret != EIO) {
 		DRM_UNLOCK();
 		return (ret);
 	}
@@ -4109,23 +4213,32 @@ inteldrm_timeout(void *arg)
 void
 inteldrm_error(struct inteldrm_softc *dev_priv)
 {
-	u_int32_t	eir, ipeir, pgtbl_err, pipea_stats, pipeb_stats;
+	u_int32_t	eir, ipeir;
 	u_int8_t	reset = GDRST_RENDER;
+	char 		*errbitstr;
 
 	eir = I915_READ(EIR);
-	pipea_stats = I915_READ(PIPEASTAT);
-	pipeb_stats = I915_READ(PIPEBSTAT);
+	if (eir == 0)
+		return;
 
-	/*
-	 * only actually check the error bits if we register one.
-	 * else we just hung, stay silent.
-	 */
-	if (eir != 0) {
-		printf("render error detected, EIR: 0x%08x\n", eir);
+	if (IS_IRONLAKE(dev_priv)) {
+		errbitstr = "\20\x05PTEE\x04MPVE\x03CPVE";
+	} else if (IS_G4X(dev_priv)) {
+		errbitstr = "\20\x10 BCSINSTERR\x06PTEERR\x05MPVERR\x04CPVERR"
+		     "\x03 BCSPTEERR\x02REFRESHERR\x01INSTERR";
+	} else {
+		errbitstr = "\20\x5PTEERR\x2REFRESHERR\x1INSTERR";
+	}
+
+	printf("render error detected, EIR: %b\n", eir, errbitstr);
+	if (IS_IRONLAKE(dev_priv)) {
+		if (eir & GT_ERROR_PTE) {
+			dev_priv->mm.wedged = 1;
+			reset = GDRST_FULL;
+		}
+	} else {
 		if (IS_G4X(dev_priv)) {
 			if (eir & (GM45_ERROR_MEM_PRIV | GM45_ERROR_CP_PRIV)) {
-				ipeir = I915_READ(IPEIR_I965);
-
 				printf("  IPEIR: 0x%08x\n",
 				    I915_READ(IPEIR_I965));
 				printf("  IPEHR: 0x%08x\n",
@@ -4138,38 +4251,26 @@ inteldrm_error(struct inteldrm_softc *dev_priv)
 				    I915_READ(INSTDONE1));
 				printf("  ACTHD: 0x%08x\n",
 				    I915_READ(ACTHD_I965));
-				I915_WRITE(IPEIR_I965, ipeir);
-				(void)I915_READ(IPEIR_I965);
 			}
 			if (eir & GM45_ERROR_PAGE_TABLE) {
-				pgtbl_err = I915_READ(PGTBL_ER);
-				printf("page table error\n");
-				printf("  PGTBL_ER: 0x%08x\n", pgtbl_err);
-				I915_WRITE(PGTBL_ER, pgtbl_err);
-				(void)I915_READ(PGTBL_ER);
+				printf("  PGTBL_ER: 0x%08x\n",
+				    I915_READ(PGTBL_ER));
 				dev_priv->mm.wedged = 1;
 				reset = GDRST_FULL;
 
 			}
 		} else if (IS_I9XX(dev_priv) && eir & I915_ERROR_PAGE_TABLE) {
-			pgtbl_err = I915_READ(PGTBL_ER);
-			printf("page table error\n");
-			printf("  PGTBL_ER: 0x%08x\n", pgtbl_err);
-			I915_WRITE(PGTBL_ER, pgtbl_err);
-			(void)I915_READ(PGTBL_ER);
+			printf("  PGTBL_ER: 0x%08x\n", I915_READ(PGTBL_ER));
 			dev_priv->mm.wedged = 1;
 			reset = GDRST_FULL;
 		}
 		if (eir & I915_ERROR_MEMORY_REFRESH) {
-			printf("memory refresh error\n");
 			printf("PIPEASTAT: 0x%08x\n",
-			       pipea_stats);
+			    I915_READ(PIPEASTAT));
 			printf("PIPEBSTAT: 0x%08x\n",
-			       pipeb_stats);
-			/* pipestat has already been acked */
+			    I915_READ(PIPEBSTAT));
 		}
 		if (eir & I915_ERROR_INSTRUCTION) {
-			printf("instruction error\n");
 			printf("  INSTPM: 0x%08x\n",
 			       I915_READ(INSTPM));
 			if (!IS_I965G(dev_priv)) {
@@ -4204,20 +4305,24 @@ inteldrm_error(struct inteldrm_softc *dev_priv)
 				(void)I915_READ(IPEIR_I965);
 			}
 		}
-
-		I915_WRITE(EIR, eir);
-		eir = I915_READ(EIR);
 	}
+
+	I915_WRITE(EIR, eir);
+	eir = I915_READ(EIR);
 	/*
 	 * nasty errors don't clear and need a reset, mask them until we reset
 	 * else we'll get infinite interrupt storms.
 	 */
 	if (eir) {
-		/* print so we know that we may want to reset here too */
 		if (dev_priv->mm.wedged == 0)
 			DRM_ERROR("EIR stuck: 0x%08x, masking\n", eir);
 		I915_WRITE(EMR, I915_READ(EMR) | eir);
-		I915_WRITE(IIR, I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT);
+		if (IS_IRONLAKE(dev_priv)) {
+			I915_WRITE(GTIIR, GT_MASTER_ERROR);
+		} else {
+			I915_WRITE(IIR,
+			    I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT);
+		}
 	}
 	/*
 	 * if it was a pagetable error, or we were called from hangcheck, then
@@ -4257,20 +4362,6 @@ inteldrm_hung(void *arg, void *reset_type)
 	 * they're now irrelavent.
 	 */
 	mtx_enter(&dev_priv->list_lock);
-	while ((obj_priv = TAILQ_FIRST(&dev_priv->mm.active_list)) != NULL) {
-		drm_lock_obj(&obj_priv->obj);
-		if (obj_priv->obj.write_domain & I915_GEM_GPU_DOMAINS) {
-			TAILQ_REMOVE(&dev_priv->mm.gpu_write_list,
-			    obj_priv, write_list);
-			atomic_clearbits_int(&obj_priv->obj.do_flags,
-			     I915_GPU_WRITE);
-			obj_priv->obj.write_domain &= ~I915_GEM_GPU_DOMAINS;
-		}
-		/* unlocks object and list */
-		i915_gem_object_move_to_inactive_locked(&obj_priv->obj);;
-		mtx_enter(&dev_priv->list_lock);
-	}
-
 	while ((obj_priv = TAILQ_FIRST(&dev_priv->mm.flushing_list)) != NULL) {
 		drm_lock_obj(&obj_priv->obj);
 		if (obj_priv->obj.write_domain & I915_GEM_GPU_DOMAINS) {
@@ -4287,7 +4378,7 @@ inteldrm_hung(void *arg, void *reset_type)
 	mtx_leave(&dev_priv->list_lock);
 
 	/* unbind everything */
-	(void)i915_gem_evict_inactive(dev_priv);
+	(void)i915_gem_evict_inactive(dev_priv, 0);
 
 	if (HAS_RESET(dev_priv))
 		dev_priv->mm.wedged = 0;
@@ -4298,7 +4389,7 @@ void
 inteldrm_hangcheck(void *arg)
 {
 	struct inteldrm_softc	*dev_priv = arg;
-	u_int32_t		 acthd;
+	u_int32_t		 acthd, instdone, instdone1;
 
 	/* are we idle? no requests, or ring is empty */
 	if (TAILQ_EMPTY(&dev_priv->mm.request_list) ||
@@ -4308,15 +4399,30 @@ inteldrm_hangcheck(void *arg)
 		return;
 	}
 
-	if (IS_I965G(dev_priv))
+	if (IS_I965G(dev_priv)) {
 		acthd = I915_READ(ACTHD_I965);
-	else
+		instdone = I915_READ(INSTDONE_I965);
+		instdone1 = I915_READ(INSTDONE1);
+	} else {
 		acthd = I915_READ(ACTHD);
+		instdone = I915_READ(INSTDONE);
+		instdone1 = 0;
+	}
 
 	/* if we've hit ourselves before and the hardware hasn't moved, hung. */
-	if (dev_priv->mm.last_acthd == acthd) {
+	if (dev_priv->mm.last_acthd == acthd &&
+	    dev_priv->mm.last_instdone == instdone &&
+	    dev_priv->mm.last_instdone1 == instdone1) {
 		/* if that's twice we didn't hit it, then we're hung */
 		if (++dev_priv->mm.hang_cnt >= 2) {
+			if (!IS_GEN2(dev_priv)) {
+				u_int32_t tmp = I915_READ(PRB0_CTL);
+				if (tmp & RING_WAIT) {
+					I915_WRITE(PRB0_CTL, tmp);
+					(void)I915_READ(PRB0_CTL);
+					goto out;
+				}
+			}
 			dev_priv->mm.hang_cnt = 0;
 			/* XXX atomic */
 			dev_priv->mm.wedged = 1; 
@@ -4325,12 +4431,15 @@ inteldrm_hangcheck(void *arg)
 			wakeup(dev_priv);
 			inteldrm_error(dev_priv);
 			return;
-		} 
+		}
 	} else {
 		dev_priv->mm.hang_cnt = 0;
-	}
 
-	dev_priv->mm.last_acthd = acthd;
+		dev_priv->mm.last_acthd = acthd;
+		dev_priv->mm.last_instdone = instdone;
+		dev_priv->mm.last_instdone1 = instdone1;
+	}
+out:
 	/* Set ourselves up again, in case we haven't added another batch */
 	timeout_add_msec(&dev_priv->mm.hang_timer, 750);
 }
@@ -4408,7 +4517,7 @@ i915_list_remove(struct inteldrm_obj *obj_priv)
 #define	DEVEN_MCHBAR_EN	(1 << 28)
 
 
-/* 
+/*
  * Check the MCHBAR on the host bridge is enabled, and if not allocate it.
  * we do not need to actually map it because we access the bar through it's
  * mirror on the IGD, however, if it is disabled or not allocated then
@@ -4591,7 +4700,7 @@ inteldrm_detect_bit_6_swizzle(struct inteldrm_softc *dev_priv,
 			swizzle_y = I915_BIT_6_SWIZZLE_UNKNOWN;
 		}
 
-		inteldrm_teardown_mchbar(dev_priv, bpa, need_disable);	
+		inteldrm_teardown_mchbar(dev_priv, bpa, need_disable);
 	} else {
 		/* The 965, G33, and newer, have a very flexible memory
 		 * configuration. It will enable dual-channel mode
@@ -4702,7 +4811,7 @@ i915_gem_bit_17_swizzle(struct drm_obj *obj)
 
 }
 
-void 
+void
 i915_gem_save_bit_17_swizzle(struct drm_obj *obj)
 {
 	struct drm_device	*dev = obj->dev;
@@ -4895,7 +5004,7 @@ i915_gem_set_tiling(struct drm_device *dev, void *data,
 		obj_priv->tiling_mode = args->tiling_mode;
 		obj_priv->stride = args->stride;
 	}
-	 
+
 out:
 	drm_unhold_and_unref(obj);
 
@@ -5541,9 +5650,9 @@ inteldrm_restore_display(struct inteldrm_softc *dev_priv)
 		I915_WRITE(CURSIZE, dev_priv->saveCURSIZE);
 
 	/* CRT state */
-	if (IS_IRONLAKE(dev_priv)) 
+	if (IS_IRONLAKE(dev_priv))
 		I915_WRITE(PCH_ADPA, dev_priv->saveADPA);
-	else 
+	else
 		I915_WRITE(ADPA, dev_priv->saveADPA);
 
 	/* LVDS state */
@@ -5569,7 +5678,7 @@ inteldrm_restore_display(struct inteldrm_softc *dev_priv)
 		I915_WRITE(PCH_PP_CONTROL, dev_priv->savePP_CONTROL);
 		I915_WRITE(MCHBAR_RENDER_STANDBY,
 			   dev_priv->saveMCHBAR_RENDER_STANDBY);
-	} else { 
+	} else {
 		I915_WRITE(PFIT_PGM_RATIOS, dev_priv->savePFIT_PGM_RATIOS);
 		I915_WRITE(BLC_PWM_CTL, dev_priv->saveBLC_PWM_CTL);
 		I915_WRITE(BLC_HIST_CTL, dev_priv->saveBLC_HIST_CTL);
@@ -5713,7 +5822,7 @@ inteldrm_restore_state(struct inteldrm_softc *dev_priv)
 			for (i = 0; i < 8; i++)
 				I915_WRITE(FENCE_REG_945_8 + (i * 4), dev_priv->saveFENCE[i+8]);
 	}
-	
+
 	inteldrm_restore_display(dev_priv);
 
 	/* Interrupt state */
@@ -5771,7 +5880,7 @@ inteldrm_restore_state(struct inteldrm_softc *dev_priv)
 	return 0;
 }
 
-/* 
+/*
  * Reset the chip after a hang (965 only)
  *
  * The procedure that should be followed is relatively simple:
@@ -5822,7 +5931,7 @@ inteldrm_965_reset(struct inteldrm_softc *dev_priv, u_int8_t flags)
 	 if (dev_priv->mm.suspended == 0) {
 		struct drm_device *dev = (struct drm_device *)dev_priv->drmdev;
 		if (inteldrm_start_ring(dev_priv) != 0)
-			panic("can't restart ring, we're fucked"); 
+			panic("can't restart ring, we're fucked");
 
 		/* put the hardware status page back */
 		if (I915_NEED_GFX_HWS(dev_priv))
@@ -5847,7 +5956,7 @@ inteldrm_965_reset(struct inteldrm_softc *dev_priv, u_int8_t flags)
 }
 
 /*
- * Debug code from here. 
+ * Debug code from here.
  */
 #ifdef WATCH_INACTIVE
 void
@@ -5901,7 +6010,6 @@ i915_gem_seqno_info(int kdev)
 		printf("Current sequence: hws uninitialized\n");
 	}
 }
-
 
 void
 i915_interrupt_info(int kdev)
@@ -5964,7 +6072,7 @@ i915_gem_fence_regs_info(int kdev)
 void
 i915_hws_info(int kdev)
 {
-	struct drm_device 	*dev = drm_get_device_from_kdev(kdev);
+	struct drm_device	*dev = drm_get_device_from_kdev(kdev);
 	struct inteldrm_softc	*dev_priv = dev->dev_private;
 	int i;
 	volatile u32 *hws;

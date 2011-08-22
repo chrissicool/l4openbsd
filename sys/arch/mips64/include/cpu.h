@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpu.h,v 1.58 2010/04/28 16:20:28 syuu Exp $	*/
+/*	$OpenBSD: cpu.h,v 1.69 2010/11/24 21:16:26 miod Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -117,7 +117,7 @@ extern vaddr_t uncached_base;
 
 #endif	/* _LOCORE */
 
-#ifdef _KERNEL
+#if defined(_KERNEL) || defined(_STANDALONE)
 
 /*
  * Status register.
@@ -261,6 +261,14 @@ extern vaddr_t uncached_base;
 #define	COP_0_ICR		$20	/* Use cfc0/ctc0 to access */
 
 /*
+ * Octeon specific
+ */
+#define COP_0_TLB_PG_GRAIN	$5, 1
+#define COP_0_CVMCTL		$9, 7
+#define COP_0_CVMMEMCTL		$11, 7
+#define COP_0_EBASE		$15, 1
+
+/*
  * Values for the code field in a break instruction.
  */
 #define	BREAK_INSTR		0x0000000d
@@ -271,54 +279,19 @@ extern vaddr_t uncached_base;
 #define	BREAK_BRKPT_VAL		514
 #define	BREAK_SOVER_VAL		515
 #define	BREAK_DDB_VAL		516
+#define	BREAK_FPUEMUL_VAL	517
 #define	BREAK_KDB	(BREAK_INSTR | (BREAK_KDB_VAL << BREAK_VAL_SHIFT))
 #define	BREAK_SSTEP	(BREAK_INSTR | (BREAK_SSTEP_VAL << BREAK_VAL_SHIFT))
 #define	BREAK_BRKPT	(BREAK_INSTR | (BREAK_BRKPT_VAL << BREAK_VAL_SHIFT))
 #define	BREAK_SOVER	(BREAK_INSTR | (BREAK_SOVER_VAL << BREAK_VAL_SHIFT))
 #define	BREAK_DDB	(BREAK_INSTR | (BREAK_DDB_VAL << BREAK_VAL_SHIFT))
+#define	BREAK_FPUEMUL	(BREAK_INSTR | (BREAK_FPUEMUL_VAL << BREAK_VAL_SHIFT))
 
 /*
  * The floating point version and status registers.
  */
 #define	FPC_ID			$0
 #define	FPC_CSR			$31
-
-/*
- * The floating point coprocessor status register bits.
- */
-#define	FPC_ROUNDING_BITS		0x00000003
-#define	FPC_ROUND_RN			0x00000000
-#define	FPC_ROUND_RZ			0x00000001
-#define	FPC_ROUND_RP			0x00000002
-#define	FPC_ROUND_RM			0x00000003
-#define	FPC_STICKY_BITS			0x0000007c
-#define	FPC_STICKY_INEXACT		0x00000004
-#define	FPC_STICKY_UNDERFLOW		0x00000008
-#define	FPC_STICKY_OVERFLOW		0x00000010
-#define	FPC_STICKY_DIV0			0x00000020
-#define	FPC_STICKY_INVALID		0x00000040
-#define	FPC_ENABLE_BITS			0x00000f80
-#define	FPC_ENABLE_INEXACT		0x00000080
-#define	FPC_ENABLE_UNDERFLOW		0x00000100
-#define	FPC_ENABLE_OVERFLOW		0x00000200
-#define	FPC_ENABLE_DIV0			0x00000400
-#define	FPC_ENABLE_INVALID		0x00000800
-#define	FPC_EXCEPTION_BITS		0x0003f000
-#define	FPC_EXCEPTION_INEXACT		0x00001000
-#define	FPC_EXCEPTION_UNDERFLOW		0x00002000
-#define	FPC_EXCEPTION_OVERFLOW		0x00004000
-#define	FPC_EXCEPTION_DIV0		0x00008000
-#define	FPC_EXCEPTION_INVALID		0x00010000
-#define	FPC_EXCEPTION_UNIMPL		0x00020000
-#define	FPC_COND_BIT			0x00800000
-#define	FPC_FLUSH_BIT			0x01000000
-#define	FPC_MBZ_BITS			0xfe7c0000
-
-/*
- * Constants to determine if have a floating point instruction.
- */
-#define	OPCODE_SHIFT		26
-#define	OPCODE_C1		0x11
 
 /*
  * The low part of the TLB entry.
@@ -352,11 +325,13 @@ extern vaddr_t uncached_base;
 #define	VMTLB_FOUND_WITH_PATCH	2
 #define	VMTLB_PROBE_ERROR	3
 
+#endif	/* _KERNEL || _STANDALONE */
+
 /*
  * Exported definitions unique to mips cpu support.
  */
 
-#ifndef _LOCORE
+#if defined(_KERNEL) && !defined(_LOCORE)
 
 #include <sys/device.h>
 #include <sys/lock.h>
@@ -403,14 +378,25 @@ struct cpu_info {
 	int		ci_ipl;			/* software IPL */
 	uint32_t	ci_softpending;		/* pending soft interrupts */
 	int		ci_clock_started;
-	u_int32_t	ci_cpu_counter_last;
-	u_int32_t	ci_cpu_counter_interval;
+	u_int32_t	ci_cpu_counter_last;	/* last compare value loaded */
+	u_int32_t	ci_cpu_counter_interval; /* # of counter ticks/tick */
+
 	u_int32_t	ci_pendingticks;
 	struct pmap	*ci_curpmap;
 	uint		ci_intrdepth;		/* interrupt depth */
 #ifdef MULTIPROCESSOR
 	u_long		ci_flags;		/* flags; see below */
 	struct intrhand	ci_ipiih;
+#endif
+	volatile int    ci_ddb;
+#define	CI_DDB_RUNNING		0
+#define	CI_DDB_SHOULDSTOP	1
+#define	CI_DDB_STOPPED		2
+#define	CI_DDB_ENTERDDB		3
+#define	CI_DDB_INDDB		4
+
+#ifdef DIAGNOSTIC
+	int	ci_mutex_level;
 #endif
 };
 
@@ -428,11 +414,9 @@ extern struct cpu_info *cpu_info_list;
 
 #ifdef MULTIPROCESSOR
 #define MAXCPUS				4
-extern struct cpu_info *getcurcpu(void);
-extern void setcurcpu(struct cpu_info *);
-#ifdef DEBUG
+#define getcurcpu()			hw_getcurcpu()
+#define setcurcpu(ci)			hw_setcurcpu(ci)
 extern struct cpu_info *get_cpu_info(int);
-#endif
 #define curcpu() getcurcpu()
 #define	CPU_IS_PRIMARY(ci)		((ci)->ci_flags & CPUF_PRIMARY)
 #define cpu_number()			(curcpu()->ci_cpuid)
@@ -447,7 +431,8 @@ vaddr_t alloc_contiguous_pages(size_t);
 
 #define MIPS64_IPI_NOP		0x00000001
 #define MIPS64_IPI_RENDEZVOUS	0x00000002
-#define MIPS64_NIPIS		2	/* must not exceed 32 */
+#define MIPS64_IPI_DDB		0x00000004
+#define MIPS64_NIPIS		3	/* must not exceed 32 */
 
 void	mips64_ipi_init(void);
 void	mips64_send_ipi(unsigned int, unsigned int);
@@ -460,15 +445,12 @@ void	smp_rendezvous_cpus(unsigned long, void (*)(void *), void *arg);
 #define	CPU_IS_PRIMARY(ci)		1
 #define cpu_number()			0
 #define cpu_unidle(ci)
+#define get_cpu_info(i)			(&cpu_info_primary)
 #endif
 
 void cpu_startclock(struct cpu_info *);
 
 #include <machine/frame.h>
-
-#endif	/* _LOCORE */
-
-#ifndef _LOCORE
 
 /*
  * Arguments to hardclock encapsulate the previous machine state in
@@ -516,8 +498,7 @@ void cpu_startclock(struct cpu_info *);
 
 #define	aston(p)		p->p_md.md_astpending = 1
 
-#endif /* !_LOCORE */
-#endif /* _KERNEL */
+#endif /* _KERNEL && !_LOCORE */
 
 /*
  * CTL_MACHDEP definitions.
@@ -541,6 +522,7 @@ void cpu_startclock(struct cpu_info *);
 #define	MIPS_R4000	0x04	/* MIPS R4000/4400 CPU		ISA III	*/
 #define	MIPS_R3LSI	0x05	/* LSI Logic R3000 derivate	ISA I	*/
 #define	MIPS_R6000A	0x06	/* MIPS R6000A CPU		ISA II	*/
+#define MIPS_OCTEON	0x06	/* Cavium OCTEON		MIPS64R2*/
 #define	MIPS_R3IDT	0x07	/* IDT R3000 derivate		ISA I	*/
 #define	MIPS_R10000	0x09	/* MIPS R10000/T5 CPU		ISA IV  */
 #define	MIPS_R4200	0x0a	/* MIPS R4200 CPU (ICE)		ISA III */
@@ -570,6 +552,7 @@ void cpu_startclock(struct cpu_info *);
 
 extern vaddr_t CpuCacheAliasMask;
 
+struct exec_package;
 struct tlb_entry;
 struct user;
 
@@ -585,6 +568,13 @@ void	tlb_set_wired(int);
 /*
  * Available cache operation routines. See <machine/cpu.h> for more.
  */
+int	Octeon_ConfigCache(struct cpu_info *);
+void	Octeon_SyncCache(struct cpu_info *);
+void	Octeon_InvalidateICache(struct cpu_info *, vaddr_t, size_t);
+void	Octeon_SyncDCachePage(struct cpu_info *, paddr_t);
+void	Octeon_HitSyncDCache(struct cpu_info *, paddr_t, size_t);
+void	Octeon_HitInvalidateDCache(struct cpu_info *, paddr_t, size_t);
+void	Octeon_IOSyncDCache(struct cpu_info *, paddr_t, size_t, int);
 
 int	Loongson2_ConfigCache(struct cpu_info *);
 void	Loongson2_SyncCache(struct cpu_info *);
@@ -616,16 +606,20 @@ void	tlb_write_indexed(int, struct tlb_entry *);
 int	tlb_update(vaddr_t, unsigned);
 void	tlb_read(int, struct tlb_entry *);
 
+void	build_trampoline(vaddr_t, vaddr_t);
+int	exec_md_map(struct proc *, struct exec_package *);
 void	savectx(struct user *, int);
 
 void	enable_fpu(struct proc *);
 void	save_fpu(void);
+int	fpe_branch_emulate(struct proc *, struct trap_frame *, uint32_t,
+	    vaddr_t);
 
 int	guarded_read_4(paddr_t, uint32_t *);
 int	guarded_write_4(paddr_t, uint32_t);
 
-extern u_int32_t cpu_counter_interval;	/* Number of counter ticks/tick */
-extern u_int32_t cpu_counter_last;	/* Last compare value loaded */
+void	MipsFPTrap(struct trap_frame *);
+register_t MipsEmulateBranch(struct trap_frame *, vaddr_t, uint32_t, uint32_t);
 
 /*
  *  Low level access routines to CPU registers
@@ -640,5 +634,5 @@ uint32_t disableintr(void);
 uint32_t getsr(void);
 uint32_t setsr(uint32_t);
 
-#endif /* _KERNEL */
+#endif /* _KERNEL && !_LOCORE */
 #endif /* !_MIPS_CPU_H_ */

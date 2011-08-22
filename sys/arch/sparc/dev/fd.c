@@ -1,4 +1,4 @@
-/*	$OpenBSD: fd.c,v 1.72 2010/07/10 19:32:24 miod Exp $	*/
+/*	$OpenBSD: fd.c,v 1.80 2010/11/18 21:13:19 miod Exp $	*/
 /*	$NetBSD: fd.c,v 1.51 1997/05/24 20:16:19 pk Exp $	*/
 
 /*-
@@ -77,7 +77,6 @@
 #include <sys/ioctl.h>
 #include <sys/device.h>
 #include <sys/disklabel.h>
-#include <sys/dkstat.h>
 #include <sys/disk.h>
 #include <sys/buf.h>
 #include <sys/malloc.h>
@@ -139,7 +138,6 @@ enum fdc_state {
 /* software state, per controller */
 struct fdc_softc {
 	struct device	sc_dev;		/* boilerplate */
-	void		*sc_sih;	/* softintr cookie */
 	caddr_t		sc_reg;
 	struct fd_softc *sc_fd[4];	/* pointers to children */
 	TAILQ_HEAD(drivehead, fd_softc) sc_drives;
@@ -164,6 +162,7 @@ struct fdc_softc {
 #define sc_nstat	sc_io.fdcio_nstat
 #define sc_status	sc_io.fdcio_status
 #define	sc_hih		sc_io.fdcio_ih
+#define	sc_sih		sc_io.fdcio_sih
 	struct timeout	fdctimeout_to;
 	struct timeout	fdcpseudointr_to;
 };
@@ -243,8 +242,6 @@ int fd_get_parms(struct fd_softc *);
 void fdstrategy(struct buf *);
 void fdstart(struct fd_softc *);
 int fdprint(void *, const char *);
-
-struct dkdriver fddkdriver = { fdstrategy };
 
 struct	fd_type *fd_nvtotype(char *, int, int);
 void	fd_set_motor(struct fdc_softc *fdc);
@@ -428,7 +425,7 @@ fdcattach(parent, self, aux)
 		return;
 	}
 	evcount_attach(&fdc->sc_hih.ih_count, self->dv_xname,
-	    &fdc->sc_hih.ih_vec, &evcount_intr);
+	    &fdc->sc_hih.ih_vec);
 #endif
 	fdc->sc_sih = softintr_establish(IPL_FDSOFT, fdcswintr, fdc);
 
@@ -643,9 +640,9 @@ fdattach(parent, self, aux)
 	/*
 	 * Initialize and attach the disk structure.
 	 */
+	fd->sc_dk.dk_flags = DKF_NOLABELREAD;
 	fd->sc_dk.dk_name = fd->sc_dv.dv_xname;
-	fd->sc_dk.dk_driver = &fddkdriver;
-	disk_attach(&fd->sc_dk);
+	disk_attach(&fd->sc_dv, &fd->sc_dk);
 
 	/*
 	 * We're told if we're the boot device in fdcattach().
@@ -1010,7 +1007,7 @@ fdread(dev, uio, flag)
 	int flag;
 {
 
-        return (physio(fdstrategy, NULL, dev, B_READ, minphys, uio));
+        return (physio(fdstrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -1020,7 +1017,7 @@ fdwrite(dev, uio, flag)
 	int flag;
 {
 
-        return (physio(fdstrategy, NULL, dev, B_WRITE, minphys, uio));
+        return (physio(fdstrategy, dev, B_WRITE, minphys, uio));
 }
 
 void

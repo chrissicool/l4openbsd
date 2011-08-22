@@ -1,4 +1,4 @@
-/*	$OpenBSD: udfu.c,v 1.1 2009/01/25 02:00:25 fgsch Exp $	*/
+/*	$OpenBSD: udfu.c,v 1.3 2011/01/25 20:03:36 jakemsr Exp $	*/
 
 /*
  * Copyright (c) 2009 Federico G. Schwindt <fgsch@openbsd.org>
@@ -72,6 +72,7 @@ struct udfu_softc {
 int	udfu_match(struct device *, void *, void *);
 void	udfu_attach(struct device *, struct device *, void *);
 int	udfu_detach(struct device *, int);
+int	udfu_activate(struct device *, int);
 
 void	udfu_parse_desc(struct udfu_softc *);
 int	udfu_request(struct udfu_softc *, int, int, int, void *, size_t);
@@ -84,7 +85,8 @@ const struct cfattach udfu_ca = {
 	sizeof(struct udfu_softc),
 	udfu_match,
 	udfu_attach,
-	udfu_detach
+	udfu_detach,
+	udfu_activate
 };
 
 int
@@ -152,19 +154,31 @@ udfu_attach(struct device *parent, struct device *self, void *aux)
 
 	if (!sc->sc_will_detach && err == 0)
 		usb_needs_reattach(sc->sc_udev);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
 }
 
 int
 udfu_detach(struct device *self, int flags)
 {
+	/* struct udfu_softc *sc = (struct udfu_softc *)self; */
+
+	return (0);
+}
+
+int
+udfu_activate(struct device *self, int act)
+{
 	struct udfu_softc *sc = (struct udfu_softc *)self;
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
-	return (0);
+	switch (act) {
+	case DVACT_ACTIVATE:
+		break;
+
+	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
+		break;
+	}
+
+	return 0;
 }
 
 void

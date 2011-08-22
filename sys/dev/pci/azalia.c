@@ -1,4 +1,4 @@
-/*	$OpenBSD: azalia.c,v 1.183 2010/08/08 05:25:30 jakemsr Exp $	*/
+/*	$OpenBSD: azalia.c,v 1.190 2011/02/17 17:38:55 jakemsr Exp $	*/
 /*	$NetBSD: azalia.c,v 1.20 2006/05/07 08:31:44 kent Exp $	*/
 
 /*-
@@ -36,7 +36,6 @@
  *
  *
  * TO DO:
- *  - power hook
  *  - multiple codecs (needed?)
  *  - multiple streams (needed?)
  */
@@ -123,7 +122,6 @@ typedef struct {
 	azalia_dma_t buffer;
 	void (*intr)(void*);
 	void *intr_arg;
-	int active;
 	int bufsize;
 	uint16_t fmt;
 	int blk;
@@ -131,7 +129,6 @@ typedef struct {
 	u_long swpos;			/* position in the audio(4) layer */
 	u_int last_hwpos;		/* last known lpib */
 	u_long hw_base;			/* this + lpib = overall position */
-	u_int lpib;			/* link position in buffer */
 	u_int pos_offs;			/* hardware fifo space */
 } stream_t;
 #define STR_READ_1(s, r)	\
@@ -536,26 +533,28 @@ err_exit:
 int
 azalia_pci_activate(struct device *self, int act)
 {
-	azalia_t *sc;
-	int ret;
+	azalia_t *sc = (azalia_t*)self;
+	int rv = 0; 
 
-	sc = (azalia_t*)self;
-	ret = 0;
 	switch (act) {
 	case DVACT_ACTIVATE:
-		return ret;
-	case DVACT_DEACTIVATE:
-		if (sc->audiodev != NULL)
-			ret = config_deactivate(sc->audiodev);
-		return ret;
+		break;
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		azalia_suspend(sc);
-		return ret;
+		break;
 	case DVACT_RESUME:
 		azalia_resume(sc);
-		return ret;
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_DEACTIVATE:
+		if (sc->audiodev != NULL)
+			rv = config_deactivate(sc->audiodev);
+		break;
 	}
-	return EOPNOTSUPP;
+	return (rv);
 }
 
 int
@@ -1339,20 +1338,6 @@ azalia_suspend(azalia_t *az)
 	timeout_del(&az->unsol_to);
 
 	azalia_save_mixer(&az->codecs[az->codecno]);
-
-	/* azalia_stream_halt() always returns 0.
-	 * Set 'active' field back to 1 after halting, so azalia_resume()
-	 * knows to start it back up.
-	 */
-	if (az->rstream.active) {
-		azalia_stream_halt(&az->rstream);
-		az->rstream.active = 1;
-	}
-	if (az->pstream.active) {
-		azalia_stream_halt(&az->pstream);
-		az->pstream.active = 1;
-	}
-
 	/* azalia_halt_{corb,rirb}() only fail if the {CORB,RIRB} can't
 	 * be stopped and azalia_init_{corb,rirb}(), which starts the
 	 * {CORB,RIRB}, first calls azalia_halt_{corb,rirb}().  If halt
@@ -1377,11 +1362,6 @@ azalia_suspend(azalia_t *az)
 rirb_fail:
 	azalia_init_corb(az, 1);
 corb_fail:
-	if (az->pstream.active)
-		azalia_stream_start(&az->pstream);
-	if (az->rstream.active)
-		azalia_stream_start(&az->rstream);
-
 	AZ_WRITE_4(az, GCTL, AZ_READ_4(az, GCTL) | HDA_GCTL_UNSOL);
 
 	return err;
@@ -1462,17 +1442,6 @@ azalia_resume(azalia_t *az)
 	err = azalia_codec_enable_unsol(&az->codecs[az->codecno]);
 	if (err)
 		return err;
-
-	if (az->pstream.active) {
-		err = azalia_stream_start(&az->pstream);
-		if (err)
-			return err;
-	}
-	if (az->rstream.active) {
-		err = azalia_stream_start(&az->rstream);
-		if (err)
-			return err;
-	}
 
 	return 0;
 }
@@ -2278,7 +2247,7 @@ azalia_codec_select_spkrdac(codec_t *this)
 				}
 			}
 		}
-		if (conn != -1) {
+		if (conn != -1 && conv != -1) {
 			err = azalia_comresp(this, w->nid,
 			    CORB_SET_CONNECTION_SELECT_CONTROL, conn, 0);
 			if (err)
@@ -3361,7 +3330,7 @@ azalia_widget_init_connection(widget_t *this, const codec_t *codec)
 	uint32_t result;
 	int err;
 	int i, j, k;
-	int length, bits, conn, last;
+	int length, nconn, bits, conn, last;
 
 	this->selected = -1;
 	if ((this->widgetcap & COP_AWCAP_CONNLIST) == 0)
@@ -3380,12 +3349,13 @@ azalia_widget_init_connection(widget_t *this, const codec_t *codec)
 	if (length == 0)
 		return 0;
 
-	this->nconnections = length;
-	this->connections = malloc(sizeof(nid_t) * length, M_DEVBUF, M_NOWAIT);
-	if (this->connections == NULL) {
-		printf("%s: out of memory\n", XNAME(codec->az));
-		return ENOMEM;
-	}
+	/*
+	 * 'length' is the number of entries, not the number of
+	 * connections.  Find the number of connections, 'nconn', so
+	 * enough space can be allocated for the list of connected
+	 * nids.
+	 */
+	nconn = last = 0;
 	for (i = 0; i < length;) {
 		err = azalia_comresp(codec, this->nid,
 		    CORB_GET_CONNECTION_LIST_ENTRY, i, &result);
@@ -3396,16 +3366,42 @@ azalia_widget_init_connection(widget_t *this, const codec_t *codec)
 			/* If high bit is set, this is the end of a continuous
 			 * list that started with the last connection.
 			 */
+			if ((nconn > 0) && (conn & (1 << (bits - 1))))
+				nconn += (conn & ~(1 << (bits - 1))) - last;
+			else
+				nconn++;
+			last = conn;
+			i++;
+		}
+	}
+
+	this->connections = malloc(sizeof(nid_t) * nconn, M_DEVBUF, M_NOWAIT);
+	if (this->connections == NULL) {
+		printf("%s: out of memory\n", XNAME(codec->az));
+		return ENOMEM;
+	}
+	for (i = 0; i < nconn;) {
+		err = azalia_comresp(codec, this->nid,
+		    CORB_GET_CONNECTION_LIST_ENTRY, i, &result);
+		if (err)
+			return err;
+		for (k = 0; i < nconn && (k < 32 / bits); k++) {
+			conn = (result >> (k * bits)) & ((1 << bits) - 1);
+			/* If high bit is set, this is the end of a continuous
+			 * list that started with the last connection.
+			 */
 			if ((i > 0) && (conn & (1 << (bits - 1)))) {
-				last = this->connections[i - 1];
-				for (j = 1; i < length && j <= conn - last; j++)
+				for (j = 1; i < nconn && j <= conn - last; j++)
 					this->connections[i++] = last + j;
 			} else {
 				this->connections[i++] = conn;
 			}
+			last = conn;
 		}
 	}
-	if (length > 0) {
+	this->nconnections = nconn;
+
+	if (nconn > 0) {
 		err = azalia_comresp(codec, this->nid,
 		    CORB_GET_CONNECTION_SELECT_CONTROL, 0, &result);
 		if (err)
@@ -3647,7 +3643,6 @@ azalia_stream_init(stream_t *this, azalia_t *az, int regindex, int strnum,
 	this->intr_bit = 1 << regindex;
 	this->number = strnum;
 	this->dir = dir;
-	this->active = 0;
 	this->pos_offs = STR_READ_2(this, FIFOS) & 0xff;
 
 	/* setup BDL buffers */
@@ -3677,7 +3672,7 @@ azalia_stream_delete(stream_t *this, azalia_t *az)
 int
 azalia_stream_reset(stream_t *this)
 {
-	int i, skip;
+	int i;
 	uint16_t ctl;
 	uint8_t sts;
 
@@ -3717,25 +3712,6 @@ azalia_stream_reset(stream_t *this)
 	sts = STR_READ_1(this, STS);
 	sts |= HDA_SD_STS_DESE | HDA_SD_STS_FIFOE | HDA_SD_STS_BCIS;
 	STR_WRITE_1(this, STS, sts);
-
-	/* The hardware position pointer has been reset to the start
-	 * of the buffer.  Call our interrupt handler enough times
-	 * to advance the software position pointer to wrap to the
-	 * start of the buffer.
-	 */
-	if (this->active) {
-		skip = (this->bufsize - this->lpib) / this->blk + 1;
-		DPRINTF(("%s: dir=%d bufsize=%d blk=%d lpib=%d skip=%d\n",
-		    __func__, this->dir, this->bufsize, this->blk, this->lpib,
-		    skip));
-		for (i = 0; i < skip; i++)
-			this->intr(this->intr_arg);
-		this->swpos = 0;
-		this->last_hwpos = 0;
-		this->hw_base = 0;
-	}
-	this->active = 0;
-	this->lpib = 0;
 
 	return (0);
 }
@@ -3800,8 +3776,6 @@ azalia_stream_start(stream_t *this)
 	    HDA_SD_CTL_DEIE | HDA_SD_CTL_FEIE | HDA_SD_CTL_IOCE |
 	    HDA_SD_CTL_RUN);
 
-	this->active = 1;
-
 	return (0);
 }
 
@@ -3816,8 +3790,7 @@ azalia_stream_halt(stream_t *this)
 	AZ_WRITE_4(this->az, INTCTL,
 	    AZ_READ_4(this->az, INTCTL) & ~this->intr_bit);
 	azalia_codec_disconnect_stream(this);
-	this->lpib = STR_READ_4(this, LPIB);
-	this->active = 0;
+
 	return (0);
 }
 

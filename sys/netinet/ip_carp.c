@@ -1,4 +1,4 @@
-/*	$OpenBSD: ip_carp.c,v 1.177 2010/08/02 10:30:00 matthew Exp $	*/
+/*	$OpenBSD: ip_carp.c,v 1.180 2010/12/21 14:59:14 claudio Exp $	*/
 
 /*
  * Copyright (c) 2002 Michael Shalayeff. All rights reserved.
@@ -1138,6 +1138,7 @@ carp_send_ad(void *v)
 		len = sizeof(*ip) + sizeof(ch);
 		m->m_pkthdr.len = len;
 		m->m_pkthdr.rcvif = NULL;
+		m->m_pkthdr.rdomain = sc->sc_if.if_rdomain;
 		m->m_len = len;
 		MH_ALIGN(m, m->m_len);
 		ip = mtod(m, struct ip *);
@@ -1227,6 +1228,7 @@ carp_send_ad(void *v)
 		len = sizeof(*ip6) + sizeof(ch);
 		m->m_pkthdr.len = len;
 		m->m_pkthdr.rcvif = NULL;
+		/* XXX m->m_pkthdr.rdomain = sc->sc_if.if_rdomain; */
 		m->m_len = len;
 		MH_ALIGN(m, m->m_len);
 		m->m_flags |= M_MCAST;
@@ -1247,8 +1249,8 @@ carp_send_ad(void *v)
 			    &ip6->ip6_src, sizeof(struct in6_addr));
 		/* set the multicast destination */
 
-		ip6->ip6_dst.s6_addr8[0] = 0xff;
-		ip6->ip6_dst.s6_addr8[1] = 0x02;
+		ip6->ip6_dst.s6_addr16[0] = htons(0xff02);
+		ip6->ip6_dst.s6_addr16[1] = htons(sc->sc_carpdev->if_index);
 		ip6->ip6_dst.s6_addr8[15] = 0x12;
 
 		ch_ptr = (void *)ip6 + sizeof(*ip6);
@@ -2585,7 +2587,7 @@ carp_group_demote_adj(struct ifnet *ifp, int adj, char *reason)
 
 		if (adj > 0 && *dm == 1)
 			carp_send_ad_all();
-		CARP_LOG(LOG_NOTICE, nil,
+		CARP_LOG(LOG_ERR, nil,
 		    ("%s demoted group %s by %d to %d (%s)",
 		    ifp->if_xname, ifgl->ifgl_group->ifg_group,
 		    adj, *dm, reason));

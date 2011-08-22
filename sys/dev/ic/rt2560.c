@@ -1,4 +1,4 @@
-/*	$OpenBSD: rt2560.c,v 1.49 2010/08/04 19:48:33 damien Exp $  */
+/*	$OpenBSD: rt2560.c,v 1.58 2011/02/22 20:05:03 kettenis Exp $  */
 
 /*-
  * Copyright (c) 2005, 2006
@@ -148,7 +148,6 @@ void		rt2560_read_eeprom(struct rt2560_softc *);
 int		rt2560_bbp_init(struct rt2560_softc *);
 int		rt2560_init(struct ifnet *);
 void		rt2560_stop(struct ifnet *, int);
-void		rt2560_power(int, void *);
 
 static const struct {
 	uint32_t	reg;
@@ -265,7 +264,6 @@ rt2560_attach(void *xsc, int id)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = rt2560_init;
 	ifp->if_ioctl = rt2560_ioctl;
 	ifp->if_start = rt2560_start;
 	ifp->if_watchdog = rt2560_watchdog;
@@ -295,12 +293,6 @@ rt2560_attach(void *xsc, int id)
 	sc->sc_txtap.wt_ihdr.it_len = htole16(sc->sc_txtap_len);
 	sc->sc_txtap.wt_ihdr.it_present = htole32(RT2560_TX_RADIOTAP_PRESENT);
 #endif
-
-	sc->sc_powerhook = powerhook_establish(rt2560_power, sc);
-	if (sc->sc_powerhook == NULL) {
-		printf("%s: WARNING: unable to establish power hook\n",
-		    sc->sc_dev.dv_xname);
-	}
 	return 0;
 
 fail5:	rt2560_free_tx_ring(sc, &sc->bcnq);
@@ -318,9 +310,6 @@ rt2560_detach(void *xsc)
 
 	timeout_del(&sc->scan_to);
 	timeout_del(&sc->amrr_to);
-
-	if (sc->sc_powerhook != NULL)
-		powerhook_disestablish(sc->sc_powerhook);
 
 	ieee80211_ifdetach(ifp);	/* free all nodes */
 	if_detach(ifp);
@@ -341,15 +330,17 @@ rt2560_suspend(void *xsc)
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
 
 	if (ifp->if_flags & IFF_RUNNING)
-		rt2560_stop(ifp, 0);
+		rt2560_stop(ifp, 1);
 }
 
 void
 rt2560_resume(void *xsc)
 {
 	struct rt2560_softc *sc = xsc;
+	struct ifnet *ifp = &sc->sc_ic.ic_if;
 
-	rt2560_power(PWR_RESUME, sc);
+	if (ifp->if_flags & IFF_UP)
+		rt2560_init(ifp);
 }
 
 int
@@ -983,6 +974,13 @@ rt2560_tx_intr(struct rt2560_softc *sc)
 			ifp->if_oerrors++;
 		}
 
+		/* descriptor is no longer valid */
+		desc->flags &= ~htole32(RT2560_TX_VALID);
+
+		bus_dmamap_sync(sc->sc_dmat, sc->txq.map,
+		    sc->txq.next * RT2560_TX_DESC_SIZE, RT2560_TX_DESC_SIZE,
+		    BUS_DMASYNC_PREWRITE);
+
 		bus_dmamap_sync(sc->sc_dmat, data->map, 0,
 		    data->map->dm_mapsize, BUS_DMASYNC_POSTWRITE);
 		bus_dmamap_unload(sc->sc_dmat, data->map);
@@ -990,13 +988,6 @@ rt2560_tx_intr(struct rt2560_softc *sc)
 		data->m = NULL;
 		ieee80211_release_node(ic, data->ni);
 		data->ni = NULL;
-
-		/* descriptor is no longer valid */
-		desc->flags &= ~htole32(RT2560_TX_VALID);
-
-		bus_dmamap_sync(sc->sc_dmat, sc->txq.map,
-		    sc->txq.next * RT2560_TX_DESC_SIZE, RT2560_TX_DESC_SIZE,
-		    BUS_DMASYNC_PREWRITE);
 
 		DPRINTFN(15, ("tx done idx=%u\n", sc->txq.next));
 
@@ -1049,6 +1040,13 @@ rt2560_prio_intr(struct rt2560_softc *sc)
 			    sc->sc_dev.dv_xname, letoh32(desc->flags));
 		}
 
+		/* descriptor is no longer valid */
+		desc->flags &= ~htole32(RT2560_TX_VALID);
+
+		bus_dmamap_sync(sc->sc_dmat, sc->prioq.map,
+		    sc->prioq.next * RT2560_TX_DESC_SIZE, RT2560_TX_DESC_SIZE,
+		    BUS_DMASYNC_PREWRITE);
+
 		bus_dmamap_sync(sc->sc_dmat, data->map, 0,
 		    data->map->dm_mapsize, BUS_DMASYNC_POSTWRITE);
 		bus_dmamap_unload(sc->sc_dmat, data->map);
@@ -1056,13 +1054,6 @@ rt2560_prio_intr(struct rt2560_softc *sc)
 		data->m = NULL;
 		ieee80211_release_node(ic, data->ni);
 		data->ni = NULL;
-
-		/* descriptor is no longer valid */
-		desc->flags &= ~htole32(RT2560_TX_VALID);
-
-		bus_dmamap_sync(sc->sc_dmat, sc->prioq.map,
-		    sc->prioq.next * RT2560_TX_DESC_SIZE, RT2560_TX_DESC_SIZE,
-		    BUS_DMASYNC_PREWRITE);
 
 		DPRINTFN(15, ("prio done idx=%u\n", sc->prioq.next));
 
@@ -1336,7 +1327,10 @@ rt2560_intr(void *arg)
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
 	uint32_t r;
 
-	if ((r = RAL_READ(sc, RT2560_CSR7)) == 0)
+	r = RAL_READ(sc, RT2560_CSR7);
+	if (__predict_false(r == 0xffffffff))
+		return 0;	/* device likely went away */
+	if (r == 0)
 		return 0;	/* not for us */
 
 	/* disable interrupts */
@@ -2726,32 +2720,6 @@ rt2560_stop(struct ifnet *ifp, int disable)
 			sc->sc_flags &= ~RT2560_ENABLED;
 		}
 	}
-}
-
-void
-rt2560_power(int why, void *arg)
-{
-	struct rt2560_softc *sc = arg;
-	struct ifnet *ifp = &sc->sc_ic.ic_if;
-	int s;
-
-	s = splnet();
-	switch (why) {
-	case PWR_SUSPEND:
-	case PWR_STANDBY:
-		rt2560_stop(ifp, 0);
-		if (sc->sc_power != NULL)
-			(*sc->sc_power)(sc, why);
-		break;
-	case PWR_RESUME:
-		if (ifp->if_flags & IFF_UP) {
-			rt2560_init(ifp);
-			if (sc->sc_power != NULL)
-				(*sc->sc_power)(sc, why);
-		}
-		break;
-	}
-	splx(s);
 }
 
 struct cfdriver ral_cd = {

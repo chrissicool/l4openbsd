@@ -1,4 +1,4 @@
-/*	$Id: man_macro.c,v 1.20 2010/07/25 18:05:54 schwarze Exp $ */
+/*	$Id: man_macro.c,v 1.27 2011/01/16 19:27:25 schwarze Exp $ */
 /*
  * Copyright (c) 2008, 2009, 2010 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -65,21 +65,17 @@ const	struct man_macro __man_macros[MAN_MAX] = {
 	{ in_line_eoln, 0 }, /* IR */
 	{ in_line_eoln, 0 }, /* RI */
 	{ in_line_eoln, MAN_NSCOPED }, /* na */
-	{ in_line_eoln, 0 }, /* i */
 	{ in_line_eoln, MAN_NSCOPED }, /* sp */
 	{ in_line_eoln, 0 }, /* nf */
 	{ in_line_eoln, 0 }, /* fi */
-	{ in_line_eoln, 0 }, /* r */
 	{ blk_close, 0 }, /* RE */
 	{ blk_exp, MAN_EXPLICIT }, /* RS */
 	{ in_line_eoln, 0 }, /* DT */
 	{ in_line_eoln, 0 }, /* UC */
 	{ in_line_eoln, 0 }, /* PD */
-	{ in_line_eoln, MAN_NSCOPED }, /* Sp */
-	{ in_line_eoln, 0 }, /* Vb */
-	{ in_line_eoln, 0 }, /* Ve */
 	{ in_line_eoln, 0 }, /* AT */
 	{ in_line_eoln, 0 }, /* in */
+	{ in_line_eoln, 0 }, /* ft */
 };
 
 const	struct man_macro * const man_macros = __man_macros;
@@ -107,29 +103,33 @@ rew_warn(struct man *m, struct man_node *n, enum mandocerr er)
  * will be used if an explicit block scope is being closed out.
  */
 int
-man_unscope(struct man *m, const struct man_node *n, 
+man_unscope(struct man *m, const struct man_node *to, 
 		enum mandocerr er)
 {
+	struct man_node	*n;
 
-	assert(n);
+	assert(to);
 
 	/* LINTED */
-	while (m->last != n) {
+	while (m->last != to) {
+		/*
+		 * Save the parent here, because we may delete the
+		 * m->last node in the post-validation phase and reset
+		 * it to m->last->parent, causing a step in the closing
+		 * out to be lost.
+		 */
+		n = m->last->parent;
 		if ( ! rew_warn(m, m->last, er))
 			return(0);
 		if ( ! man_valid_post(m))
 			return(0);
-		if ( ! man_action_post(m))
-			return(0);
-		m->last = m->last->parent;
+		m->last = n;
 		assert(m->last);
 	}
 
 	if ( ! rew_warn(m, m->last, er))
 		return(0);
 	if ( ! man_valid_post(m))
-		return(0);
-	if ( ! man_action_post(m))
 		return(0);
 
 	m->next = MAN_ROOT == m->last->type ? 
@@ -454,8 +454,6 @@ in_line_eoln(MACRO_PROT_ARGS)
 			break;
 		if ( ! man_valid_post(m))
 			return(0);
-		if ( ! man_action_post(m))
-			return(0);
 	}
 
 	assert(m->last);
@@ -465,8 +463,6 @@ in_line_eoln(MACRO_PROT_ARGS)
 	 */
 
 	if (m->last->type != MAN_ROOT && ! man_valid_post(m))
-		return(0);
-	if (m->last->type != MAN_ROOT && ! man_action_post(m))
 		return(0);
 
 	m->next = MAN_ROOT == m->last->type ?

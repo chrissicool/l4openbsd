@@ -1,4 +1,4 @@
-/*	$OpenBSD: mscp_disk.c,v 1.29 2010/05/22 17:10:23 deraadt Exp $	*/
+/*	$OpenBSD: mscp_disk.c,v 1.32 2010/09/22 06:40:25 krw Exp $	*/
 /*	$NetBSD: mscp_disk.c,v 1.30 2001/11/13 07:38:28 lukem Exp $	*/
 /*
  * Copyright (c) 1996 Ludd, University of Lule}, Sweden.
@@ -345,7 +345,7 @@ raread(dev, uio)
 	struct uio *uio;
 {
 
-	return (physio(rastrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(rastrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -354,7 +354,7 @@ rawrite(dev, uio)
 	struct uio *uio;
 {
 
-	return (physio(rastrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(rastrategy, dev, B_WRITE, minphys, uio));
 }
 
 /*
@@ -378,6 +378,7 @@ raioctl(dev, cmd, data, flag, p)
 	switch (cmd) {
 
 	case DIOCGDINFO:
+	case DIOCGPDINFO:	/* no separate 'physical' info available. */
 		bcopy(lp, data, sizeof (struct disklabel));
 		break;
 
@@ -519,7 +520,7 @@ rxattach(parent, self, aux)
 	mi->mi_dp[mp->mscp_unit] = self;
 
 	rx->ra_disk.dk_name = rx->ra_dev.dv_xname;
-	disk_attach((struct disk *)&rx->ra_disk);
+	disk_attach(&rx->ra_dev, &rx->ra_disk);
 
 	/* Fill in what we know. The actual size is gotten later */
 	dl = rx->ra_disk.dk_label;
@@ -675,7 +676,7 @@ rxread(dev, uio)
 	struct uio *uio;
 {
 
-	return (physio(rxstrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(rxstrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -684,7 +685,7 @@ rxwrite(dev, uio)
 	struct uio *uio;
 {
 
-	return (physio(rxstrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(rxstrategy, dev, B_WRITE, minphys, uio));
 }
 
 /*

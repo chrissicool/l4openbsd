@@ -1,4 +1,4 @@
-/*	$OpenBSD: hotplug.c,v 1.9 2009/11/09 17:53:39 nicm Exp $	*/
+/*	$OpenBSD: hotplug.c,v 1.11 2010/12/15 03:34:33 tedu Exp $	*/
 /*
  * Copyright (c) 2004 Alexander Yurchenko <grange@openbsd.org>
  *
@@ -29,7 +29,7 @@
 #include <sys/poll.h>
 #include <sys/vnode.h>
 
-#define HOTPLUG_MAXEVENTS	16
+#define HOTPLUG_MAXEVENTS	64
 
 static int opened;
 static struct hotplug_event evqueue[HOTPLUG_MAXEVENTS];
@@ -155,7 +155,7 @@ again:
 	if (flags & IO_NDELAY)
 		return (EAGAIN);
 
-	error = tsleep(evqueue, PRIBIO | PCATCH, "htplev", 0);
+	error = tsleep(&evqueue, PRIBIO | PCATCH, "htplev", 0);
 	if (error)
 		return (error);
 	goto again;

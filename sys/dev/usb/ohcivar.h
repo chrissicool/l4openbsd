@@ -1,4 +1,4 @@
-/*	$OpenBSD: ohcivar.h,v 1.28 2009/11/04 19:14:10 kettenis Exp $ */
+/*	$OpenBSD: ohcivar.h,v 1.31 2010/12/14 16:13:16 jakemsr Exp $ */
 /*	$NetBSD: ohcivar.h,v 1.32 2003/02/22 05:24:17 tsutsui Exp $	*/
 /*	$FreeBSD: src/sys/dev/usb/ohcivar.h,v 1.13 1999/11/17 22:33:41 n_hibma Exp $	*/
 
@@ -116,7 +116,6 @@ typedef struct ohci_softc {
 	char sc_vendor[16];
 	int sc_id_vendor;
 
-	void *sc_powerhook;		/* cookie from power hook */
 	void *sc_shutdownhook;		/* cookie from shutdown hook */
 
 	u_int32_t sc_control;		/* Preserved during suspend/standby */
@@ -129,8 +128,6 @@ typedef struct ohci_softc {
 	struct timeout sc_tmo_rhsc;
 
 	struct device *sc_child;
-
-	char sc_dying;
 } ohci_softc_t;
 
 struct ohci_xfer {
@@ -144,4 +141,3 @@ usbd_status	ohci_init(ohci_softc_t *);
 int		ohci_intr(void *);
 int		ohci_detach(ohci_softc_t *, int);
 int		ohci_activate(struct device *, int);
-void		ohci_power(int, void *);

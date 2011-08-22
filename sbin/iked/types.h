@@ -1,4 +1,4 @@
-/*	$OpenBSD: types.h,v 1.6 2010/06/29 21:04:42 reyk Exp $	*/
+/*	$OpenBSD: types.h,v 1.9 2011/01/21 11:56:00 reyk Exp $	*/
 /*	$vantronix: types.h,v 1.24 2010/05/11 12:05:56 reyk Exp $	*/
 
 /*
@@ -53,8 +53,11 @@
 #define IKED_MSGBUF_MAX		8192
 #define IKED_CFG_MAX		16	/* maximum CP attributes */
 #define IKED_TAG_SIZE		64
-#define IKED_CYCLE_BUFFERS	4	/* # of static buffers for mapping */
+#define IKED_CYCLE_BUFFERS	8	/* # of static buffers for mapping */
 #define IKED_PASSWORD_SIZE	256	/* limited by most EAP types */
+
+#define IKED_LIFETIME_BYTES	536870912 /* 512 Mb */
+#define IKED_LIFETIME_SECONDS	10800	  /* 3 hours */
 
 #define IKED_E			0x1000	/* Decrypted flag */
 
@@ -85,6 +88,7 @@ enum imsg_type {
 	IMSG_CTL_DECOUPLE,
 	IMSG_CTL_ACTIVE,
 	IMSG_CTL_PASSIVE,
+	IMSG_COMPILE,
 	IMSG_UDP_SOCKET,
 	IMSG_PFKEY_SOCKET,
 	IMSG_IKE_MESSAGE,

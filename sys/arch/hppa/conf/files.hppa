@@ -1,4 +1,4 @@
-#	$OpenBSD: files.hppa,v 1.85 2010/06/30 20:38:49 tedu Exp $
+#	$OpenBSD: files.hppa,v 1.87 2011/01/02 14:01:18 matthieu Exp $
 #
 # hppa-specific configuration info
 
@@ -12,6 +12,9 @@ maxusers 2 8 128
 #
 include "dev/wscons/files.wscons"
 file	arch/hppa/hppa/wscons_machdep.c	wsdisplay
+
+include "dev/rasops/files.rasops"
+include "dev/wsfont/files.wsfont"
 
 #
 # Media Independent Interface (mii)
@@ -286,13 +289,6 @@ file	arch/hppa/gsc/gsckbc.c			gsckbc
 
 # PS/2 keyboard and mouse
 include	"dev/pckbc/files.pckbc"
-
-#
-# Compatibility
-#
-include	"compat/linux/files.linux"
-include "compat/ossaudio/files.ossaudio"
-file	arch/hppa/hppa/linux_machdep.c		compat_linux
 
 #
 # Non-device files

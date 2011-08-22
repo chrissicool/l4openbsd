@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-server-info.c,v 1.18 2009/12/10 09:16:52 nicm Exp $ */
+/* $OpenBSD: cmd-server-info.c,v 1.24 2011/01/26 01:54:56 nicm Exp $ */
 
 /*
  * Copyright (c) 2008 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -35,37 +35,36 @@ int	cmd_server_info_exec(struct cmd *, struct cmd_ctx *);
 
 const struct cmd_entry cmd_server_info_entry = {
 	"server-info", "info",
+	"", 0, 0,
 	"",
-	0, "",
+	0,
 	NULL,
 	NULL,
-	cmd_server_info_exec,
-	NULL,
-	NULL
+	cmd_server_info_exec
 };
 
 /* ARGSUSED */
 int
 cmd_server_info_exec(unused struct cmd *self, struct cmd_ctx *ctx)
 {
-	struct tty_term			*term;
-	struct client			*c;
-	struct session			*s;
-	struct winlink			*wl;
-	struct window			*w;
-	struct window_pane		*wp;
-	struct tty_code			*code;
-	struct tty_term_code_entry	*ent;
-	struct utsname			 un;
-	struct job			*job;
-	struct grid			*gd;
-	struct grid_line		*gl;
-	u_int		 		 i, j, k;
-	char				 out[80];
-	char				*tim;
-	time_t		 		 t;
-	u_int				 lines, ulines;
-	size_t				 size, usize;
+	struct tty_term				*term;
+	struct client				*c;
+	struct session				*s;
+	struct winlink				*wl;
+	struct window				*w;
+	struct window_pane			*wp;
+	struct tty_code				*code;
+	const struct tty_term_code_entry	*ent;
+	struct utsname				 un;
+	struct job				*job;
+	struct grid				*gd;
+	struct grid_line			*gl;
+	u_int		 			 i, j, k;
+	char					 out[80];
+	char					*tim;
+	time_t		 			 t;
+	u_int					 lines, ulines;
+	size_t					 size, usize;
 
 	tim = ctime(&start_time);
 	*strchr(tim, '\n') = '\0';
@@ -81,8 +80,6 @@ cmd_server_info_exec(unused struct cmd *self, struct cmd_ctx *ctx)
 	else
 		ctx->print(ctx, "configuration file not specified");
 	ctx->print(ctx, "protocol version is %d", PROTOCOL_VERSION);
-	ctx->print(ctx, "%u clients, %u sessions",
-	    ARRAY_LENGTH(&clients), ARRAY_LENGTH(&sessions));
 	ctx->print(ctx, "%s", "");
 
 	ctx->print(ctx, "Clients:");
@@ -91,29 +88,25 @@ cmd_server_info_exec(unused struct cmd *self, struct cmd_ctx *ctx)
 		if (c == NULL || c->session == NULL)
 			continue;
 
-		ctx->print(ctx, "%2d: %s (%d, %d): %s [%ux%u %s] "
+		ctx->print(ctx,"%2d: %s (%d, %d): %s [%ux%u %s bs=%hho] "
 		    "[flags=0x%x/0x%x, references=%u]", i, c->tty.path,
 		    c->ibuf.fd, c->tty.fd, c->session->name,
-		    c->tty.sx, c->tty.sy, c->tty.termname, c->flags,
+		    c->tty.sx, c->tty.sy, c->tty.termname,
+		    c->tty.tio.c_cc[VERASE], c->flags,
 		    c->tty.flags, c->references);
 	}
 	ctx->print(ctx, "%s", "");
 
 	ctx->print(ctx, "Sessions: [%zu/%zu]",
 	    sizeof (struct grid_cell), sizeof (struct grid_utf8));
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		s = ARRAY_ITEM(&sessions, i);
-		if (s == NULL)
-			continue;
-
+	RB_FOREACH(s, sessions, &sessions) {
 		t = s->creation_time.tv_sec;
 		tim = ctime(&t);
 		*strchr(tim, '\n') = '\0';
 
 		ctx->print(ctx, "%2u: %s: %u windows (created %s) [%ux%u] "
-		    "[flags=0x%x, references=%u]", i, s->name,
-		    winlink_count(&s->windows), tim, s->sx, s->sy, s->flags,
-		    s->references);
+		    "[flags=0x%x]", s->idx, s->name,
+		    winlink_count(&s->windows), tim, s->sx, s->sy, s->flags);
 		RB_FOREACH(wl, winlinks, &s->windows) {
 			w = wl->window;
 			ctx->print(ctx, "%4u: %s [%ux%u] [flags=0x%x, "
@@ -149,7 +142,7 @@ cmd_server_info_exec(unused struct cmd *self, struct cmd_ctx *ctx)
 	ctx->print(ctx, "%s", "");
 
 	ctx->print(ctx, "Terminals:");
-	SLIST_FOREACH(term, &tty_terms, entry) {
+	LIST_FOREACH(term, &tty_terms, entry) {
 		ctx->print(ctx, "%s [references=%u, flags=0x%x]:",
 		    term->name, term->references, term->flags);
 		for (i = 0; i < NTTYCODE; i++) {
@@ -181,9 +174,9 @@ cmd_server_info_exec(unused struct cmd *self, struct cmd_ctx *ctx)
 	ctx->print(ctx, "%s", "");
 
 	ctx->print(ctx, "Jobs:");
-	SLIST_FOREACH(job, &all_jobs, lentry) {
-		ctx->print(ctx, "%s [fd=%d, pid=%d, status=%d, flags=0x%x]",
-		    job->cmd, job->fd, job->pid, job->status, job->flags);
+	LIST_FOREACH(job, &all_jobs, lentry) {
+		ctx->print(ctx, "%s [fd=%d, pid=%d, status=%d]",
+		    job->cmd, job->fd, job->pid, job->status);
 	}
 
 	return (0);

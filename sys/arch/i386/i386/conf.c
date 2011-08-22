@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.134 2010/07/03 03:59:16 krw Exp $	*/
+/*	$OpenBSD: conf.c,v 1.136 2011/01/14 19:04:08 jasper Exp $	*/
 /*	$NetBSD: conf.c,v 1.75 1996/05/03 19:40:20 christos Exp $	*/
 
 /*
@@ -82,7 +82,7 @@ struct bdevsw	bdevsw[] =
 	bdev_notdef(),			/* 18 */
 	bdev_disk_init(NRAID,raid),	/* 19: RAIDframe disk driver */
 };
-int	nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
+int	nblkdev = nitems(bdevsw);
 
 /* open, close, read, write, ioctl, tty, mmap */
 #define cdev_pc_init(c,n) { \
@@ -193,6 +193,7 @@ cdev_decl(pci);
 #include "gpio.h"
 #include "amdmsr.h"
 #include "vscsi.h"
+#include "pppx.h"
 
 #ifdef L4
 #include "l4ser.h"
@@ -313,13 +314,14 @@ struct cdevsw	cdevsw[] =
 	cdev_amdmsr_init(NAMDMSR,amdmsr),	/* 89: amdmsr */
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 90: vscsi */
 	cdev_disk_init(1,diskmap),	/* 91: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 92: pppx */
 #ifdef NL4SER
 	cdev_tty_init(1, l4ser),	/* 92: L4 serial driver */
 #else
 	cdev_notdef(),
 #endif
 };
-int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+int	nchrdev = nitems(cdevsw);
 
 int	mem_no = 2; 	/* major device number of memory special file */
 
@@ -417,7 +419,7 @@ int chrtoblktbl[] = {
 	/* 53 */	NODEV,
 	/* 54 */	19,		/* raid */
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);
 
 /*
  * In order to map BSD bdev numbers of disks to their BIOS equivalents

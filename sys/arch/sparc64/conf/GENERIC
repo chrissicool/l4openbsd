@@ -1,4 +1,4 @@
-#	$OpenBSD: GENERIC,v 1.254 2010/08/02 14:13:23 deraadt Exp $
+#	$OpenBSD: GENERIC,v 1.263 2011/02/17 20:14:30 miod Exp $
 #
 # For further information on compiling OpenBSD kernels, see the config(8)
 # man page.
@@ -97,8 +97,8 @@ jme*	at pci?			# JMicron JMC250/JMC260 Ethernet
 
 ath*	at pci?			# Atheros AR5k (802.11a/b/g)
 ath*	at cardbus?		# Atheros AR5k (802.11a/b/g)
-athn*	at pci?				# Atheros AR9k (802.11a/g/n)
-athn*	at cardbus?			# Atheros AR9k (802.11a/g/n)
+athn*	at pci?			# Atheros AR9k (802.11a/g/n)
+athn*	at cardbus?		# Atheros AR9k (802.11a/g/n)
 pgt*	at pci?			# Prism54 (only full-mac varients)
 acx*	at pci?			# TI ACX100/ACX111 (802.11b/g)
 acx*	at cardbus?		# TI ACX100/ACX111 (802.11b/g)
@@ -226,13 +226,16 @@ mos*	at uhub?		# MOSCHIP MCS7730/7830 10/100 Ethernet
 upl*	at uhub?		# Prolific PL2301/PL2302 host-to-host `network'
 ural*	at uhub?		# Ralink RT2500USB
 uath*	at uhub?		# Atheros AR5005UG/AR5005UX
+rsu*	at uhub?		# Realtek RTL8188SU/RTL8191SU/RTL8192SU
+urtwn*	at uhub?		# Realtek RTL8188CU/RTL8192CU
 rum*	at uhub?		# Ralink RT2501USB/RT2601USB
 run*	at uhub?		# Ralink RT2700U/RT2800U/RT3000U
+athn*	at uhub?		# Atheros AR9002U
 zyd*	at uhub?		# Zydas ZD1211
 url*	at uhub?		# Realtek RTL8150L based adapters
 wi*	at uhub?		# WaveLAN IEEE 802.11DS
 urio*	at uhub?		# Diamond Multimedia Rio 500
-uscanner* at uhub?		# USB Scanners
+uscanner* at uhub? disable	# USB Scanners
 #uyap*	at uhub?		# Y@P firmware loader
 udsbr*	at uhub?		# D-Link DSB-R100 radio
 radio*	at udsbr?		# USB radio
@@ -240,6 +243,7 @@ ugen*	at uhub?		# USB Generic driver
 udcf*	at uhub?		# Gude Expert mouseCLOCK
 umbg*	at uhub?		# Meinberg Funkuhren USB5131
 uthum*	at uhidev?		# TEMPerHUM sensor
+utwitch* at uhidev?		# UYUREX BBU sensor
 uow*	at uhub?		# Maxim/Dallas DS2490 1-Wire adapter
 onewire* at uow?
 
@@ -248,7 +252,7 @@ uvideo* at uhub?
 video*  at uvideo?
 
 # Bluetooth controllers
-ubt*	at uhub?		# USB Bluetooth
+ubt*	at uhub? disable	# USB Bluetooth
 bthub*	at ubt?
 
 bthidev* at bthub?		# Bluetooth HID support
@@ -299,8 +303,6 @@ pckbd*	at pckbc?			#  ps2 keyboard
 wskbd*	at pckbd? mux 1			#   generic keyboard layer
 pms*	at pckbc?			#  ps2 mouse
 wsmouse* at pms? mux 0			#   generic mouse
-pmsi*	at pckbc?			#  ps2 "intelli"mouse
-wsmouse* at pmsi? mux 0			#   generic mouse
 
 audioce*	at ebus?		# ebus cs4231
 

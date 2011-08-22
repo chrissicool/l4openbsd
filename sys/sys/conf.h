@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.h,v 1.106 2010/07/28 21:44:41 nicm Exp $	*/
+/*	$OpenBSD: conf.h,v 1.110 2011/01/25 20:03:35 jakemsr Exp $	*/
 /*	$NetBSD: conf.h,v 1.33 1996/05/03 20:03:32 christos Exp $	*/
 
 /*-
@@ -302,6 +302,13 @@ extern struct cdevsw cdevsw[];
 	0, dev_init(c,n,poll), (dev_type_mmap((*))) enodev, \
 	0, D_KQFILTER, dev_init(c,n,kqfilter) }
 
+/* open, close, read, write, ioctl, poll, kqfilter -- XXX should be generic device */
+#define cdev_pppx_init(c,n) { \
+	dev_init(c,n,open), dev_init(c,n,close), dev_init(c,n,read), \
+	dev_init(c,n,write), dev_init(c,n,ioctl), (dev_type_stop((*))) enodev, \
+	0, dev_init(c,n,poll), (dev_type_mmap((*))) enodev, \
+	0, D_KQFILTER, dev_init(c,n,kqfilter) }
+
 /* open, close, read, write, ioctl, poll, kqfilter, cloning -- XXX should be generic device */
 #define cdev_bpf_init(c,n) { \
 	dev_init(c,n,open), dev_init(c,n,close), dev_init(c,n,read), \
@@ -382,15 +389,14 @@ extern struct cdevsw cdevsw[];
 #define	cdev_random_init(c,n) { \
 	dev_init(c,n,open), dev_init(c,n,close), dev_init(c,n,read), \
 	dev_init(c,n,write), dev_init(c,n,ioctl), (dev_type_stop((*))) enodev, \
-	0, dev_init(c,n,poll), (dev_type_mmap((*))) enodev, \
-	0, D_KQFILTER, dev_init(c,n,kqfilter) }
-void	randomattach(void);
+	0, seltrue, (dev_type_mmap((*))) enodev, \
+	0, D_KQFILTER, seltrue_kqfilter }
 
 /* open, close, ioctl, poll, nokqfilter */
 #define	cdev_usb_init(c,n) { \
 	dev_init(c,n,open), dev_init(c,n,close), (dev_type_read((*))) enodev, \
 	(dev_type_write((*))) enodev, dev_init(c,n,ioctl), \
-	(dev_type_stop((*))) enodev, 0, dev_init(c,n,poll), \
+	(dev_type_stop((*))) enodev, 0, selfalse, \
 	(dev_type_mmap((*))) enodev }
 
 /* open, close, write, ioctl */
@@ -635,6 +641,7 @@ cdev_decl(bpf);
 cdev_decl(pf);
 
 cdev_decl(tun);
+cdev_decl(pppx);
 
 cdev_decl(random);
 

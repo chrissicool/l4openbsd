@@ -1,4 +1,4 @@
-/*	$OpenBSD: ubt.c,v 1.17 2010/07/02 02:40:16 blambert Exp $	*/
+/*	$OpenBSD: ubt.c,v 1.20 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*	$NetBSD: ubt.c,v 1.35 2008/07/28 14:19:26 drochner Exp $	*/
 
 /*-
@@ -443,9 +443,6 @@ ubt_attach(struct device *parent, struct device *self, void *aux)
 	/* Attach HCI */
 	sc->sc_unit = hci_attach(&ubt_hci, &sc->sc_dev, 0);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
-
 	sc->sc_ok = 1;
 	/* XXX pmf_device_deregister in NetBSD (power hook) */
 }
@@ -459,8 +456,6 @@ ubt_detach(struct device *self, int flags)
 	DPRINTF("sc=%p flags=%d\n", sc, flags);
 
 	/* XXX pmf_device_deregister in NetBSD (power hook) */
-
-	sc->sc_dying = 1;
 
 	if (!sc->sc_ok)
 		return 0;
@@ -487,9 +482,6 @@ ubt_detach(struct device *self, int flags)
 
 	splx(s);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
-
 	DPRINTFN(1, "driver detached\n");
 
 	return 0;
@@ -499,24 +491,15 @@ int
 ubt_activate(struct device *self, int act)
 {
 	struct ubt_softc *sc = (struct ubt_softc *)self;
-	int error = 0;
-
-	DPRINTFN(1, "sc=%p, act=%d\n", sc, act);
 
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
-
 	case DVACT_DEACTIVATE:
 		sc->sc_dying = 1;
 		break;
-
-	default:
-		error = EOPNOTSUPP;
-		break;
 	}
-
-	return error;
+	return (0);
 }
 
 /* set ISOC configuration */

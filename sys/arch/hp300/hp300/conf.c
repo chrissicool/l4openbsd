@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.48 2010/07/03 03:59:16 krw Exp $	*/
+/*	$OpenBSD: conf.c,v 1.51 2011/01/14 19:04:08 jasper Exp $	*/
 /*	$NetBSD: conf.c,v 1.39 1997/05/12 08:17:53 thorpej Exp $	*/
 
 /*-
@@ -74,7 +74,7 @@ struct bdevsw	bdevsw[] =
 	bdev_lkm_dummy(),		/* 14 */
 	bdev_lkm_dummy(),		/* 15 */
 };
-int	nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
+int	nblkdev = nitems(bdevsw);
 
 /* open, close, read, write, ioctl -- XXX should be a generic device */
 #define	cdev_ppi_init(c,n) { \
@@ -113,6 +113,8 @@ cdev_decl(nnpfs_dev);
 #include "pf.h"
 #include "systrace.h"
 #include "vscsi.h"
+#include "pppx.h"
+#include "hotplug.h"
 
 struct cdevsw	cdevsw[] =
 {
@@ -175,8 +177,10 @@ struct cdevsw	cdevsw[] =
 	cdev_ptm_init(NPTY,ptm),	/* 52: pseudo-tty ptm device */
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 53: vscsi */
 	cdev_disk_init(1,diskmap),	/* 54: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 55: pppx */
+	cdev_hotplug_init(NHOTPLUG,hotplug),	/* 56: devices hot plugging */
 };
-int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+int	nchrdev = nitems(cdevsw);
 
 int	mem_no = 2; 	/* major device number of memory special file */
 
@@ -258,7 +262,7 @@ int chrtoblktbl[] = {
 	/* 33 */	NODEV,
 	/* 34 */	8,		/* rd */
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);
 
 /*
  * This entire table could be autoconfig()ed but that would mean that

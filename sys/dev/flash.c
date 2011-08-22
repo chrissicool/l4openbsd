@@ -1,4 +1,4 @@
-/*	$OpenBSD: flash.c,v 1.15 2010/04/23 15:25:21 jsing Exp $	*/
+/*	$OpenBSD: flash.c,v 1.20 2010/09/24 18:27:43 jasper Exp $	*/
 
 /*
  * Copyright (c) 2005 Uwe Stuehler <uwe@openbsd.org>
@@ -95,8 +95,6 @@ struct cfdriver flash_cd = {
 	NULL, "flash", DV_DISK
 };
 
-struct dkdriver flashdkdriver = { flashstrategy };
-
 void
 flashattach(struct flash_softc *sc, struct flash_ctl_tag *tag,
     void *cookie)
@@ -158,9 +156,8 @@ flashattach(struct flash_softc *sc, struct flash_ctl_tag *tag,
 	/*
 	 * Initialize and attach the disk structure.
 	 */
-	sc->sc_dk.dk_driver = &flashdkdriver;
 	sc->sc_dk.dk_name = sc->sc_dev.dv_xname;
-	disk_attach(&sc->sc_dk);
+	disk_attach(&sc->sc_dev, &sc->sc_dk);
 
 	/* XXX establish shutdown hook to finish any commands. */
 }
@@ -853,9 +850,14 @@ flashioctl(dev_t dev, u_long cmd, caddr_t data, int fflag, struct proc *p)
 	}
 
 	switch (cmd) {
+	case DIOCGPDINFO:
+		flashgetdisklabel(dev, sc, (struct disklabel *)data, 1);
+		break;
+
 	case DIOCGDINFO:
 		*(struct disklabel *)data = *sc->sc_dk.dk_label;
 		break;
+
 	default:
 		error = ENOTTY;
 		break;
@@ -1036,13 +1038,13 @@ flashminphys(struct buf *bp)
 int
 flashread(dev_t dev, struct uio *uio, int ioflag)
 {
-	return physio(flashstrategy, NULL, dev, B_READ, flashminphys, uio);
+	return physio(flashstrategy, dev, B_READ, flashminphys, uio);
 }
 
 int
 flashwrite(dev_t dev, struct uio *uio, int ioflag)
 {
-	return physio(flashstrategy, NULL, dev, B_WRITE, flashminphys, uio);
+	return physio(flashstrategy, dev, B_WRITE, flashminphys, uio);
 }
 
 /*

@@ -1,4 +1,4 @@
-/* $OpenBSD: tty.c,v 1.88 2010/06/05 16:47:11 nicm Exp $ */
+/* $OpenBSD: tty.c,v 1.99 2011/01/29 08:39:43 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -31,8 +31,6 @@
 void	tty_read_callback(struct bufferevent *, void *);
 void	tty_error_callback(struct bufferevent *, short, void *);
 
-void	tty_fill_acs(struct tty *);
-
 int	tty_try_256(struct tty *, u_char, const char *);
 int	tty_try_88(struct tty *, u_char, const char *);
 
@@ -48,6 +46,9 @@ void	tty_emulate_repeat(
 void	tty_cell(struct tty *,
 	    const struct grid_cell *, const struct grid_utf8 *);
 
+#define tty_use_acs(tty) \
+	(tty_term_has(tty->term, TTYC_ACSC) && !((tty)->flags & TTY_UTF8))
+
 void
 tty_init(struct tty *tty, int fd, char *term)
 {
@@ -60,9 +61,6 @@ tty_init(struct tty *tty, int fd, char *term)
 		tty->termname = xstrdup("unknown");
 	else
 		tty->termname = xstrdup(term);
-
-	if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1)
-		fatal("fcntl failed");
 	tty->fd = fd;
 
 	if ((path = ttyname(fd)) == NULL)
@@ -143,8 +141,6 @@ tty_open(struct tty *tty, const char *overrides, char **cause)
 
 	tty_keys_init(tty);
 
-	tty_fill_acs(tty);
-
 	return (0);
 }
 
@@ -169,20 +165,14 @@ void
 tty_start_tty(struct tty *tty)
 {
 	struct termios	 tio;
-	int		 mode;
 
-	if (tty->fd == -1)
+	if (tty->fd == -1 || tcgetattr(tty->fd, &tty->tio) != 0)
 		return;
 
-	if ((mode = fcntl(tty->fd, F_GETFL)) == -1)
-		fatal("fcntl failed");
-	if (fcntl(tty->fd, F_SETFL, mode|O_NONBLOCK) == -1)
-		fatal("fcntl failed");
+	setblocking(tty->fd, 0);
 
 	bufferevent_enable(tty->event, EV_READ|EV_WRITE);
 
-	if (tcgetattr(tty->fd, &tty->tio) != 0)
-		fatal("tcgetattr failed");
 	memcpy(&tio, &tty->tio, sizeof tio);
 	tio.c_iflag &= ~(IXON|IXOFF|ICRNL|INLCR|IGNCR|IMAXBEL|ISTRIP);
 	tio.c_iflag |= IGNBRK;
@@ -191,9 +181,8 @@ tty_start_tty(struct tty *tty)
 	    ECHOPRT|ECHOKE|ECHOCTL|ISIG);
 	tio.c_cc[VMIN] = 1;
 	tio.c_cc[VTIME] = 0;
-	if (tcsetattr(tty->fd, TCSANOW, &tio) != 0)
-		fatal("tcsetattr failed");
-	tcflush(tty->fd, TCIOFLUSH);
+	if (tcsetattr(tty->fd, TCSANOW, &tio) == 0)
+		tcflush(tty->fd, TCIOFLUSH);
 
 	tty_putcode(tty, TTYC_SMCUP);
 
@@ -201,7 +190,8 @@ tty_start_tty(struct tty *tty)
 	memcpy(&tty->cell, &grid_default_cell, sizeof tty->cell);
 
 	tty_putcode(tty, TTYC_RMKX);
-	tty_putcode(tty, TTYC_ENACS);
+	if (tty_use_acs(tty))
+		tty_putcode(tty, TTYC_ENACS);
 	tty_putcode(tty, TTYC_CLEAR);
 
 	tty_putcode(tty, TTYC_CNORM);
@@ -223,7 +213,6 @@ void
 tty_stop_tty(struct tty *tty)
 {
 	struct winsize	ws;
-	int		mode;
 
 	if (!(tty->flags & TTY_STARTED))
 		return;
@@ -242,7 +231,8 @@ tty_stop_tty(struct tty *tty)
 		return;
 
 	tty_raw(tty, tty_term_string2(tty->term, TTYC_CSR, 0, ws.ws_row - 1));
-	tty_raw(tty, tty_term_string(tty->term, TTYC_RMACS));
+	if (tty_use_acs(tty))
+		tty_raw(tty, tty_term_string(tty->term, TTYC_RMACS));
 	tty_raw(tty, tty_term_string(tty->term, TTYC_SGR0));
 	tty_raw(tty, tty_term_string(tty->term, TTYC_RMKX));
 	tty_raw(tty, tty_term_string(tty->term, TTYC_CLEAR));
@@ -253,32 +243,7 @@ tty_stop_tty(struct tty *tty)
 
 	tty_raw(tty, tty_term_string(tty->term, TTYC_RMCUP));
 
-	if ((mode = fcntl(tty->fd, F_GETFL)) != -1)
-		fcntl(tty->fd, F_SETFL, mode & ~O_NONBLOCK);
-}
-
-void
-tty_fill_acs(struct tty *tty)
-{
-	const char *ptr;
-
-	memset(tty->acs, 0, sizeof tty->acs);
-	if (!tty_term_has(tty->term, TTYC_ACSC))
-		return;
-
-	ptr = tty_term_string(tty->term, TTYC_ACSC);
-	if (strlen(ptr) % 2 != 0)
-		return;
-	for (; *ptr != '\0'; ptr += 2)
-		tty->acs[(u_char) ptr[0]] = ptr[1];
-}
-
-u_char
-tty_get_acs(struct tty *tty, u_char ch)
-{
-	if (tty->acs[ch] != '\0')
-		return (tty->acs[ch]);
-	return (ch);
+	setblocking(tty->fd, 1);
 }
 
 void
@@ -360,11 +325,17 @@ tty_puts(struct tty *tty, const char *s)
 void
 tty_putc(struct tty *tty, u_char ch)
 {
-	u_int	sx;
+	const char	*acs;
+	u_int		 sx;
 
-	if (tty->cell.attr & GRID_ATTR_CHARSET)
-		ch = tty_get_acs(tty, ch);
-	bufferevent_write(tty->event, &ch, 1);
+	if (tty->cell.attr & GRID_ATTR_CHARSET) {
+		acs = tty_acs_get(tty, ch);
+		if (acs != NULL)
+			bufferevent_write(tty->event, acs, strlen(acs));
+		else
+			bufferevent_write(tty->event, &ch, 1);
+	} else
+		bufferevent_write(tty->event, &ch, 1);
 
 	if (ch >= 0x20 && ch != 0x7f) {
 		sx = tty->sx;
@@ -423,17 +394,25 @@ tty_update_mode(struct tty *tty, int mode)
 		else
 			tty_putcode(tty, TTYC_CIVIS);
 	}
-	if (changed & (MODE_MOUSE|MODE_MOUSEMOTION)) {
-		if (mode & MODE_MOUSE) {
-			if (mode & MODE_MOUSEMOTION)
+	if (changed & ALL_MOUSE_MODES) {
+		if (mode & ALL_MOUSE_MODES) {
+			if (mode & MODE_MOUSE_UTF8)
+				tty_puts(tty, "\033[?1005h");
+			if (mode & MODE_MOUSE_ANY)
 				tty_puts(tty, "\033[?1003h");
-			else
+			else if (mode & MODE_MOUSE_BUTTON)
+				tty_puts(tty, "\033[?1002h");
+			else if (mode & MODE_MOUSE_STANDARD)
 				tty_puts(tty, "\033[?1000h");
 		} else {
-			if (mode & MODE_MOUSEMOTION)
+			if (tty->mode & MODE_MOUSE_ANY)
 				tty_puts(tty, "\033[?1003l");
-			else
+			else if (tty->mode & MODE_MOUSE_BUTTON)
+				tty_puts(tty, "\033[?1002l");
+			else if (tty->mode & MODE_MOUSE_STANDARD)
 				tty_puts(tty, "\033[?1000l");
+			if (tty->mode & MODE_MOUSE_UTF8)
+				tty_puts(tty, "\033[?1005l");
 		}
 	}
 	if (changed & MODE_KKEYPAD) {
@@ -567,7 +546,7 @@ tty_write(void (*cmdfn)(
 
 	if (wp->window->flags & WINDOW_REDRAW || wp->flags & PANE_REDRAW)
 		return;
-	if (wp->window->flags & WINDOW_HIDDEN || !window_pane_visible(wp))
+	if (!window_pane_visible(wp))
 		return;
 
 	for (i = 0; i < ARRAY_LENGTH(&clients); i++) {
@@ -578,7 +557,9 @@ tty_write(void (*cmdfn)(
 			continue;
 
 		if (c->session->curw->window == wp->window) {
-			if (c->tty.flags & TTY_FREEZE || c->tty.term == NULL)
+			if (c->tty.term == NULL)
+				continue;
+			if (c->tty.flags & (TTY_FREEZE|TTY_BACKOFF))
 				continue;
 			cmdfn(&c->tty, ctx);
 		}
@@ -995,7 +976,7 @@ tty_reset(struct tty *tty)
 	if (memcmp(gc, &grid_default_cell, sizeof *gc) == 0)
 		return;
 
-	if (tty_term_has(tty->term, TTYC_RMACS) && gc->attr & GRID_ATTR_CHARSET)
+	if ((gc->attr & GRID_ATTR_CHARSET) && tty_use_acs(tty))
 		tty_putcode(tty, TTYC_RMACS);
 	tty_putcode(tty, TTYC_SGR0);
 	memcpy(gc, &grid_default_cell, sizeof *gc);
@@ -1232,7 +1213,7 @@ tty_attributes(struct tty *tty, const struct grid_cell *gc)
 	}
 	if (changed & GRID_ATTR_HIDDEN)
 		tty_putcode(tty, TTYC_INVIS);
-	if (changed & GRID_ATTR_CHARSET)
+	if ((changed & GRID_ATTR_CHARSET) && tty_use_acs(tty))
 		tty_putcode(tty, TTYC_SMACS);
 }
 

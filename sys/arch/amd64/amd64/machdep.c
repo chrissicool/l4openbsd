@@ -1,4 +1,4 @@
-/*	$OpenBSD: machdep.c,v 1.119 2010/08/05 21:10:10 deraadt Exp $	*/
+/*	$OpenBSD: machdep.c,v 1.130 2011/01/13 20:34:04 mikeb Exp $	*/
 /*	$NetBSD: machdep.c,v 1.3 2003/05/07 22:58:18 fvdl Exp $	*/
 
 /*-
@@ -111,6 +111,7 @@
 #include <machine/mpbiosvar.h>
 #include <machine/reg.h>
 #include <machine/kcore.h>
+#include <machine/tss.h>
 
 #include <dev/isa/isareg.h>
 #include <machine/isa_machdep.h>
@@ -221,7 +222,8 @@ pid_t sigpid = 0;
 #define SDB_FOLLOW      0x01
 #endif
 
-extern	paddr_t avail_start, avail_end;
+paddr_t avail_start;
+paddr_t avail_end;
 
 void (*delay_func)(int) = i8254_delay;
 void (*initclock_func)(void) = i8254_initclocks;
@@ -360,58 +362,43 @@ cpu_startup(void)
 }
 
 /*
- * Set up proc0's TSS and LDT.
+ * Set up proc0's PCB and the cpu's TSS.
  */
 void
 x86_64_proc0_tss_ldt_init(void)
 {
 	struct pcb *pcb;
-	int x;
-
-	gdt_init();
 
 	cpu_info_primary.ci_curpcb = pcb = &proc0.p_addr->u_pcb;
-
-	pcb->pcb_flags = 0;
-	pcb->pcb_tss.tss_iobase =
-	    (u_int16_t)((caddr_t)pcb->pcb_iomap - (caddr_t)&pcb->pcb_tss);
-	for (x = 0; x < sizeof(pcb->pcb_iomap) / 4; x++)
-		pcb->pcb_iomap[x] = 0xffffffff;
-
-	pcb->pcb_ldt_sel = pmap_kernel()->pm_ldt_sel =
-	    GSYSSEL(GLDT_SEL, SEL_KPL);
 	pcb->pcb_cr0 = rcr0();
-	pcb->pcb_tss.tss_rsp0 = (u_int64_t)proc0.p_addr + USPACE - 16;
-	pcb->pcb_tss.tss_ist[0] = (u_int64_t)proc0.p_addr + PAGE_SIZE;
-	proc0.p_md.md_regs = (struct trapframe *)pcb->pcb_tss.tss_rsp0 - 1;
-	proc0.p_md.md_tss_sel = tss_alloc(pcb);
+	pcb->pcb_kstack = (u_int64_t)proc0.p_addr + USPACE - 16;
+	proc0.p_md.md_regs = (struct trapframe *)pcb->pcb_kstack - 1;
 
-	ltr(proc0.p_md.md_tss_sel);
-	lldt(pcb->pcb_ldt_sel);
+	/* an empty iomap, by setting its offset to the TSS limit */
+	cpu_info_primary.ci_tss->tss_iobase = sizeof(struct x86_64_tss);
+	cpu_info_primary.ci_tss->tss_rsp0 = pcb->pcb_kstack;
+	cpu_info_primary.ci_tss->tss_ist[0] =
+	    (u_int64_t)proc0.p_addr + PAGE_SIZE - 16;
+
+	ltr(GSYSSEL(GPROC0_SEL, SEL_KPL));
+	lldt(0);
 }
 
 /*       
- * Set up TSS and LDT for a new PCB.
+ * Set up TSS for a new PCB.
  */         
          
 #ifdef MULTIPROCESSOR
 void    
 x86_64_init_pcb_tss_ldt(struct cpu_info *ci)   
 {        
-	int x;      
 	struct pcb *pcb = ci->ci_idle_pcb;
  
-	pcb->pcb_tss.tss_iobase =
-	    (u_int16_t)((caddr_t)pcb->pcb_iomap - (caddr_t)&pcb->pcb_tss);
-	for (x = 0; x < sizeof(pcb->pcb_iomap) / 4; x++)
-		pcb->pcb_iomap[x] = 0xffffffff;
+	ci->ci_tss->tss_iobase = sizeof(*ci->ci_tss);
+	ci->ci_tss->tss_rsp0 = pcb->pcb_kstack;
+	ci->ci_tss->tss_ist[0] = pcb->pcb_kstack - USPACE + PAGE_SIZE;
 
-	/* XXXfvdl pmap_kernel not needed */ 
-	pcb->pcb_ldt_sel = pmap_kernel()->pm_ldt_sel =
-	    GSYSSEL(GLDT_SEL, SEL_KPL);
 	pcb->pcb_cr0 = rcr0();
-        
-        ci->ci_idle_tss_sel = tss_alloc(pcb);
 }       
 #endif	/* MULTIPROCESSOR */
 
@@ -612,10 +599,10 @@ sendsig(sig_t catcher, int sig, int mask, u_long code, int type,
 	/*
 	 * Build context to run handler in.
 	 */
-	tf->tf_ds = LSEL(LUDATA_SEL, SEL_UPL);
-	tf->tf_es = LSEL(LUDATA_SEL, SEL_UPL);
-	tf->tf_fs = LSEL(LUDATA_SEL, SEL_UPL);
-	tf->tf_gs = LSEL(LUDATA_SEL, SEL_UPL);
+	tf->tf_ds = GSEL(GUDATA_SEL, SEL_UPL);
+	tf->tf_es = GSEL(GUDATA_SEL, SEL_UPL);
+	tf->tf_fs = GSEL(GUDATA_SEL, SEL_UPL);
+	tf->tf_gs = GSEL(GUDATA_SEL, SEL_UPL);
 
 	tf->tf_rax = (u_int64_t)catcher;
 	tf->tf_rdi = sig;
@@ -623,10 +610,10 @@ sendsig(sig_t catcher, int sig, int mask, u_long code, int type,
 	tf->tf_rdx = scp;
 
 	tf->tf_rip = (u_int64_t)p->p_sigcode;
-	tf->tf_cs = LSEL(LUCODE_SEL, SEL_UPL);
+	tf->tf_cs = GSEL(GUCODE_SEL, SEL_UPL);
 	tf->tf_rflags &= ~(PSL_T|PSL_D|PSL_VM|PSL_AC);
 	tf->tf_rsp = scp;
-	tf->tf_ss = LSEL(LUDATA_SEL, SEL_UPL);
+	tf->tf_ss = GSEL(GUDATA_SEL, SEL_UPL);
 
 #ifdef DEBUG
 	if ((sigdebug & SDB_FOLLOW) && (!sigpid || p->p_pid == sigpid))
@@ -717,6 +704,8 @@ struct pcb dumppcb;
 void
 boot(int howto)
 {
+	if (howto & RB_POWERDOWN)
+		lid_suspend = 0;
 
 	if (cold) {
 		/*
@@ -1005,7 +994,6 @@ void
 setregs(struct proc *p, struct exec_package *pack, u_long stack,
     register_t *retval)
 {
-	struct pcb *pcb = &p->p_addr->u_pcb;
 	struct trapframe *tf;
 
 	/* If we were using the FPU, forget about it. */
@@ -1013,13 +1001,11 @@ setregs(struct proc *p, struct exec_package *pack, u_long stack,
 		fpusave_proc(p, 0);
 	p->p_md.md_flags &= ~MDP_USEDFPU;
 
-	pcb->pcb_flags = 0;
-
 	tf = p->p_md.md_regs;
-	tf->tf_ds = LSEL(LUDATA_SEL, SEL_UPL);
-	tf->tf_es = LSEL(LUDATA_SEL, SEL_UPL);
-	tf->tf_fs = LSEL(LUDATA_SEL, SEL_UPL);
-	tf->tf_gs = LSEL(LUDATA_SEL, SEL_UPL);
+	tf->tf_ds = GSEL(GUDATA_SEL, SEL_UPL);
+	tf->tf_es = GSEL(GUDATA_SEL, SEL_UPL);
+	tf->tf_fs = GSEL(GUDATA_SEL, SEL_UPL);
+	tf->tf_gs = GSEL(GUDATA_SEL, SEL_UPL);
 	tf->tf_rdi = 0;
 	tf->tf_rsi = 0;
 	tf->tf_rbp = 0;
@@ -1036,10 +1022,10 @@ setregs(struct proc *p, struct exec_package *pack, u_long stack,
 	tf->tf_r14 = 0;
 	tf->tf_r15 = 0;
 	tf->tf_rip = pack->ep_entry;
-	tf->tf_cs = LSEL(LUCODE_SEL, SEL_UPL);
+	tf->tf_cs = GSEL(GUCODE_SEL, SEL_UPL);
 	tf->tf_rflags = PSL_USERSET;
 	tf->tf_rsp = stack;
-	tf->tf_ss = LSEL(LUDATA_SEL, SEL_UPL);
+	tf->tf_ss = GSEL(GUDATA_SEL, SEL_UPL);
 
 	retval[1] = 0;
 }
@@ -1051,7 +1037,6 @@ setregs(struct proc *p, struct exec_package *pack, u_long stack,
 struct gate_descriptor *idt;
 char idt_allocmap[NIDT];
 struct simplelock idt_lock;
-char *ldtstore;
 char *gdtstore;
 extern  struct user *proc0paddr;
 
@@ -1192,10 +1177,7 @@ map_tramps(void) {
 
 #define	IDTVEC(name)	__CONCAT(X, name)
 typedef void (vector)(void);
-extern vector IDTVEC(syscall);
-extern vector IDTVEC(syscall32);
 extern vector IDTVEC(osyscall);
-extern vector IDTVEC(oosyscall);
 extern vector *IDTVEC(exceptions)[];
 
 int bigmem = 0;
@@ -1203,9 +1185,7 @@ int bigmem = 0;
 void
 init_x86_64(paddr_t first_avail)
 {
-	extern void consinit(void);
 	struct region_descriptor region;
-	struct mem_segment_descriptor *ldt_segp;
 	bios_memmap_t *bmp;
 	int x, ist;
 
@@ -1386,7 +1366,8 @@ init_x86_64(paddr_t first_avail)
 
 #ifdef LKM
 	lkm_start = KERNTEXTOFF + first_avail;
-	lkm_end = KERNBASE + NKL2_KIMG_ENTRIES * NBPD_L2;
+	/* set it to the end of the jumpable region, should be safe enough */
+	lkm_end = 0xffffffffffffffff;
 #endif
 
 	/*
@@ -1483,64 +1464,28 @@ init_x86_64(paddr_t first_avail)
 #endif
 
 	idt = (struct gate_descriptor *)idt_vaddr;
-	gdtstore = (char *)(idt + NIDT);
-	ldtstore = gdtstore + DYNSEL_START;
+	cpu_info_primary.ci_tss = (void *)(idt + NIDT);
+	gdtstore = (void *)(cpu_info_primary.ci_tss + 1);
 
 	/* make gdt gates and memory segments */
-	set_mem_segment(GDT_ADDR_MEM(gdtstore, GCODE_SEL), 0, 0xfffff, SDT_MEMERA,
-	    SEL_KPL, 1, 0, 1);
+	set_mem_segment(GDT_ADDR_MEM(gdtstore, GCODE_SEL), 0,
+	    0xfffff, SDT_MEMERA, SEL_KPL, 1, 0, 1);
 
-	set_mem_segment(GDT_ADDR_MEM(gdtstore, GDATA_SEL), 0, 0xfffff, SDT_MEMRWA,
-	    SEL_KPL, 1, 0, 1);
+	set_mem_segment(GDT_ADDR_MEM(gdtstore, GDATA_SEL), 0,
+	    0xfffff, SDT_MEMRWA, SEL_KPL, 1, 0, 1);
 
-	set_sys_segment(GDT_ADDR_SYS(gdtstore, GLDT_SEL), ldtstore, LDT_SIZE - 1,
-	    SDT_SYSLDT, SEL_KPL, 0);
-
-	set_mem_segment(GDT_ADDR_MEM(gdtstore, GUCODE_SEL), 0,
-	    atop(VM_MAXUSER_ADDRESS) - 1, SDT_MEMERA, SEL_UPL, 1, 0, 1);
+	set_mem_segment(GDT_ADDR_MEM(gdtstore, GUCODE32_SEL), 0,
+	    atop(VM_MAXUSER_ADDRESS32) - 1, SDT_MEMERA, SEL_UPL, 1, 1, 0);
 
 	set_mem_segment(GDT_ADDR_MEM(gdtstore, GUDATA_SEL), 0,
 	    atop(VM_MAXUSER_ADDRESS) - 1, SDT_MEMRWA, SEL_UPL, 1, 0, 1);
 
-	/* make ldt gates and memory segments */
-	setgate((struct gate_descriptor *)(ldtstore + LSYS5CALLS_SEL),
-	    &IDTVEC(oosyscall), 0, SDT_SYS386CGT, SEL_UPL,
-	    GSEL(GCODE_SEL, SEL_KPL));
+	set_mem_segment(GDT_ADDR_MEM(gdtstore, GUCODE_SEL), 0,
+	    atop(VM_MAXUSER_ADDRESS) - 1, SDT_MEMERA, SEL_UPL, 1, 0, 1);
 
-	*(struct mem_segment_descriptor *)(ldtstore + LUCODE_SEL) =
-	    *GDT_ADDR_MEM(gdtstore, GUCODE_SEL);
-	*(struct mem_segment_descriptor *)(ldtstore + LUDATA_SEL) =
-	    *GDT_ADDR_MEM(gdtstore, GUDATA_SEL);
-
-	/*
-	 * 32 bit GDT entries.
-	 */
-
-	set_mem_segment(GDT_ADDR_MEM(gdtstore, GUCODE32_SEL), 0,
-	    atop(VM_MAXUSER_ADDRESS) - 1, SDT_MEMERA, SEL_UPL, 1, 1, 0);
-
-	set_mem_segment(GDT_ADDR_MEM(gdtstore, GUDATA32_SEL), 0,
-	    atop(VM_MAXUSER_ADDRESS) - 1, SDT_MEMRWA, SEL_UPL, 1, 1, 0);
-
-	/*
-	 * 32 bit LDT entries.
-	 */
-	ldt_segp = (struct mem_segment_descriptor *)(ldtstore + LUCODE32_SEL);
-	set_mem_segment(ldt_segp, 0, atop(VM_MAXUSER_ADDRESS32) - 1,
-	    SDT_MEMERA, SEL_UPL, 1, 1, 0);
-	ldt_segp = (struct mem_segment_descriptor *)(ldtstore + LUDATA32_SEL);
-	set_mem_segment(ldt_segp, 0, atop(VM_MAXUSER_ADDRESS32) - 1,
-	    SDT_MEMRWA, SEL_UPL, 1, 1, 0);
-
-	/*
-	 * Other entries.
-	 */
-	memcpy((struct gate_descriptor *)(ldtstore + LSOL26CALLS_SEL),
-	    (struct gate_descriptor *)(ldtstore + LSYS5CALLS_SEL),
-	    sizeof (struct gate_descriptor));
-	memcpy((struct gate_descriptor *)(ldtstore + LBSDICALLS_SEL),
-	    (struct gate_descriptor *)(ldtstore + LSYS5CALLS_SEL),
-	    sizeof (struct gate_descriptor));
+	set_sys_segment(GDT_ADDR_SYS(gdtstore, GPROC0_SEL),
+	    cpu_info_primary.ci_tss, sizeof (struct x86_64_tss)-1,
+	    SDT_SYS386TSS, SEL_KPL, 0);
 
 	/* exceptions */
 	for (x = 0; x < 32; x++) {
@@ -1556,7 +1501,7 @@ init_x86_64(paddr_t first_avail)
 	    GSEL(GCODE_SEL, SEL_KPL));
 	idt_allocmap[128] = 1;
 
-	setregion(&region, gdtstore, DYNSEL_START - 1);
+	setregion(&region, gdtstore, GDT_SIZE - 1);
 	lgdt(&region);
 
 	cpu_init_idt();
@@ -1581,9 +1526,6 @@ init_x86_64(paddr_t first_avail)
 	}
 #endif
 
-        /* Make sure maxproc is sane */ 
-        if (maxproc > cpu_maxproc())
-                maxproc = cpu_maxproc();
 }
 
 #ifdef KGDB
@@ -1711,8 +1653,7 @@ need_resched(struct cpu_info *ci)
 	/* There's a risk we'll be called before the idle threads start */
 	if (ci->ci_curproc) {
 		aston(ci->ci_curproc);
-		if (ci != curcpu())
-			cpu_unidle(ci);
+		cpu_unidle(ci);
 	}
 }
 
@@ -1758,15 +1699,6 @@ idt_vec_free(int vec)
 	simple_unlock(&idt_lock);
 }
 
-/*
- * Number of processes is limited by number of available GDT slots.
- */
-int
-cpu_maxproc(void)
-{
-	return (MAXGDTSIZ - DYNSEL_START) / 16;
-}
-
 #ifdef DIAGNOSTIC
 void
 splassert_check(int wantipl, const char *func)
@@ -1775,6 +1707,10 @@ splassert_check(int wantipl, const char *func)
 
 	if (cpl < wantipl) {
 		splassert_fail(wantipl, cpl, func);
+	}
+
+	if (wantipl == IPL_NONE && curcpu()->ci_idepth != 0) {
+		splassert_fail(-1, curcpu()->ci_idepth, func);
 	}
 }
 #endif

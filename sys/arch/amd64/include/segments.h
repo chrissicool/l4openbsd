@@ -1,4 +1,4 @@
-/*	$OpenBSD: segments.h,v 1.5 2008/05/23 15:39:43 jasper Exp $	*/
+/*	$OpenBSD: segments.h,v 1.9 2010/11/20 20:11:17 miod Exp $	*/
 /*	$NetBSD: segments.h,v 1.1 2003/04/26 18:39:47 fvdl Exp $	*/
 
 /*-
@@ -61,17 +61,14 @@
 #define	ISLDT(s)	((s) & SEL_LDT)	/* is it local or global */
 #define	SEL_LDT		4		/* local descriptor table */	
 
-/* Dynamically allocated TSSs and LDTs start (byte offset) */
 #define SYSSEL_START	(NGDT_MEM << 3)
-#define DYNSEL_START	(SYSSEL_START + (NGDT_SYS << 4))
+#define GDT_SIZE	(SYSSEL_START + (NGDT_SYS << 4))
 
 /*
  * These define the index not from the start of the GDT, but from
  * the part of the GDT that they're allocated from.
  * First NGDT_MEM entries are 8-byte descriptors for CS and DS.
- * Next NGDT_SYS entries are 16-byte descriptors defining LDTs.
- *
- * The rest is 16-byte descriptors for TSS and LDT.
+ * Next NGDT_SYS entries are 16-byte descriptors defining TSSs.
  */
 
 #define	IDXSEL(s)	(((s) >> 3) & 0x1fff)
@@ -108,7 +105,7 @@ struct sys_segment_descriptor {
 /*BITFIELDTYPE*/ u_int64_t sd_xx2:8;	/* reserved */
 /*BITFIELDTYPE*/ u_int64_t sd_zero:5;	/* must be zero */
 /*BITFIELDTYPE*/ u_int64_t sd_xx3:19;	/* reserved */
-} __attribute__((packed));
+} __packed;
 
 /*
  * Below is used for cs, ds, etc.
@@ -125,7 +122,7 @@ struct mem_segment_descriptor {
 	unsigned int sd_def32:1;            /* default 32 vs 16 bit size */
 	unsigned int sd_gran:1;             /* limit granularity (byte/page) */
 	unsigned int sd_hibase:8;           /* segment base address (msb) */
-} __attribute__((packed));
+} __packed;
 
 /*
  * Gate descriptors (e.g. indirect descriptors)
@@ -142,7 +139,7 @@ struct gate_descriptor {
 /*BITFIELDTYPE*/ u_int64_t gd_xx2:8;	/* reserved */
 /*BITFIELDTYPE*/ u_int64_t gd_zero:5;	/* must be zero */
 /*BITFIELDTYPE*/ u_int64_t gd_xx3:19;	/* reserved */
-} __attribute__((packed));
+} __packed;
 
 /*
  * region descriptors, used to load gdt/idt tables before segments yet exist.
@@ -150,7 +147,7 @@ struct gate_descriptor {
 struct region_descriptor {
 	u_int16_t rd_limit;		/* segment extent */
 	u_int64_t rd_base;		/* base address  */
-} __attribute__((packed));
+} __packed;
 
 #ifdef _KERNEL
 #if 0
@@ -158,7 +155,6 @@ extern struct sys_segment_descriptor *ldt;
 #endif
 extern struct gate_descriptor *idt;
 extern char *gdtstore;
-extern char *ldtstore;
 
 void setgate(struct gate_descriptor *, void *, int, int, int, int);
 void unsetgate(struct gate_descriptor *);
@@ -251,28 +247,21 @@ void cpu_init_idt(void);
  * The code and data descriptors must come first. There
  * are NGDT_MEM of them.
  *
- * Then come the predefined LDT (and possibly TSS) descriptors.
+ * Then comes the predefined TSS descriptor.
  * There are NGDT_SYS of them.
+ *
+ * The particular order of the UCODE32, UDATA, and UCODE descriptors is 
+ * required by the syscall/sysret instructions.
  */
 #define	GNULL_SEL	0	/* Null descriptor */
 #define	GCODE_SEL	1	/* Kernel code descriptor */
 #define	GDATA_SEL	2	/* Kernel data descriptor */
-#define	GUCODE_SEL	3	/* User code descriptor */
+#define	GUCODE32_SEL	3	/* User 32bit code descriptor (unused) */
 #define	GUDATA_SEL	4	/* User data descriptor */
-#define	GAPM32CODE_SEL	5
-#define	GAPM16CODE_SEL	6
-#define	GAPMDATA_SEL	7
-#define	GBIOSCODE_SEL	8
-#define	GBIOSDATA_SEL	9
-#define GPNPBIOSCODE_SEL 10
-#define GPNPBIOSDATA_SEL 11
-#define GPNPBIOSSCRATCH_SEL 12
-#define GPNPBIOSTRAMP_SEL 13
-#define GUCODE32_SEL	14
-#define GUDATA32_SEL	15
-#define NGDT_MEM 16
+#define	GUCODE_SEL	5	/* User code descriptor */
+#define NGDT_MEM 6
 
-#define	GLDT_SEL	0	/* Default LDT descriptor */
+#define	GPROC0_SEL	0	/* common TSS */
 #define NGDT_SYS	1
 
 #define GDT_SYS_OFFSET	(NGDT_MEM << 3)
@@ -283,32 +272,11 @@ void cpu_init_idt(void);
    ((struct sys_segment_descriptor *)((s) + (((i) << 4) + SYSSEL_START)))
 
 /*
- * Byte offsets in the Local Descriptor Table (LDT)
- * Strange order because of syscall/sysret insns
- */
-#define	LSYS5CALLS_SEL	0	/* iBCS system call gate */
-#define LUCODE32_SEL	8	/* 32 bit user code descriptor */
-#define	LUDATA_SEL	16	/* User data descriptor */
-#define	LUCODE_SEL	24	/* User code descriptor */
-#define	LSOL26CALLS_SEL	32	/* Solaris 2.6 system call gate */
-#define LUDATA32_SEL	56	/* 32 bit user data descriptor (needed?)*/
-#define	LBSDICALLS_SEL	128	/* BSDI system call gate */
-
-#define LDT_SIZE	144
-
-#define LSYSRETBASE_SEL	LUCODE32_SEL
-
-/*
  * Checks for valid user selectors.
  */
-#define VALID_USER_DSEL32(s) \
-    ((s) == GSEL(GUDATA32_SEL, SEL_UPL) || (s) == LSEL(LUDATA32_SEL, SEL_UPL))
-#define VALID_USER_CSEL32(s) \
-    ((s) == GSEL(GUCODE32_SEL, SEL_UPL) || (s) == LSEL(LUCODE32_SEL, SEL_UPL))
-
 #define VALID_USER_CSEL(s) \
-    ((s) == GSEL(GUCODE_SEL, SEL_UPL) || (s) == LSEL(LUCODE_SEL, SEL_UPL))
+    ((s) == GSEL(GUCODE_SEL, SEL_UPL))
 #define VALID_USER_DSEL(s) \
-    ((s) == GSEL(GUDATA_SEL, SEL_UPL) || (s) == LSEL(LUDATA_SEL, SEL_UPL))
+    ((s) == GSEL(GUDATA_SEL, SEL_UPL))
 
 #endif /* _AMD64_SEGMENTS_H_ */

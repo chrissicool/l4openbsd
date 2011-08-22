@@ -1,5 +1,5 @@
 # ex:ts=8 sw=4:
-# $OpenBSD: Mtree.pm,v 1.10 2010/06/30 10:51:04 espie Exp $
+# $OpenBSD: Mtree.pm,v 1.12 2010/12/24 09:04:14 espie Exp $
 #
 # Copyright (c) 2004-2005 Marc Espie <espie@openbsd.org>
 #

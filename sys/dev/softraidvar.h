@@ -1,4 +1,4 @@
-/* $OpenBSD: softraidvar.h,v 1.94 2010/07/02 09:26:05 jsing Exp $ */
+/* $OpenBSD: softraidvar.h,v 1.97 2011/01/29 15:01:22 marco Exp $ */
 /*
  * Copyright (c) 2006 Marco Peereboom <marco@peereboom.us>
  * Copyright (c) 2008 Chris Kuethe <ckuethe@openbsd.org>
@@ -53,12 +53,18 @@ struct sr_uuid {
 	u_int8_t		sui_id[SR_UUID_MAX];
 } __packed;
 
+struct sr_disk {
+	dev_t			sdk_devno;
+	SLIST_ENTRY(sr_disk)	sdk_link;
+};
+SLIST_HEAD(sr_disk_head, sr_disk);
+
 struct sr_metadata {
 	struct sr_meta_invariant {
 		/* do not change order of ssd_magic, ssd_version */
 		u_int64_t	ssd_magic;	/* magic id */
 #define	SR_MAGIC		0x4d4152436372616dLLU
-		u_int32_t	ssd_version; 	/* meta data version */
+		u_int32_t	ssd_version;	/* meta data version */
 		u_int32_t	ssd_vol_flags;	/* volume specific flags. */
 		struct sr_uuid	ssd_uuid;	/* unique identifier */
 
@@ -340,6 +346,11 @@ struct sr_workunit {
 	/* all ios that make up this workunit */
 	struct sr_ccb_list	swu_ccb;
 
+	/* task memory */
+	struct workq_task	swu_wqt;
+	struct workq_task	swu_intr;
+	int			swu_cb_active;	/* in callback */
+
 	TAILQ_ENTRY(sr_workunit) swu_link;
 };
 
@@ -413,7 +424,7 @@ struct sr_boot_volume {
 
 	struct sr_metadata_list_head	sml;	/* List of metadata. */
 
-	SLIST_ENTRY(sr_boot_volume)	sbv_link;	
+	SLIST_ENTRY(sr_boot_volume)	sbv_link;
 };
 
 SLIST_HEAD(sr_boot_volume_head, sr_boot_volume);
@@ -478,6 +489,8 @@ struct sr_discipline {
 #endif /* AOE */
 	}			sd_dis_specific;/* dis specific members */
 #define mds			sd_dis_specific
+
+	struct workq		*sd_workq;
 
 	/* discipline metadata */
 	struct sr_metadata	*sd_meta;	/* in memory copy of metadata */

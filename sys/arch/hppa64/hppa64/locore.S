@@ -1,4 +1,4 @@
-/*	$OpenBSD: locore.S,v 1.9 2008/07/28 19:08:46 miod Exp $	*/
+/*	$OpenBSD: locore.S,v 1.11 2010/12/21 14:56:23 claudio Exp $	*/
 
 /*
  * Copyright (c) 2005 Michael Shalayeff
@@ -44,10 +44,6 @@
 
 	.data
 
-	.export netisr, data
-	.align	16
-netisr
-	.word	0
 	.align	16
 $kpsl
 	.word	PSL_W | PSL_Q | PSL_P | PSL_C | PSL_D | PSL_S | PSL_O
@@ -363,13 +359,6 @@ gateway_page
 	nop
 
 	.align	256
-#ifdef	COMPAT_LINUX
-	gate,n	$linux_syscall, %r0	/* TODO linux syscall fix */
-	nop
-
-$linux_syscall
-	nop
-#endif
 
 $bsd_syscall
 	mfctl	%eiem, %r1

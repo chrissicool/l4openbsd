@@ -1,4 +1,4 @@
-/*	$OpenBSD: def.h,v 1.113 2010/06/30 19:12:54 oga Exp $	*/
+/*	$OpenBSD: def.h,v 1.116 2011/01/23 00:45:03 kjell Exp $	*/
 
 /* This file is in the public domain. */
 
@@ -357,6 +357,7 @@ int		 buffsave(struct buffer *);
 int		 makebkfile(int, int);
 int		 writeout(struct buffer *, char *);
 void		 upmodes(struct buffer *);
+size_t		 xbasename(char *, const char *, size_t);
 
 /* line.c X */
 struct line	*lalloc(int);
@@ -511,6 +512,8 @@ int		 indent(int, int);
 int		 forwdel(int, int);
 int		 backdel(int, int);
 int		 space_to_tabstop(int, int);
+int		 backtoindent(int, int);
+int		 joinline(int, int);
 
 /* extend.c X */
 int		 insert(int, int);

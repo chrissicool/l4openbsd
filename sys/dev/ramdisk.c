@@ -1,4 +1,4 @@
-/*	$OpenBSD: ramdisk.c,v 1.46 2010/04/23 15:25:21 jsing Exp $	*/
+/*	$OpenBSD: ramdisk.c,v 1.50 2010/09/22 01:18:57 matthew Exp $	*/
 /*	$NetBSD: ramdisk.c,v 1.8 1996/04/12 08:30:09 leo Exp $	*/
 
 /*
@@ -118,15 +118,13 @@ struct cfdriver rd_cd = {
  */
 int  rd_probe(struct device *, void *, void *);
 int  rd_detach(struct device *, int);
-int  rd_activate(struct device *, int);
 
 struct cfattach rd_ca = {
 	sizeof(struct rd_softc), rd_probe, rd_attach,
-	rd_detach, rd_activate
+	rd_detach
 };
 
 void rdstrategy(struct buf *bp);
-struct dkdriver rddkdriver = { rdstrategy };
 
 int   ramdisk_ndevs;
 void *ramdisk_devs[RD_MAX_UNITS];
@@ -205,9 +203,8 @@ rd_attach(struct device *parent, struct device *self, void *aux)
 	/*
 	 * Initialize and attach the disk structure.
 	 */
-	sc->sc_dk.dk_driver = &rddkdriver;
 	sc->sc_dk.dk_name = sc->sc_dev.dv_xname;
-	disk_attach(&sc->sc_dk);
+	disk_attach(&sc->sc_dev, &sc->sc_dk);
 }
 
 /*
@@ -311,13 +308,13 @@ rdclose(dev_t dev, int flag, int fmt, struct proc *proc)
 int
 rdread(dev_t dev, struct uio *uio, int flags)
 {
-	return (physio(rdstrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(rdstrategy, dev, B_READ, minphys, uio));
 }
 
 int
 rdwrite(dev_t dev, struct uio *uio, int flags)
 {
-	return (physio(rdstrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(rdstrategy, dev, B_WRITE, minphys, uio));
 }
 
 /*
@@ -547,12 +544,6 @@ rd_probe(struct device *parent, void *match_, void *aux)
 
 int
 rd_detach(struct device *self, int flags)
-{
-	return (0);
-}
-
-int
-rd_activate(struct device *self, int act)
 {
 	return (0);
 }

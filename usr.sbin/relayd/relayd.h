@@ -1,4 +1,4 @@
-/*	$OpenBSD: relayd.h,v 1.137 2010/08/01 22:18:35 sthen Exp $	*/
+/*	$OpenBSD: relayd.h,v 1.140 2010/12/31 21:22:42 guenther Exp $	*/
 
 /*
  * Copyright (c) 2006, 2007 Pierre-Yves Ritschard <pyr@openbsd.org>
@@ -20,6 +20,8 @@
 
 #include <sys/tree.h>
 
+#include <sys/param.h>		/* MAXHOSTNAMELEN */
+#include <limits.h>
 #include <imsg.h>
 
 #define CONF_FILE		"/etc/relayd.conf"
@@ -246,6 +248,7 @@ TAILQ_HEAD(addresslist, address);
 #define F_PORT			0x00100000
 #define F_SSLCLIENT		0x00200000
 #define F_NEEDRT		0x00400000
+#define F_MATCH			0x00800000
 
 enum forwardmode {
 	FWD_NORMAL		= 0,
@@ -288,7 +291,9 @@ enum host_error {
 	HCE_ICMP_OK,
 	HCE_ICMP_READ_TIMEOUT,
 	HCE_ICMP_WRITE_TIMEOUT,
-	HCE_TCP_CONNECT_ERROR,
+	HCE_TCP_SOCKET_ERROR,
+	HCE_TCP_SOCKET_LIMIT,
+	HCE_TCP_SOCKET_OPTION,
 	HCE_TCP_CONNECT_FAIL,
 	HCE_TCP_CONNECT_TIMEOUT,
 	HCE_TCP_CONNECT_OK,
@@ -915,6 +920,7 @@ int		 map4to6(struct sockaddr_storage *, struct sockaddr_storage *);
 void		 imsg_event_add(struct imsgev *);
 int	 	 imsg_compose_event(struct imsgev *, u_int16_t, u_int32_t,
 		    pid_t, int, void *, u_int16_t);
+void		 socket_rlimit(int);
 
 /* carp.c */
 int	 carp_demote_init(char *, int);

@@ -1,4 +1,4 @@
-/*	$OpenBSD: yeeloong_machdep.c,v 1.12 2010/05/08 21:59:56 miod Exp $	*/
+/*	$OpenBSD: yeeloong_machdep.c,v 1.15 2010/10/14 21:23:04 pirofti Exp $	*/
 
 /*
  * Copyright (c) 2009, 2010 Miodrag Vallat.
@@ -36,13 +36,16 @@
 #include <dev/pci/pcivar.h>
 #include <dev/pci/pcidevs.h>
 
+#include <dev/pci/glxreg.h>
+#include <dev/pci/glxvar.h>
+
 #include <loongson/dev/bonitoreg.h>
 #include <loongson/dev/bonitovar.h>
 #include <loongson/dev/bonito_irq.h>
-#include <loongson/dev/glxreg.h>
-#include <loongson/dev/glxvar.h>
+#include <loongson/dev/kb3310var.h>
 
 #include "com.h"
+#include "ykbec.h"
 
 #if NCOM > 0
 #include <sys/termios.h>
@@ -193,7 +196,11 @@ const struct platform yeeloong_platform = {
 	.device_register = lemote_device_register,
 
 	.powerdown = yeeloong_powerdown,
-	.reset = lemote_reset
+	.reset = lemote_reset,
+#if NYKBEC > 0
+	.suspend = ykbec_suspend,
+	.resume = ykbec_resume
+#endif
 };
 
 /*

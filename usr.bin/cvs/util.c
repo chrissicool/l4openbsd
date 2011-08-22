@@ -1,4 +1,4 @@
-/*	$OpenBSD: util.c,v 1.152 2010/07/23 21:46:05 ray Exp $	*/
+/*	$OpenBSD: util.c,v 1.154 2010/11/11 21:00:59 nicm Exp $	*/
 /*
  * Copyright (c) 2004 Jean-Francois Brousseau <jfb@openbsd.org>
  * Copyright (c) 2005, 2006 Joris Vink <joris@openbsd.org>
@@ -197,29 +197,6 @@ cvs_modetostr(mode_t mode, char *buf, size_t len)
 		if (strlcat(buf, tmp, len) >= len)
 			fatal("cvs_modetostr: string truncation");
 	}
-}
-
-/*
- * cvs_cksum()
- *
- * Calculate the MD5 checksum of the file whose path is <file> and generate
- * a CVS-format 32 hex-digit string, which is stored in <dst>, whose size is
- * given in <len> and must be at least 33.
- * Returns 0 on success, or -1 on failure.
- */
-int
-cvs_cksum(const char *file, char *dst, size_t len)
-{
-	if (len < CVS_CKSUM_LEN) {
-		cvs_log(LP_ERR, "buffer too small for checksum");
-		return (-1);
-	}
-	if (MD5File(file, dst) == NULL) {
-		cvs_log(LP_ERR, "failed to generate checksum for %s", file);
-		return (-1);
-	}
-
-	return (0);
 }
 
 /*
@@ -677,6 +654,47 @@ cvs_mkpath(const char *path, char *tag)
 			if (p != NULL)
 				*p = '/';
 		}
+	}
+
+	xfree(dir);
+}
+
+void
+cvs_mkdir(const char *path, mode_t mode)
+{
+	size_t len;
+	char *sp, *dp, *dir, rpath[MAXPATHLEN];
+
+	if (current_cvsroot->cr_method != CVS_METHOD_LOCAL ||
+	    cvs_server_active == 1)
+		cvs_validate_directory(path);
+
+	dir = xstrdup(path);
+
+	STRIP_SLASH(dir);
+
+	if (cvs_server_active == 0)
+		cvs_log(LP_TRACE, "cvs_mkdir(%s)", dir);
+
+	rpath[0] = '\0';
+
+	for (sp = dir; sp != NULL; sp = dp) {
+		dp = strchr(sp, '/');
+		if (dp != NULL)
+			*(dp++) = '\0';
+
+		len = strlcat(rpath, "/", sizeof(rpath));
+		if (len >= (int)sizeof(rpath))
+			fatal("cvs_mkdir: overflow");
+
+		len = strlcat(rpath, sp, sizeof(rpath));
+		if (len >= (int)sizeof(rpath))
+			fatal("cvs_mkdir: overflow");
+		if (1 == len)
+			continue;
+
+		if (mkdir(rpath, mode) == -1 && errno != EEXIST)
+			fatal("cvs_mkdir: %s: %s", rpath, strerror(errno));
 	}
 
 	xfree(dir);

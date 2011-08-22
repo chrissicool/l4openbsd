@@ -1,4 +1,4 @@
-.\" $OpenBSD: packages-specs.7,v 1.13 2010/07/11 07:25:10 espie Exp $
+.\" $OpenBSD: packages-specs.7,v 1.20 2011/01/13 12:00:37 landry Exp $
 .\"
 .\" Copyright (c) 2001 Marc Espie
 .\"
@@ -24,7 +24,7 @@
 .\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 .\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.Dd $Mdocdate: July 11 2010 $
+.Dd $Mdocdate: January 13 2011 $
 .Dt PACKAGES-SPECS 7
 .Os
 .Sh NAME
@@ -74,6 +74,60 @@ See
 .Ev REVISION
 in
 .Xr bsd.port.mk 5 .
+.Pp
+Version comparison is done using the dewey notation with a few specific rules.
+.Bl -bullet
+.It
+The version number is cut into separate parts on each dot
+.Sq \&. .
+.It
+Comparison checks each part in turn, the first part that differs yields
+a comparison result.
+.It
+If parts are numbers they are compared numerically.
+.It
+Parts can also be numbers with an optional letter appended.
+The numbers are compared numerically, and in case of equality, the letter
+makes the difference.
+.It
+Other parts are compared alphabetically.
+.It
+The last part may contain an extra suffix matching
+.Ar rc[N] ,
+.Ar beta[N] ,
+.Ar pre[N] ,
+or
+.Ar pl[N] ,
+with
+.Ar N
+an optional number.
+These correspond to traditional notations for
+.Sq release candidate ,
+.Sq beta version ,
+.Sq pre-release ,
+.Sq patch-level ,
+and are ordered accordingly, e.g.,
+.Ar beta
+is oldest,
+.Ar rc
+and
+.Ar pre
+are next (and non-comparable to one another),
+then normal version, and finally
+.Ar pl .
+.Bl -dash
+.It
+"foo-1.01" is equal to "foo-1.1", which can lead to surprises..
+.It
+"foo-1.001" is older than "foo-1.002", which in turns is older than "foo-1.0010"
+.It
+"foo-1.0rc2" is not comparable to "foo-1.0pre3"
+.It
+"bar-1.0beta3" is older than "bar-1.0rc1"
+.It
+"baz-1.0" is older than "baz-1.0pl1"
+.El
+.El
 .Pp
 In some rare cases, version numbering changes completely upstream.
 A version style marker, of the form
@@ -133,13 +187,8 @@ or
 .Ev RUN_DEPENDS .
 All those conform to
 .Bd -literal -offset indent
-[legacy]:[pkgspec]:directory,[-multi],[flavor...]
+[pkgspec:]directory,[-multi],[flavor...]
 .Ed
-.Pp
-The
-.Ar [legacy]
-part of the dependency corresponds to older semantics that have been
-deprecated.
 .Pp
 The
 .Ar directory,[-multi],[flavor...]
@@ -149,17 +198,30 @@ is found).
 The corresponding package name is also used as a package specification,
 after removing any version and flavor requirements.
 .Pp
-If the
-.Sq pkgspec
-part is left empty, any package with the right stem will do: in effect,
+Without a
+.Sq pkgspec:
+part, by default, any package with the right stem will do: in effect,
 the pkgspec used is
 .Sq stem-* .
 .Pp
+In
+.Ox 4.9 ,
+the dependent port may override this default, and set
+.Ev PKGSPEC
+to achieve a more restrictive default, for instance,
+.Pa databases/db/v3
+sets the default to
+.Qq PKGSPEC = db->=3,<4
+to avoid collision with
+.Pa databases/db/v4 .
+Be extra cautious with this functionality: this tweaks the depends line for
+any including package, thus usually requiring a version bump, and is in
+general only required for very messy cases where several incompatible versions
+of the same software coexist as packages with the same stem.
+.Pp
 An explicit specification such as
-.Qq ghostscript-*
-may be used to ask for any version of package ghostscript,
-or a more specific version number may be required, such as
 .Qq png-1.0.7 .
+may be used to ask for a more specific version number.
 Version numbers may also include ranges, separated by commas, so for
 instance,
 .Qq foo->=1.3
@@ -167,12 +229,23 @@ would match any foo with version at least 1.3, and
 .Qq foo->=1.3,<=1.5
 would match any version of foo between 1.3 and 1.5, inclusive.
 .Pp
+As a convenience, the ports tree recognizes a specification that starts
+with STEM, and will replace this with the correct stem, which can be useful
+for embarrassingly long package names.
+.Pp
+As another convenience, the ports tree recognizes constructs like
+.Qq graphics/png>=1.2.0
+and transforms it into
+.Qq STEM->=1.2.0:graphics/png .
+More specifically, package paths never contain <, >, or =, and those
+characters trigger the transform.
+.Pp
 If the flavor specification is left blank, any flavor will do.
 Note that most default package names don't contain flavor specification,
-which means that any flavor will do.
+which means that any flavor will do
 For instance, in
 .Bd -literal -offset indent
-LIB_DEPENDS=::graphics/aalib
+LIB_DEPENDS = graphics/aalib
 .Ed
 .Pp
 both
@@ -190,7 +263,7 @@ append
 .Sq -!f .
 In the preceding case, one may use
 .Bd -literal -offset indent
-LIB_DEPENDS=:aalib-*-!no_x11:graphics/aalib
+LIB_DEPENDS = aalib-*-!no_x11:graphics/aalib
 .Ed
 .Pp
 to ensure the no_x11 flavor is not picked.
@@ -240,5 +313,8 @@ and so would check on
 .Xr packages 7 ,
 .Xr ports 7
 .Sh HISTORY
-Support for these package specifications first appeared in
+Support for a more complex form of those package specifications first
+appeared in
 .Ox 2.9 .
+The current simplified form was introduced in
+.Ox 4.9 .

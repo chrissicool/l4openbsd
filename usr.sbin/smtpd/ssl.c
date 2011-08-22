@@ -1,4 +1,4 @@
-/*	$OpenBSD: ssl.c,v 1.28 2010/06/01 23:06:25 jacekm Exp $	*/
+/*	$OpenBSD: ssl.c,v 1.31 2010/11/28 13:56:43 gilles Exp $	*/
 
 /*
  * Copyright (c) 2008 Pierre-Yves Ritschard <pyr@openbsd.org>
@@ -27,6 +27,7 @@
 #include <ctype.h>
 #include <event.h>
 #include <fcntl.h>
+#include <imsg.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +39,7 @@
 #include <openssl/err.h>
 
 #include "smtpd.h"
+#include "log.h"
 
 #define SSL_CIPHERS	"HIGH"
 
@@ -541,16 +543,20 @@ ssl_session_accept(int fd, short event, void *p)
 	if (s->s_l->flags & F_SMTPS) {
 		s->s_env->stats->smtp.smtps++;
 		s->s_env->stats->smtp.smtps_active++;
+		SET_IF_GREATER(s->s_env->stats->smtp.smtps_active,
+			s->s_env->stats->smtp.smtps_maxactive);
 	}
 	if (s->s_l->flags & F_STARTTLS) {
 		s->s_env->stats->smtp.starttls++;
 		s->s_env->stats->smtp.starttls_active++;
+		SET_IF_GREATER(s->s_env->stats->smtp.starttls_active,
+			s->s_env->stats->smtp.starttls_maxactive);
 	}
 
 	session_bufferevent_new(s);
 	event_set(&s->s_bev->ev_read, s->s_fd, EV_READ, ssl_read, s->s_bev);
 	event_set(&s->s_bev->ev_write, s->s_fd, EV_WRITE, ssl_write, s->s_bev);
-	session_pickup(s);
+	session_pickup(s, NULL);
 
 	return;
 retry:

@@ -1,4 +1,4 @@
-/*	$OpenBSD: sun.c,v 1.40 2010/08/06 06:52:17 ratchov Exp $	*/
+/*	$OpenBSD: sun.c,v 1.42 2010/11/06 20:25:42 ratchov Exp $	*/
 /*
  * Copyright (c) 2008 Alexandre Ratchov <alex@caoua.org>
  *
@@ -64,8 +64,6 @@ static size_t sun_read(struct sio_hdl *, void *, size_t);
 static size_t sun_write(struct sio_hdl *, const void *, size_t);
 static int sun_pollfd(struct sio_hdl *, struct pollfd *, int);
 static int sun_revents(struct sio_hdl *, struct pollfd *);
-static int sun_setvol(struct sio_hdl *, unsigned);
-static void sun_getvol(struct sio_hdl *);
 
 static struct sio_ops sun_ops = {
 	sun_close,
@@ -78,8 +76,8 @@ static struct sio_ops sun_ops = {
 	sun_stop,
 	sun_pollfd,
 	sun_revents,
-	sun_setvol,
-	sun_getvol
+	NULL, /* setvol */
+	NULL, /* getvol */
 };
 
 /*
@@ -331,20 +329,6 @@ sun_getcap(struct sio_hdl *sh, struct sio_cap *cap)
 	return 1;
 #undef NCHANS
 #undef NRATES
-}
-
-static void
-sun_getvol(struct sio_hdl *sh)
-{
-	struct sun_hdl *hdl = (struct sun_hdl *)sh;
-
-	sio_onvol_cb(&hdl->sio, SIO_MAXVOL);
-}
-
-int
-sun_setvol(struct sio_hdl *sh, unsigned vol)
-{
-	return 1;
 }
 
 struct sio_hdl *
@@ -894,6 +878,8 @@ sun_revents(struct sio_hdl *sh, struct pollfd *pfd)
 	int xrun, dmove, dierr = 0, doerr = 0, delta;
 	int revents = pfd->revents;
 
+	if (!hdl->sio.started)
+		return pfd->revents;
 	if (hdl->sio.mode & SIO_PLAY) {
 		if (ioctl(hdl->fd, AUDIO_PERROR, &xrun) < 0) {
 			DPERROR("sun_revents: PERROR");
@@ -957,13 +943,11 @@ sun_revents(struct sio_hdl *sh, struct pollfd *pfd)
 	 * right now to adjust revents, and avoid busy loops
 	 * programs
 	 */
-	if (hdl->sio.started) {
-		if (hdl->filling)
-			revents |= POLLOUT;
-		if ((hdl->sio.mode & SIO_PLAY) && !sun_wsil(hdl))
-			revents &= ~POLLOUT;
-		if ((hdl->sio.mode & SIO_REC) && !sun_rdrop(hdl))
-			revents &= ~POLLIN;
-	}
+	if (hdl->filling)
+		revents |= POLLOUT;
+	if ((hdl->sio.mode & SIO_PLAY) && !sun_wsil(hdl))
+		revents &= ~POLLOUT;
+	if ((hdl->sio.mode & SIO_REC) && !sun_rdrop(hdl))
+		revents &= ~POLLIN;
 	return revents;
 }

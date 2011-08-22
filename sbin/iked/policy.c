@@ -1,8 +1,9 @@
-/*	$OpenBSD: policy.c,v 1.11 2010/07/03 16:59:35 reyk Exp $	*/
+/*	$OpenBSD: policy.c,v 1.16 2011/01/26 16:59:24 mikeb Exp $	*/
 /*	$vantronix: policy.c,v 1.29 2010/05/28 15:34:35 reyk Exp $	*/
 
 /*
- * Copyright (c) 2010 Reyk Floeter <reyk@vantronix.net>
+ * Copyright (c) 2010, 2011 Reyk Floeter <reyk@vantronix.net>
+ * Copyright (c) 2001 Daniel Hartmeier
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -42,18 +43,23 @@
 #include "ikev2.h"
 
 static __inline int
-	 policy_cmp(struct iked_policy *, struct iked_policy *);
-static __inline int
 	 sa_cmp(struct iked_sa *, struct iked_sa *);
 static __inline int
 	 user_cmp(struct iked_user *, struct iked_user *);
+static __inline int
+	 childsa_cmp(struct iked_childsa *, struct iked_childsa *);
+static __inline int
+	 flow_cmp(struct iked_flow *, struct iked_flow *);
+
 
 void
 policy_init(struct iked *env)
 {
-	RB_INIT(&env->sc_policies);
+	TAILQ_INIT(&env->sc_policies);
 	RB_INIT(&env->sc_users);
 	RB_INIT(&env->sc_sas);
+	RB_INIT(&env->sc_activesas);
+	RB_INIT(&env->sc_activeflows);
 }
 
 int
@@ -68,12 +74,12 @@ policy_lookup(struct iked *env, struct iked_message *msg)
 	}
 
 	bzero(&pol, sizeof(pol));
-	memcpy(&pol.pol_peer, &msg->msg_peer, sizeof(pol.pol_peer));
-	memcpy(&pol.pol_local, &msg->msg_local, sizeof(pol.pol_local));
+	pol.pol_af = msg->msg_peer.ss_family;
+	memcpy(&pol.pol_peer.addr, &msg->msg_peer, sizeof(msg->msg_peer));
+	memcpy(&pol.pol_local.addr, &msg->msg_local, sizeof(msg->msg_local));
 
 	/* Try to find a matching policy for this message */
-	if ((msg->msg_policy =
-	    RB_FIND(iked_policies, &env->sc_policies, &pol)) != NULL)
+	if ((msg->msg_policy = policy_test(env, &pol)) != NULL)
 		goto found;
 
 	/* No matching policy found, try the default */
@@ -87,22 +93,85 @@ policy_lookup(struct iked *env, struct iked_message *msg)
 	return (0);
 }
 
-static __inline int
-policy_cmp(struct iked_policy *a, struct iked_policy *b)
+struct iked_policy *
+policy_test(struct iked *env, struct iked_policy *key)
 {
-	int	 ret;
+	struct iked_policy	*p = NULL, *pol = NULL;
+	u_int			 cnt = 0;
 
-	if (b->pol_flags & IKED_POLICY_DEFAULT)
-		return (-2);
+	p = TAILQ_FIRST(&env->sc_policies);
+	while (p != NULL) {
+		cnt++;
+		if (p->pol_flags & IKED_POLICY_SKIP)
+			p = p->pol_skip[IKED_SKIP_FLAGS];
+		else if (key->pol_af && p->pol_af &&
+		    key->pol_af != p->pol_af)
+			p = p->pol_skip[IKED_SKIP_AF];
+		else if (key->pol_ipproto && p->pol_ipproto &&
+		    key->pol_ipproto != p->pol_ipproto)
+			p = p->pol_skip[IKED_SKIP_PROTO];
+		else if (sockaddr_cmp((struct sockaddr *)&key->pol_peer.addr,
+		    (struct sockaddr *)&p->pol_peer.addr,
+		    p->pol_peer.addr_mask) != 0)
+			p = p->pol_skip[IKED_SKIP_DST_ADDR];
+		else if (sockaddr_cmp((struct sockaddr *)&key->pol_local.addr,
+		    (struct sockaddr *)&p->pol_local.addr,
+		    p->pol_local.addr_mask) != 0)
+			p = p->pol_skip[IKED_SKIP_SRC_ADDR];
+		else {
+			/* Policy matched */
+			pol = p;
 
-	if ((ret = sockaddr_cmp((struct sockaddr *)&a->pol_peer,
-	    (struct sockaddr *)&b->pol_peer, b->pol_peermask)) != 0)
-		return (ret);
-	if ((ret = sockaddr_cmp((struct sockaddr *)&a->pol_local,
-	    (struct sockaddr *)&b->pol_local, b->pol_localmask)) != 0)
-		return (ret);
+			if (pol->pol_flags & IKED_POLICY_QUICK)
+				break;
 
-	return (0);
+			/* Continue to find last matchin policy */
+			p = TAILQ_NEXT(p, pol_entry);
+		}
+	}
+
+	return (pol);
+}
+
+#define	IKED_SET_SKIP_STEPS(i)						\
+	do {								\
+		while (head[i] != cur) {				\
+			head[i]->pol_skip[i] = cur;			\
+			head[i] = TAILQ_NEXT(head[i], pol_entry);	\
+		}							\
+	} while (0)
+
+/* This code is derived from pf_calc_skip_steps() from pf.c */
+void
+policy_calc_skip_steps(struct iked_policies *policies)
+{
+	struct iked_policy	*head[IKED_SKIP_COUNT], *cur, *prev;
+	int			 i;
+
+	cur = TAILQ_FIRST(policies);
+	prev = cur;
+	for (i = 0; i < IKED_SKIP_COUNT; ++i)
+		head[i] = cur;
+	while (cur != NULL) {
+		if (cur->pol_flags & IKED_POLICY_SKIP)
+			IKED_SET_SKIP_STEPS(IKED_SKIP_FLAGS);
+		else if (cur->pol_af != AF_UNSPEC &&
+		    prev->pol_af != AF_UNSPEC &&
+		    cur->pol_af != prev->pol_af)
+			IKED_SET_SKIP_STEPS(IKED_SKIP_AF);
+		else if (cur->pol_ipproto && prev->pol_ipproto &&
+		    cur->pol_ipproto != prev->pol_ipproto)
+			IKED_SET_SKIP_STEPS(IKED_SKIP_PROTO);
+		else if (IKED_ADDR_NEQ(&cur->pol_peer, &prev->pol_peer))
+			IKED_SET_SKIP_STEPS(IKED_SKIP_DST_ADDR);
+		else if (IKED_ADDR_NEQ(&cur->pol_local, &prev->pol_local))
+			IKED_SET_SKIP_STEPS(IKED_SKIP_SRC_ADDR);
+
+		prev = cur;
+		cur = TAILQ_NEXT(cur, pol_entry);
+	}
+	for (i = 0; i < IKED_SKIP_COUNT; ++i)
+		IKED_SET_SKIP_STEPS(i);
 }
 
 void
@@ -120,8 +189,6 @@ policy_unref(struct iked *env, struct iked_policy *pol)
 	if (--(pol->pol_refcnt) <= 0)
 		config_free_policy(env, pol);
 }
-
-RB_GENERATE(iked_policies, iked_policy, pol_entry, policy_cmp);
 
 void
 sa_state(struct iked *env, struct iked_sa *sa, int state)
@@ -299,6 +366,22 @@ childsa_free(struct iked_childsa *sa)
 	free(sa);
 }
 
+struct iked_childsa *
+childsa_lookup(struct iked_sa *sa, u_int64_t spi, u_int8_t protoid)
+{
+	struct iked_childsa	*csa;
+
+	if (sa == NULL || spi == 0 || protoid == 0)
+		return (NULL);
+
+	TAILQ_FOREACH(csa, &sa->sa_childsas, csa_entry) {
+		if (csa->csa_spi.spi_protoid == protoid &&
+		    (csa->csa_spi.spi == spi))
+			break;
+	}
+	return (csa);
+}
+
 void
 flow_free(struct iked_flow *flow)
 {
@@ -392,3 +475,48 @@ user_cmp(struct iked_user *a, struct iked_user *b)
 }
 
 RB_GENERATE(iked_users, iked_user, usr_entry, user_cmp);
+
+static __inline int
+childsa_cmp(struct iked_childsa *a, struct iked_childsa *b)
+{
+	if (a->csa_spi.spi > b->csa_spi.spi)
+		return (1);
+	if (a->csa_spi.spi < b->csa_spi.spi)
+		return (-1);
+	return (0);
+}
+
+RB_GENERATE(iked_activesas, iked_childsa, csa_node, childsa_cmp);
+
+static __inline int
+addr_cmp(struct iked_addr *a, struct iked_addr *b, int useports)
+{
+	int		diff = 0;
+
+	diff = sockaddr_cmp((struct sockaddr *)&a->addr,
+	    (struct sockaddr *)&b->addr, 128);
+	if (!diff)
+		diff = (int)a->addr_mask - (int)b->addr_mask;
+	if (!diff && useports)
+		diff = a->addr_port - b->addr_port;
+
+	return (diff);
+}
+
+static __inline int
+flow_cmp(struct iked_flow *a, struct iked_flow *b)
+{
+	int		diff = 0;
+
+	diff = addr_cmp(a->flow_peer, b->flow_peer, 0);
+	if (!diff)
+		diff = addr_cmp(&a->flow_dst, &b->flow_dst, 1);
+	if (!diff)
+		diff = addr_cmp(&a->flow_src, &b->flow_src, 1);
+	if (!diff)
+		diff = (int)a->flow_dir - (int)b->flow_dir;
+
+	return (diff);
+}
+
+RB_GENERATE(iked_activeflows, iked_flow, flow_node, flow_cmp);

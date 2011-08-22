@@ -1,4 +1,4 @@
-/*	$OpenBSD: machdep.c,v 1.124 2010/06/27 03:03:48 thib Exp $	*/
+/*	$OpenBSD: machdep.c,v 1.127 2010/12/26 15:41:00 miod Exp $	*/
 /*	$NetBSD: machdep.c,v 1.108 2001/07/24 19:30:14 eeh Exp $ */
 
 /*-
@@ -159,7 +159,6 @@ int     _bus_dmamem_alloc_range(bus_dma_tag_t tag, bus_dma_tag_t,
 int bus_space_debug = 0;
 
 struct vm_map *exec_map = NULL;
-extern vaddr_t avail_end;
 
 /*
  * Declare these as initialized data so we can patch them.
@@ -307,9 +306,6 @@ setregs(p, pack, stack, retval)
 		    (p->p_addr->u_pcb.pcb_wcookie & ~0x3);
 		break;
 	}
-
-	/* Don't allow misaligned code by default */
-	p->p_md.md_flags &= ~MDP_FIXALIGN;
 
 	/*
 	 * Set the registers to 0 except for:
@@ -1373,7 +1369,6 @@ _bus_dmamap_sync(t, t0, map, offset, len, ops)
 		membar(MemIssue);
 }
 
-extern paddr_t   vm_first_phys, vm_num_phys;
 /*
  * Common function for DMA-safe memory allocation.  May be called
  * by bus-specific DMA memory allocation functions.
@@ -1578,7 +1573,7 @@ _bus_dmamem_mmap(t, t0, segs, nsegs, off, prot, flags)
 			continue;
 		}
 
-		return (atop(segs[i].ds_addr + off));
+		return (segs[i].ds_addr + off);
 	}
 
 	/* Page not found. */

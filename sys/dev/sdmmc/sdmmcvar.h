@@ -1,4 +1,4 @@
-/*	$OpenBSD: sdmmcvar.h,v 1.16 2009/04/07 16:35:52 blambert Exp $	*/
+/*	$OpenBSD: sdmmcvar.h,v 1.18 2010/08/24 14:52:23 blambert Exp $	*/
 
 /*
  * Copyright (c) 2006 Uwe Stuehler <uwe@openbsd.org>
@@ -20,7 +20,7 @@
 #define _SDMMCVAR_H_
 
 #include <sys/queue.h>
-#include <sys/lock.h>
+#include <sys/rwlock.h>
 
 #include <scsi/scsi_all.h>
 #include <scsi/scsiconf.h>
@@ -153,7 +153,7 @@ struct sdmmc_function {
  */
 struct sdmmc_softc {
 	struct device sc_dev;		/* base device */
-#define SDMMCDEVNAME(sc)	((sc)->sc_dev.dv_xname)
+#define DEVNAME(sc)	((sc)->sc_dev.dv_xname)
 	sdmmc_chipset_tag_t sct;	/* host controller chipset tag */
 	sdmmc_chipset_handle_t sch;	/* host controller chipset handle */
 	int sc_flags;
@@ -172,7 +172,7 @@ struct sdmmc_softc {
 	TAILQ_HEAD(, sdmmc_task) sc_tskq;   /* task thread work queue */
 	struct sdmmc_task sc_discover_task; /* card attach/detach task */
 	struct sdmmc_task sc_intr_task;	/* card interrupt task */
-	struct lock sc_lock;		/* lock around host controller */
+	struct rwlock sc_lock;		/* lock around host controller */
 	void *sc_scsibus;		/* SCSI bus emulation softc */
 	TAILQ_HEAD(, sdmmc_intr_handler) sc_intrq; /* interrupt handlers */
 	long sc_max_xfer;		/* maximum transfer size */
@@ -189,10 +189,8 @@ struct sdmmc_attach_args {
 #define IPL_SDMMC	IPL_BIO
 #define splsdmmc()	splbio()
 
-#define SDMMC_LOCK(sc)	 lockmgr(&(sc)->sc_lock, LK_EXCLUSIVE, NULL)
-#define SDMMC_UNLOCK(sc) lockmgr(&(sc)->sc_lock, LK_RELEASE, NULL)
 #define	SDMMC_ASSERT_LOCKED(sc) \
-	KASSERT(lockstatus(&((sc))->sc_lock) == LK_EXCLUSIVE)
+	rw_assert_wrlock(&(sc)->sc_lock)
 
 void	sdmmc_add_task(struct sdmmc_softc *, struct sdmmc_task *);
 void	sdmmc_del_task(struct sdmmc_task *);

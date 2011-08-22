@@ -1,4 +1,4 @@
-/*	$OpenBSD: aucat.c,v 1.102 2010/07/31 08:48:01 ratchov Exp $	*/
+/*	$OpenBSD: aucat.c,v 1.107 2010/11/05 16:09:50 ratchov Exp $	*/
 /*
  * Copyright (c) 2008 Alexandre Ratchov <alex@caoua.org>
  *
@@ -30,7 +30,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <varargs.h>
 
 #include "abuf.h"
 #include "aparams.h"
@@ -181,7 +180,7 @@ opt_mode(void)
 	char *p = optarg;
 	size_t len;
 
-	for (p = optarg; *p != NULL; p++) {
+	for (p = optarg; *p != '\0'; p++) {
 		len = strcspn(p, ",");
 		if (strncmp("play", p, len) == 0) {
 			mode |= MODE_PLAY;
@@ -277,10 +276,7 @@ cfstr_add(struct cfstrlist *list, struct cfstr *templ, char *path)
 	struct cfstr *cs;
 	unsigned hdr;
 
-	if (strcmp(path, "-") == 0) {
-		path = NULL;
-		hdr = HDR_RAW;
-	} else if (templ->hdr == HDR_AUTO) {
+	if (templ->hdr == HDR_AUTO) {
 		len = strlen(path);
 		if (len >= 4 && strcasecmp(path + len - 4, ".wav") == 0)
 			hdr = HDR_WAV;
@@ -392,7 +388,7 @@ privdrop(void)
 	struct stat sb;
 
 	if ((pw = getpwnam(SNDIO_USER)) == NULL)
-		err(1, "getpwnam");
+		errx(1, "unknown user %s", SNDIO_USER);
 	if (stat(pw->pw_dir, &sb) < 0)
 		err(1, "stat(\"%s\")", pw->pw_dir);
 	if (sb.st_uid != 0 || (sb.st_mode & 022) != 0)
@@ -695,7 +691,7 @@ aucat_main(int argc, char **argv)
 		if (n_flag) {
 			d = dev_new_loop(&cd->ipar, &cd->opar, cd->bufsz);
 		} else {
-			d = dev_new_sio(cd->path, cd->mode,
+			d = dev_new_sio(cd->path, cd->mode | MODE_MIDIMASK,
 			    &cd->ipar, &cd->opar, cd->bufsz, cd->round,
 			    cd->hold);
 		}
@@ -722,6 +718,8 @@ aucat_main(int argc, char **argv)
 			SLIST_REMOVE_HEAD(&cd->ins, entry);
 			if (!cs->mmc)
 				autostart = 1;
+			if (strcmp(cs->path, "-") == 0)
+				cs->path = NULL;
 			if (!wav_new_in(&wav_ops, d, cs->mode & MODE_PLAY,
 				cs->path, cs->hdr, &cs->ipar, cs->xrun,
 				cs->vol, cs->mmc, cs->join))
@@ -733,6 +731,8 @@ aucat_main(int argc, char **argv)
 			SLIST_REMOVE_HEAD(&cd->outs, entry);
 			if (!cs->mmc)
 				autostart = 1;
+			if (strcmp(cs->path, "-") == 0)
+				cs->path = NULL;
 			if (!wav_new_out(&wav_ops, d, cs->mode & MODE_RECMASK,
 				cs->path, cs->hdr, &cs->opar, cs->xrun,
 				cs->mmc, cs->join))
@@ -744,7 +744,7 @@ aucat_main(int argc, char **argv)
 			SLIST_REMOVE_HEAD(&cd->opts, entry);
 			opt_new(cs->path, d, &cs->opar, &cs->ipar,
 			    MIDI_TO_ADATA(cs->vol), cs->mmc,
-			    cs->join, cs->mode);
+			    cs->join, cs->mode | MODE_MIDIMASK);
 			free(cs);
 		}
 		free(cd);
@@ -765,8 +765,10 @@ aucat_main(int argc, char **argv)
 	if (geteuid() == 0)
 		privdrop();
 	if (l_flag) {
+#ifdef DEBUG
 		debug_level = 0;
 		dbg_flush();
+#endif
 		if (daemon(0, 0) < 0)
 			err(1, "daemon");
 	}
@@ -1018,7 +1020,7 @@ midicat_main(int argc, char **argv)
 		while (!SLIST_EMPTY(&cd->opts)) {
 			cs = SLIST_FIRST(&cd->opts);
 			SLIST_REMOVE_HEAD(&cd->opts, entry);
-			opt_new(cs->path, d, NULL, NULL, 0, 0, 0, 0);
+			opt_new(cs->path, d, NULL, NULL, 0, 0, 0, MODE_MIDIMASK);
 			free(cs);
 		}
 		free(cd);
@@ -1033,8 +1035,10 @@ midicat_main(int argc, char **argv)
 	if (geteuid() == 0)
 		privdrop();
 	if (l_flag) {
+#ifdef DEBUG
 		debug_level = 0;
 		dbg_flush();
+#endif
 		if (daemon(0, 0) < 0)
 			err(1, "daemon");
 	}

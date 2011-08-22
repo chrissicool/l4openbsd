@@ -1,4 +1,4 @@
-/*	$OpenBSD: vis.c,v 1.19 2005/09/01 17:15:49 millert Exp $ */
+/*	$OpenBSD: vis.c,v 1.21 2010/08/24 23:49:06 djm Exp $ */
 /*-
  * Copyright (c) 1989, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -52,7 +52,7 @@
 char *
 vis(char *dst, int c, int flag, int nextc)
 {
-	if (isvisible(c)) {
+	if (isvisible(c) && (flag & VIS_ALL) == 0) {
 		*dst++ = c;
 		if (c == '\\' && (flag & VIS_NOSLASH) == 0)
 			*dst++ = '\\';

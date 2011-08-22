@@ -1,4 +1,4 @@
-#	$OpenBSD: GENERIC,v 1.215 2010/08/02 14:13:23 deraadt Exp $
+#	$OpenBSD: GENERIC,v 1.219 2011/02/17 20:14:28 miod Exp $
 #
 # For further information on compiling OpenBSD kernels, see the config(8)
 # man page.
@@ -113,7 +113,7 @@ upl*	at uhub?			# Prolific PL2301/PL2302 host-to-host `network'
 url*	at uhub?			# Realtek RTL8150L based adapters
 wi*	at uhub?			# WaveLAN IEEE 802.11DS
 urio*	at uhub?			# Diamond Multimedia Rio 500
-uscanner* at uhub?			# USB Scanners
+uscanner* at uhub? disable		# USB Scanners
 #uyap*	at uhub?			# Y@P firmware loader
 udsbr*	at uhub?			# D-Link DSB-R100 radio
 radio*	at udsbr?			# USB radio
@@ -125,13 +125,14 @@ run*	at uhub?			# Ralink RT2700U/RT2800U/RT3000U
 uow*	at uhub?			# Maxim/Dallas DS2490 1-Wire adapter
 onewire* at uow?
 uthum*	at uhidev?			# TEMPerHUM sensor
+utwitch* at uhidev?			# yurex BBU sensor
 
 # USB Video
 uvideo* at uhub?
 video*  at uvideo?
 
 # Bluetooth controllers
-ubt*	at uhub?			# USB Bluetooth
+ubt*	at uhub? disable		# USB Bluetooth
 bthub*	at ubt?
 
 bthidev* at bthub?			# Bluetooth HID support
@@ -334,7 +335,6 @@ spkr0	at pcppi?			# IBM BASIC emulation
 pckbc*	at isa?				# PC keyboard controller
 pckbd*	at pckbc?			# PC keyboard (kbd port)
 pms*	at pckbc?			# PS/2-style mouse (aux port)
-pmsi*	at pckbc?			# PS/2 "Intelli"mouse
 com*	at isa? port 0x3f8 irq 4	# standard serial ports
 com*	at isa? port 0x2f8 irq 3
 lpt*	at isa? port 0x3bc irq 7	# standard parallel port
@@ -428,7 +428,6 @@ wsdisplay*	at	vga?
 wsdisplay*	at	tga?
 wskbd*		at	pckbd? mux 1
 wsmouse*	at	pms? mux 0
-wsmouse*	at	pmsi? mux 0
 
 # crypto support
 hifn*	at pci?				# Hi/fn 7751 crypto card

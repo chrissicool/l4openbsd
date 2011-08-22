@@ -1,4 +1,4 @@
-/*	$OpenBSD: ar9287.c,v 1.13 2010/07/15 19:29:00 damien Exp $	*/
+/*	$OpenBSD: ar9287.c,v 1.16 2010/12/31 17:50:48 damien Exp $	*/
 
 /*-
  * Copyright (c) 2009 Damien Bergamini <damien.bergamini@free.fr>
@@ -108,7 +108,7 @@ ar9287_attach(struct athn_softc *sc)
 	sc->eep_base = AR9287_EEP_START_LOC;
 	sc->eep_size = sizeof(struct ar9287_eeprom);
 	sc->def_nf = AR9287_PHY_CCA_MAX_GOOD_VALUE;
-	sc->ngpiopins = 11;
+	sc->ngpiopins = (sc->flags & ATHN_FLAG_USB) ? 16 : 11;
 	sc->led_pin = 8;
 	sc->workaround = AR9285_WA_DEFAULT;
 	sc->ops.setup = ar9287_setup;
@@ -119,6 +119,7 @@ ar9287_attach(struct athn_softc *sc)
 	sc->ops.spur_mitigate = ar9280_spur_mitigate;
 	sc->ops.get_spur_chans = ar9287_get_spur_chans;
 	sc->ops.olpc_init = ar9287_olpc_init;
+	sc->ops.olpc_temp_compensation = ar9287_olpc_temp_compensation;
 	sc->ini = &ar9287_1_1_ini;
 	sc->serdes = ar9280_2_0_serdes;
 
@@ -244,6 +245,7 @@ ar9287_init_from_rom(struct athn_softc *sc, struct ieee80211_channel *c,
 	reg = RW(reg, AR9287_AN_RF2G3_OB_QAM, modal->ob_qam);
 	reg = RW(reg, AR9287_AN_RF2G3_OB_PAL_OFF, modal->ob_pal_off);
 	AR_WRITE(sc, AR9287_AN_RF2G3_CH0, reg);
+	AR_WRITE_BARRIER(sc);
 	DELAY(100);
 
 	reg = AR_READ(sc, AR9287_AN_RF2G3_CH1);
@@ -254,6 +256,7 @@ ar9287_init_from_rom(struct athn_softc *sc, struct ieee80211_channel *c,
 	reg = RW(reg, AR9287_AN_RF2G3_OB_QAM, modal->ob_qam);
 	reg = RW(reg, AR9287_AN_RF2G3_OB_PAL_OFF, modal->ob_pal_off);
 	AR_WRITE(sc, AR9287_AN_RF2G3_CH1, reg);
+	AR_WRITE_BARRIER(sc);
 	DELAY(100);
 
 	reg = AR_READ(sc, AR_PHY_RF_CTL2);
@@ -264,6 +267,7 @@ ar9287_init_from_rom(struct athn_softc *sc, struct ieee80211_channel *c,
 	reg = AR_READ(sc, AR9287_AN_TOP2);
 	reg = RW(reg, AR9287_AN_TOP2_XPABIAS_LVL, modal->xpaBiasLvl);
 	AR_WRITE(sc, AR9287_AN_TOP2, reg);
+	AR_WRITE_BARRIER(sc);
 	DELAY(100);
 }
 
@@ -377,6 +381,7 @@ ar9287_set_power_calib(struct athn_softc *sc, struct ieee80211_channel *c)
 	reg = RW(reg, AR_PHY_TPCRG1_PD_GAIN_1, xpdgains[0]);
 	reg = RW(reg, AR_PHY_TPCRG1_PD_GAIN_2, xpdgains[1]);
 	AR_WRITE(sc, AR_PHY_TPCRG1, reg);
+	AR_WRITE_BARRIER(sc);
 
 	for (i = 0; i < AR9287_MAX_CHAINS; i++)	{
 		if (!(sc->txchainmask & (1 << i)))
@@ -400,6 +405,7 @@ ar9287_set_power_calib(struct athn_softc *sc, struct ieee80211_channel *c)
 			reg = RW(reg, AR_PHY_TX_PWRCTRL_OLPC_PWR, txpower);
 			AR_WRITE(sc, AR_PHY_CH0_TX_PWRCTRL11 + offset, reg);
 
+			AR_WRITE_BARRIER(sc);
 			continue;	/* That's it for open loop mode. */
 		}
 
@@ -429,6 +435,7 @@ ar9287_set_power_calib(struct athn_softc *sc, struct ieee80211_channel *c)
 			    pdadcs[j + 2] << 16 |
 			    pdadcs[j + 3] << 24);
 		}
+		AR_WRITE_BARRIER(sc);
 	}
 }
 
@@ -550,6 +557,7 @@ ar9287_olpc_init(struct athn_softc *sc)
 	reg = RW(reg, AR9287_AN_TXPC0_TXPCMODE,
 	    AR9287_AN_TXPC0_TXPCMODE_TEMPSENSE);
 	AR_WRITE(sc, AR9287_AN_TXPC0, reg);
+	AR_WRITE_BARRIER(sc);
 	DELAY(100);
 }
 
@@ -586,6 +594,7 @@ ar9287_olpc_temp_compensation(struct athn_softc *sc)
 	reg = AR_READ(sc, AR_PHY_CH1_TX_PWRCTRL11);
 	reg = RW(reg, AR_PHY_TX_PWRCTRL_OLPC_TEMP_COMP, tcomp);
 	AR_WRITE(sc, AR_PHY_CH1_TX_PWRCTRL11, reg);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -599,6 +608,7 @@ ar9287_1_3_enable_async_fifo(struct athn_softc *sc)
 	    AR_MAC_PCU_ASYNC_FIFO_REG3_SOFT_RESET);
 	AR_SETBITS(sc, AR_MAC_PCU_ASYNC_FIFO_REG3,
 	    AR_MAC_PCU_ASYNC_FIFO_REG3_SOFT_RESET);
+	AR_WRITE_BARRIER(sc);
 }
 
 void
@@ -625,4 +635,5 @@ ar9287_1_3_setup_async_fifo(struct athn_softc *sc)
 	AR_WRITE(sc, AR_AHB_MODE, reg);
 
 	AR_SETBITS(sc, AR_PCU_MISC_MODE2, AR_PCU_MISC_MODE2_ENABLE_AGGWEP);
+	AR_WRITE_BARRIER(sc);
 }

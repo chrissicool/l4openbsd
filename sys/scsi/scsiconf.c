@@ -1,4 +1,4 @@
-/*	$OpenBSD: scsiconf.c,v 1.162 2010/07/24 04:01:52 matthew Exp $	*/
+/*	$OpenBSD: scsiconf.c,v 1.167 2010/10/12 00:53:32 krw Exp $	*/
 /*	$NetBSD: scsiconf.c,v 1.57 1996/05/02 01:09:01 neil Exp $	*/
 
 /*
@@ -107,9 +107,9 @@ int scsi_autoconf = SCSI_AUTOCONF;
 int scsibusprint(void *, const char *);
 void scsibus_printlink(struct scsi_link *);
 
-void scsi_activate_bus(struct scsibus_softc *, int);
-void scsi_activate_target(struct scsibus_softc *, int, int);
-void scsi_activate_lun(struct scsibus_softc *, int, int, int);
+int scsi_activate_bus(struct scsibus_softc *, int);
+int scsi_activate_target(struct scsibus_softc *, int, int);
+int scsi_activate_lun(struct scsibus_softc *, int, int, int);
 
 const u_int8_t version_to_spc [] = {
 	0, /* 0x00: The device does not claim conformance to any standard. */
@@ -189,45 +189,51 @@ scsibusactivate(struct device *dev, int act)
 {
 	struct scsibus_softc *sc = (struct scsibus_softc *)dev;
 
-	scsi_activate(sc, -1, -1, act);
-
-	return (0);
+	return scsi_activate(sc, -1, -1, act);
 }
 
-void
+int
 scsi_activate(struct scsibus_softc *sc, int target, int lun, int act)
 {
 	if (target == -1 && lun == -1)
-		scsi_activate_bus(sc, act);
+		return scsi_activate_bus(sc, act);
 
 	if (target == -1)
-		return;
+		return 0;
 
 	if (lun == -1)
-		scsi_activate_target(sc, target, act);
+		return scsi_activate_target(sc, target, act);
 
-	scsi_activate_lun(sc, target, lun, act);
+	return scsi_activate_lun(sc, target, lun, act);
 }
 
-void
+int
 scsi_activate_bus(struct scsibus_softc *sc, int act)
 {
-	int target;
+	int target, rv = 0, r;
 
-	for (target = 0; target < sc->sc_buswidth; target++)
-		scsi_activate_target(sc, target, act);
+	for (target = 0; target < sc->sc_buswidth; target++) {
+		r = scsi_activate_target(sc, target, act);
+		if (r)
+			rv = r;
+	}
+	return (rv);
 }
 
-void
+int
 scsi_activate_target(struct scsibus_softc *sc, int target, int act)
 {
-	int lun;
+	int lun, rv = 0, r;
 
-	for (lun = 0; lun < sc->adapter_link->luns; lun++)
-		scsi_activate_lun(sc, target, lun, act);
+	for (lun = 0; lun < sc->adapter_link->luns; lun++) {
+		r = scsi_activate_lun(sc, target, lun, act);
+		if (r)
+			rv = r;
+	}
+	return (rv);
 }
 
-void
+int
 scsi_activate_lun(struct scsibus_softc *sc, int target, int lun, int act)
 {
 	struct scsi_link *link;
@@ -235,7 +241,7 @@ scsi_activate_lun(struct scsibus_softc *sc, int target, int lun, int act)
 
 	link = scsi_get_link(sc, target, lun);
 	if (link == NULL)
-		return;
+		return (0);
 
 	dev = link->device_softc;
 	switch (act) {
@@ -248,7 +254,11 @@ scsi_activate_lun(struct scsibus_softc *sc, int target, int lun, int act)
 #endif /* NMPATH */
 			config_activate(dev);
 		break;
-
+	case DVACT_QUIESCE:
+	case DVACT_SUSPEND:
+	case DVACT_RESUME:
+		config_suspend(dev, act);
+		break;
 	case DVACT_DEACTIVATE:
 		atomic_setbits_int(&link->state, SDEV_S_DYING);
 #if NMPATH > 0
@@ -258,13 +268,11 @@ scsi_activate_lun(struct scsibus_softc *sc, int target, int lun, int act)
 #endif /* NMPATH */
 			config_deactivate(dev);
 		break;
-	case DVACT_SUSPEND:
-	case DVACT_RESUME:
-		config_suspend(dev, act);
-		break;
 	default:
 		break;
 	}
+
+	return (0);
 }
 
 int
@@ -487,9 +495,12 @@ scsi_detach_lun(struct scsibus_softc *sc, int target, int lun, int flags)
 	if (((flags & DETACH_FORCE) == 0) && (link->flags & SDEV_OPEN))
 		return (EBUSY);
 
-	/* detaching a device from scsibus is a four step process... */
+	/* detaching a device from scsibus is a five step process... */
 
-	/* 1. detach the device */
+	/* 1. wake up processes sleeping for an xs */
+	scsi_link_shutdown(link);
+
+	/* 2. detach the device */
 #if NMPATH > 0
 	if (link->device_softc == NULL)
 		rv = mpath_path_detach(link, flags);
@@ -500,15 +511,17 @@ scsi_detach_lun(struct scsibus_softc *sc, int target, int lun, int flags)
 	if (rv != 0)
 		return (rv);
 
-	/* 2. if its using the openings io allocator, clean it up */
-	if (ISSET(link->flags, SDEV_OWN_IOPL))
+	/* 3. if its using the openings io allocator, clean it up */
+	if (ISSET(link->flags, SDEV_OWN_IOPL)) {
+		scsi_iopool_destroy(link->pool);
 		free(link->pool, M_DEVBUF);
+	}
 
-	/* 3. free up its state in the adapter */
+	/* 4. free up its state in the adapter */
 	if (alink->adapter->dev_free != NULL)
 		alink->adapter->dev_free(link);
 
-	/* 4. free up its state in the midlayer */
+	/* 5. free up its state in the midlayer */
 	if (link->id != NULL)
 		devid_free(link->id);
 	scsi_remove_link(sc, link);
@@ -995,6 +1008,12 @@ scsi_probedev(struct scsibus_softc *scsi, int target, int lun)
 		sc_link->quirks |= finger->quirks;
 
 	/*
+	 * If the device can't use tags, >1 opening may confuse it.
+	 */
+	if (ISSET(sc_link->quirks, SDEV_NOTAGS))
+		sc_link->openings = 1;
+
+	/*
 	 * note what BASIC type of device it is
 	 */
 	if ((inqbuf->dev_qual2 & SID_REMOVABLE) != 0)
@@ -1119,6 +1138,7 @@ scsi_devid(struct scsi_link *link)
 		u_int8_t list[32];
 	} __packed pg;
 	int pg80 = 0, pg83 = 0, i;
+	size_t len;
 
 	if (link->id != NULL)
 		return;
@@ -1128,7 +1148,8 @@ scsi_devid(struct scsi_link *link)
 		    scsi_autoconf) != 0)
 			return;
 
-		for (i = 0; i < MIN(sizeof(pg.list), pg.hdr.page_length); i++) {
+		len = MIN(sizeof(pg.list), _2btol(pg.hdr.page_length));
+		for (i = 0; i < len; i++) {
 			switch (pg.list[i]) {
 			case SI_PG_SERIAL:
 				pg80 = 1;
@@ -1164,7 +1185,7 @@ scsi_devid_pg83(struct scsi_link *link)
 	if (rv != 0)
 		return (rv);
 
-	len = sizeof(hdr) + hdr.page_length;
+	len = sizeof(hdr) + _2btol(hdr.page_length);
 	pg = malloc(len, M_TEMP, M_WAITOK);
 
 	rv = scsi_inquire_vpd(link, pg, len, SI_PG_DEVID, scsi_autoconf);

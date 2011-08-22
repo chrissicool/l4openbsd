@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpu.h,v 1.113 2010/08/05 21:10:09 deraadt Exp $	*/
+/*	$OpenBSD: cpu.h,v 1.117 2010/10/02 23:13:28 deraadt Exp $	*/
 /*	$NetBSD: cpu.h,v 1.35 1996/05/05 19:29:26 christos Exp $	*/
 
 /*-
@@ -111,9 +111,12 @@ struct cpu_info {
 	int		ci_idepth;
 	u_int32_t	ci_imask[NIPL];
 	u_int32_t	ci_iunmask[NIPL];
+#ifdef DIAGNOSTIC
+	int		ci_mutex_level;
+#endif
 
 	paddr_t		ci_idle_pcb_paddr; /* PA of idle PCB */
-	u_long		ci_flags;	/* flags; see below */
+	volatile u_long	ci_flags;	/* flags; see below */
 	u_int32_t	ci_ipis; 	/* interprocessor interrupts pending */
 	int		sc_apic_version;/* local APIC version */
 
@@ -394,6 +397,7 @@ extern void (*initclock_func)(void);
 void	startclocks(void);
 void	rtcdrain(void *);
 void	rtcstart(void);
+void	rtcstop(void);
 void	i8254_delay(int);
 void	i8254_initclocks(void);
 void	i8254_startclock(void);

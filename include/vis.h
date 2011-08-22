@@ -1,4 +1,4 @@
-/*	$OpenBSD: vis.h,v 1.11 2005/08/09 19:38:31 millert Exp $	*/
+/*	$OpenBSD: vis.h,v 1.13 2010/08/24 23:49:06 djm Exp $	*/
 /*	$NetBSD: vis.h,v 1.4 1994/10/26 00:56:41 cgd Exp $	*/
 
 /*-
@@ -50,6 +50,7 @@
 #define	VIS_NL		0x10	/* also encode newline */
 #define	VIS_WHITE	(VIS_SP | VIS_TAB | VIS_NL)
 #define	VIS_SAFE	0x20	/* only encode "unsafe" characters */
+#define	VIS_ALL		0x400	/* encode all characters */
 
 /*
  * other

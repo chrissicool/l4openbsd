@@ -1,4 +1,4 @@
-/*	$OpenBSD: hp.c,v 1.20 2009/09/05 00:48:39 krw Exp $ */
+/*	$OpenBSD: hp.c,v 1.23 2010/09/22 06:40:25 krw Exp $ */
 /*	$NetBSD: hp.c,v 1.22 2000/02/12 16:09:33 ragge Exp $ */
 /*
  * Copyright (c) 1996 Ludd, University of Lule}, Sweden.
@@ -146,7 +146,7 @@ hpattach(parent, self, aux)
 	 * Init and attach the disk structure.
 	 */
 	sc->sc_disk.dk_name = sc->sc_dev.dv_xname;
-	disk_attach(&sc->sc_disk);
+	disk_attach(&sc->sc_dev, &sc->sc_disk);
 
 	/*
 	 * Fake a disklabel to be able to read in the real label.
@@ -329,6 +329,7 @@ hpioctl(dev, cmd, addr, flag, p)
 
 	switch (cmd) {
 	case	DIOCGDINFO:
+	case	DIOCGPDINFO:	/* no separate 'physical' info available. */
 		bcopy(lp, addr, sizeof (struct disklabel));
 		return 0;
 
@@ -475,7 +476,7 @@ hpread(dev, uio)
 	dev_t dev;
 	struct uio *uio;
 {
-	return (physio(hpstrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(hpstrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -483,5 +484,5 @@ hpwrite(dev, uio)
 	dev_t dev;
 	struct uio *uio;
 {
-	return (physio(hpstrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(hpstrategy, dev, B_WRITE, minphys, uio));
 }

@@ -1,4 +1,4 @@
-/*	$OpenBSD: uhidev.c,v 1.38 2010/08/02 23:17:34 miod Exp $	*/
+/*	$OpenBSD: uhidev.c,v 1.41 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*	$NetBSD: uhidev.c,v 1.14 2003/03/11 16:44:00 augustss Exp $	*/
 
 /*
@@ -246,9 +246,6 @@ uhidev_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_nrepid = nrepid;
 	sc->sc_isize = 0;
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
-
 	for (repid = 0; repid < nrepid; repid++) {
 		repsz = hid_report_size(desc, size, hid_input, repid);
 		DPRINTF(("uhidev_match: repid=%d, repsz=%d\n", repid, repsz));
@@ -336,17 +333,19 @@ int
 uhidev_activate(struct device *self, int act)
 {
 	struct uhidev_softc *sc = (struct uhidev_softc *)self;
-	int i, rv = 0;
+	int i, rv = 0, r;
 
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
-
 	case DVACT_DEACTIVATE:
 		for (i = 0; i < sc->sc_nrepid; i++)
-			if (sc->sc_subdevs[i] != NULL)
-				rv |= config_deactivate(
-					&sc->sc_subdevs[i]->sc_dev);
+			if (sc->sc_subdevs[i] != NULL) {
+				r = config_deactivate(
+				    &sc->sc_subdevs[i]->sc_dev);
+				if (r)
+					rv = r;
+			}
 		sc->sc_dying = 1;
 		break;
 	}
@@ -361,7 +360,6 @@ uhidev_detach(struct device *self, int flags)
 
 	DPRINTF(("uhidev_detach: sc=%p flags=%d\n", sc, flags));
 
-	sc->sc_dying = 1;
 	if (sc->sc_ipipe != NULL)
 		usbd_abort_pipe(sc->sc_ipipe);
 
@@ -375,9 +373,6 @@ uhidev_detach(struct device *self, int flags)
 			sc->sc_subdevs[i] = NULL;
 		}
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (rv);
 }

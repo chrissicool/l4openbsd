@@ -1,4 +1,4 @@
-/*	$OpenBSD: athnvar.h,v 1.20 2010/07/21 14:01:58 kettenis Exp $	*/
+/*	$OpenBSD: athnvar.h,v 1.30 2011/01/08 15:05:24 damien Exp $	*/
 
 /*-
  * Copyright (c) 2009 Damien Bergamini <damien.bergamini@free.fr>
@@ -16,8 +16,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#define ATHN_DEBUG		1
-/*#define ATHN_BT_COEXISTENCE	1*/
+#ifdef notyet
+#define ATHN_BT_COEXISTENCE	1
+#endif
 
 #ifdef ATHN_DEBUG
 #define DPRINTF(x)	do { if (athn_debug > 0) printf x; } while (0)
@@ -289,6 +290,7 @@ struct athn_node {
 	struct ieee80211_amrr_node	amn;
 	uint8_t				ridx[IEEE80211_RATE_MAXSIZE];
 	uint8_t				fallback[IEEE80211_RATE_MAXSIZE];
+	uint8_t				sta_index;
 };
 
 /*
@@ -347,6 +349,11 @@ struct athn_calib {
 struct athn_softc;
 
 struct athn_ops {
+	/* Bus callbacks. */
+	uint32_t	(*read)(struct athn_softc *, uint32_t);
+	void		(*write)(struct athn_softc *, uint32_t, uint32_t);
+	void		(*write_barrier)(struct athn_softc *);
+
 	void	(*setup)(struct athn_softc *);
 	void	(*set_txpower)(struct athn_softc *, struct ieee80211_channel *,
 		    struct ieee80211_channel *);
@@ -358,8 +365,12 @@ struct athn_ops {
 		    struct ieee80211_channel *, struct ieee80211_channel *);
 	int	(*set_synth)(struct athn_softc *, struct ieee80211_channel *,
 		    struct ieee80211_channel *);
+	int	(*read_rom_data)(struct athn_softc *, uint32_t, void *, int);
+	const uint8_t *
+		(*get_rom_template)(struct athn_softc *, uint8_t);
 	void	(*swap_rom)(struct athn_softc *);
 	void	(*olpc_init)(struct athn_softc *);
+	void	(*olpc_temp_compensation)(struct athn_softc *);
 	/* GPIO callbacks. */
 	int	(*gpio_read)(struct athn_softc *, int);
 	void	(*gpio_write)(struct athn_softc *, int, int);
@@ -410,13 +421,13 @@ struct athn_softc {
 	void				(*sc_disable)(struct athn_softc *);
 	void				(*sc_power)(struct athn_softc *, int);
 	void				(*sc_disable_aspm)(struct athn_softc *);
+	void				(*sc_enable_extsynch)(
+					    struct athn_softc *);
 
 	int				(*sc_newstate)(struct ieee80211com *,
 					    enum ieee80211_state, int);
 
 	bus_dma_tag_t			sc_dmat;
-	bus_space_tag_t			sc_st;
-	bus_space_handle_t		sc_sh;
 
 	struct timeout			scan_to;
 	struct timeout			calib_to;
@@ -424,22 +435,27 @@ struct athn_softc {
 
 	u_int				flags;
 #define ATHN_FLAG_PCIE			(1 << 0)
-#define ATHN_FLAG_OLPC			(1 << 1)
-#define ATHN_FLAG_PAPRD			(1 << 2)
-#define ATHN_FLAG_FAST_PLL_CLOCK	(1 << 3)
-#define ATHN_FLAG_RFSILENT		(1 << 4)
-#define ATHN_FLAG_RFSILENT_REVERSED	(1 << 5)
-#define ATHN_FLAG_BTCOEX2WIRE		(1 << 6)
-#define ATHN_FLAG_BTCOEX3WIRE		(1 << 7)
+#define ATHN_FLAG_USB			(1 << 1)
+#define ATHN_FLAG_OLPC			(1 << 2)
+#define ATHN_FLAG_PAPRD			(1 << 3)
+#define ATHN_FLAG_FAST_PLL_CLOCK	(1 << 4)
+#define ATHN_FLAG_RFSILENT		(1 << 5)
+#define ATHN_FLAG_RFSILENT_REVERSED	(1 << 6)
+#define ATHN_FLAG_BTCOEX2WIRE		(1 << 7)
+#define ATHN_FLAG_BTCOEX3WIRE		(1 << 8)
 /* Shortcut. */
 #define ATHN_FLAG_BTCOEX	(ATHN_FLAG_BTCOEX2WIRE | ATHN_FLAG_BTCOEX3WIRE)
-#define ATHN_FLAG_11A			(1 << 8)
-#define ATHN_FLAG_11G			(1 << 9)
-#define ATHN_FLAG_11N			(1 << 10)
+#define ATHN_FLAG_11A			(1 << 9)
+#define ATHN_FLAG_11G			(1 << 10)
+#define ATHN_FLAG_11N			(1 << 11)
+#define ATHN_FLAG_AN_TOP2_FIXUP		(1 << 12)
+#define ATHN_FLAG_NON_ENTERPRISE	(1 << 13)
+#define ATHN_FLAG_3TREDUCE_CHAIN	(1 << 14)
 
 	uint8_t				ngpiopins;
 	int				led_pin;
 	int				rfsilent_pin;
+	int				led_state;
 	uint32_t			isync;
 	uint32_t			imask;
 
@@ -467,6 +483,7 @@ struct athn_softc {
 	int8_t				tx_gain_tbl[AR9280_TX_GAIN_TABLE_SIZE];
 	int8_t				pdadc;
 	int8_t				tcomp;
+	int				olpc_ticks;
 
 	/* PA predistortion. */
 	uint16_t			gain1[AR_MAX_CHAINS];
@@ -530,6 +547,7 @@ struct athn_softc {
 	int				nf_hist_cur;
 	int16_t				nf_priv[AR_MAX_CHAINS];
 	int16_t				nf_ext_priv[AR_MAX_CHAINS];
+	int				pa_calib_ticks;
 
 	struct athn_calib		calib;
 	struct athn_ani			ani;

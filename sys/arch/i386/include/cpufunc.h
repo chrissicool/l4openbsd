@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpufunc.h,v 1.16 2009/12/09 14:28:46 oga Exp $	*/
+/*	$OpenBSD: cpufunc.h,v 1.17 2010/08/19 19:31:53 kettenis Exp $	*/
 /*	$NetBSD: cpufunc.h,v 1.8 1994/10/27 04:15:59 cgd Exp $	*/
 
 /*
@@ -102,7 +102,7 @@ static __inline void
 lidt(void *p)
 {
 #ifndef L4
-	__asm __volatile("lidt (%0)" : : "r" (p));
+	__asm __volatile("lidt (%0)" : : "r" (p) : "memory");
 #endif
 }
 

@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.42 2010/07/03 03:59:16 krw Exp $ */
+/*	$OpenBSD: conf.c,v 1.44 2011/01/14 19:04:08 jasper Exp $ */
 
 /*
  * Copyright (c) 1997 Per Fogelstrom
@@ -76,7 +76,7 @@ struct bdevsw bdevsw[] = {
 	bdev_notdef(),			/* 18 unknown*/
 	bdev_disk_init(NRAID,raid),	/* 19: RAIDframe disk driver */
 };
-int nblkdev = sizeof bdevsw / sizeof bdevsw[0];
+int nblkdev = nitems(bdevsw);
 
 #include "pty.h"
 #include "zstty.h"
@@ -142,6 +142,7 @@ cdev_decl(pci);
 #include "gpio.h"
 #include "bio.h"
 #include "vscsi.h"
+#include "pppx.h"
 
 struct cdevsw cdevsw[] = {
 	cdev_cn_init(1,cn),		/* 0: virtual console */
@@ -241,8 +242,9 @@ struct cdevsw cdevsw[] = {
 	cdev_openprom_init(1,openprom),	/* 82: /dev/openprom */
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 83: vscsi */
 	cdev_disk_init(1,diskmap),	/* 84: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 85: pppx */
 };
-int nchrdev = sizeof cdevsw / sizeof cdevsw[0];
+int nchrdev = nitems(cdevsw);
 
 int mem_no = 2;				/* major number of /dev/mem */
 
@@ -334,7 +336,7 @@ int chrtoblktbl[] = {
 	/* 53 */	NODEV,
 	/* 54 */	19,		/* raid */
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);
 
 #include <dev/cons.h>
 #include "vgafb_pci.h"

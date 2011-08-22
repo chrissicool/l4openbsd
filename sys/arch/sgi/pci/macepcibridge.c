@@ -1,4 +1,4 @@
-/*	$OpenBSD: macepcibridge.c,v 1.38 2010/04/06 19:12:34 miod Exp $ */
+/*	$OpenBSD: macepcibridge.c,v 1.41 2010/12/04 17:06:31 miod Exp $ */
 
 /*
  * Copyright (c) 2009 Miodrag Vallat.
@@ -82,6 +82,7 @@ void	 mace_pcibr_attach_hook(struct device *, struct device *,
 int	 mace_pcibr_bus_maxdevs(void *, int);
 pcitag_t mace_pcibr_make_tag(void *, int, int, int);
 void	 mace_pcibr_decompose_tag(void *, pcitag_t, int *, int *, int *);
+int	 mace_pcibr_conf_size(void *, pcitag_t);
 pcireg_t mace_pcibr_conf_read(void *, pcitag_t, int);
 void	 mace_pcibr_conf_write(void *, pcitag_t, int, pcireg_t);
 int	 mace_pcibr_get_widget(void *);
@@ -131,7 +132,8 @@ bus_space_t mace_pcibbus_mem_tag = {
 	mace_pcib_read_raw_4, mace_pcib_write_raw_4,
 	mace_pcib_read_raw_8, mace_pcib_write_raw_8,
 	mace_pcib_space_map, mace_pcib_space_unmap, mace_pcib_space_region,
-	mace_pcib_space_vaddr
+	mace_pcib_space_vaddr,
+	NULL
 };
 
 bus_space_t mace_pcibbus_io_tag = {
@@ -145,7 +147,8 @@ bus_space_t mace_pcibbus_io_tag = {
 	mace_pcib_read_raw_4, mace_pcib_write_raw_4,
 	mace_pcib_read_raw_8, mace_pcib_write_raw_8,
 	mace_pcib_space_map, mace_pcib_space_unmap, mace_pcib_space_region,
-	mace_pcib_space_vaddr
+	mace_pcib_space_vaddr,
+	NULL
 };
 
 /*
@@ -237,6 +240,7 @@ mace_pcibrattach(struct device *parent, struct device *self, void *aux)
 	sc->sc_pc.pc_make_tag = mace_pcibr_make_tag;
 	sc->sc_pc.pc_decompose_tag = mace_pcibr_decompose_tag;
 	sc->sc_pc.pc_bus_maxdevs = mace_pcibr_bus_maxdevs;
+	sc->sc_pc.pc_conf_size = mace_pcibr_conf_size;
 	sc->sc_pc.pc_conf_read = mace_pcibr_conf_read;
 	sc->sc_pc.pc_conf_write = mace_pcibr_conf_write;
 	sc->sc_pc.pc_get_widget = mace_pcibr_get_widget;
@@ -361,6 +365,12 @@ int
 mace_pcibr_bus_maxdevs(void *cpv, int busno)
 {
 	return busno == 0 ? 6 : 32;
+}
+
+int
+mace_pcibr_conf_size(void *cpv, pcitag_t tag)
+{
+	return PCI_CONFIG_SPACE_SIZE;
 }
 
 pcireg_t
@@ -885,7 +895,7 @@ mace_pcibr_rbus_parent_io(struct pci_attach_args *pa)
 	rbus_tag_t rb;
 
 	rb = rbus_new_root_share(pa->pa_iot, pa->pa_ioex,
-	    0x0000, 0xffff, 0);
+	    0x0000, 0xffff);
 	if (rb != NULL)
 		rb->rb_md = &mace_pcibr_rb_md_fn;
 
@@ -898,7 +908,7 @@ mace_pcibr_rbus_parent_mem(struct pci_attach_args *pa)
 	rbus_tag_t rb;
 
 	rb = rbus_new_root_share(pa->pa_memt, pa->pa_memex,
-	    0, 0xffffffff, 0);
+	    0, 0xffffffff);
 	if (rb != NULL)
 		rb->rb_md = &mace_pcibr_rb_md_fn;
 

@@ -1,6 +1,6 @@
-/*	$OpenBSD: vdsk.c,v 1.24 2010/06/28 18:31:01 krw Exp $	*/
+/*	$OpenBSD: vdsk.c,v 1.27 2011/01/01 20:49:53 kettenis Exp $	*/
 /*
- * Copyright (c) 2009 Mark Kettenis
+ * Copyright (c) 2009, 2011 Mark Kettenis
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -203,6 +203,7 @@ void	vdsk_dev_free(struct scsi_link *);
 void	vdsk_scsi_inq(struct scsi_xfer *);
 void	vdsk_scsi_inquiry(struct scsi_xfer *);
 void	vdsk_scsi_capacity(struct scsi_xfer *);
+void	vdsk_scsi_capacity16(struct scsi_xfer *);
 void	vdsk_scsi_done(struct scsi_xfer *, int);
 
 int
@@ -936,6 +937,9 @@ vdsk_scsi_cmd(struct scsi_xfer *xs)
 	case READ_CAPACITY:
 		vdsk_scsi_capacity(xs);
 		return;
+	case READ_CAPACITY_16:
+		vdsk_scsi_capacity16(xs);
+		return;
 
 	case TEST_UNIT_READY:
 	case START_STOP:
@@ -1076,6 +1080,7 @@ vdsk_scsi_inquiry(struct scsi_xfer *xs)
 	inq.version = 0x05; /* SPC-3 */
 	inq.response_format = 2;
 	inq.additional_length = 32;
+	inq.flags |= SID_CmdQue;
 	bcopy("SUN     ", inq.vendor, sizeof(inq.vendor));
 	bcopy("Virtual Disk    ", inq.product, sizeof(inq.product));
 	snprintf(buf, sizeof(buf), "%u.%u ", sc->sc_major, sc->sc_minor);
@@ -1095,11 +1100,27 @@ vdsk_scsi_capacity(struct scsi_xfer *xs)
 
 	bzero(&rcd, sizeof(rcd));
 
-	capacity = sc->sc_vdisk_size;
+	capacity = sc->sc_vdisk_size - 1;
 	if (capacity > 0xffffffff)
 		capacity = 0xffffffff;
 
-	_lto4b(capacity - 1, rcd.addr);
+	_lto4b(capacity, rcd.addr);
+	_lto4b(sc->sc_vdisk_block_size, rcd.length);
+
+	bcopy(&rcd, xs->data, MIN(sizeof(rcd), xs->datalen));
+
+	vdsk_scsi_done(xs, XS_NOERROR);
+}
+
+void
+vdsk_scsi_capacity16(struct scsi_xfer *xs)
+{
+	struct vdsk_softc *sc = xs->sc_link->adapter_softc;
+	struct scsi_read_cap_data_16 rcd;
+
+	bzero(&rcd, sizeof(rcd));
+
+	_lto8b(sc->sc_vdisk_size - 1, rcd.addr);
 	_lto4b(sc->sc_vdisk_block_size, rcd.length);
 
 	bcopy(&rcd, xs->data, MIN(sizeof(rcd), xs->datalen));

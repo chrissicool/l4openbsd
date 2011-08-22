@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_nfe.c,v 1.91 2010/08/06 03:02:24 mlarkin Exp $	*/
+/*	$OpenBSD: if_nfe.c,v 1.97 2011/01/10 16:18:03 kettenis Exp $	*/
 
 /*-
  * Copyright (c) 2006, 2007 Damien Bergamini <damien.bergamini@free.fr>
@@ -70,7 +70,6 @@
 int	nfe_match(struct device *, void *, void *);
 void	nfe_attach(struct device *, struct device *, void *);
 int	nfe_activate(struct device *, int);
-void	nfe_power(int, void *);
 void	nfe_miibus_statchg(struct device *);
 int	nfe_miibus_readreg(struct device *, int, int);
 void	nfe_miibus_writereg(struct device *, int, int, int);
@@ -179,20 +178,24 @@ nfe_activate(struct device *self, int act)
 {
 	struct nfe_softc *sc = (struct nfe_softc *)self;
 	struct ifnet *ifp = &sc->sc_arpcom.ac_if;
+	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		if (ifp->if_flags & IFF_RUNNING)
 			nfe_stop(ifp, 0);
-		config_activate_children(self, act);
+		rv = config_activate_children(self, act);
 		break;
 	case DVACT_RESUME:
-		config_activate_children(self, act);
+		rv = config_activate_children(self, act);
 		if (ifp->if_flags & IFF_UP)
 			nfe_init(ifp);
 		break;
 	}
-	return (0);
+	return (rv);
 }
 
 
@@ -338,7 +341,6 @@ nfe_attach(struct device *parent, struct device *self, void *aux)
 	ifp->if_ioctl = nfe_ioctl;
 	ifp->if_start = nfe_start;
 	ifp->if_watchdog = nfe_watchdog;
-	ifp->if_init = nfe_init;
 	ifp->if_baudrate = IF_Gbps(1);
 	IFQ_SET_MAXLEN(&ifp->if_snd, NFE_IFQ_MAXLEN);
 	IFQ_SET_READY(&ifp->if_snd);
@@ -366,8 +368,7 @@ nfe_attach(struct device *parent, struct device *self, void *aux)
 
 	ifmedia_init(&sc->sc_mii.mii_media, 0, nfe_ifmedia_upd,
 	    nfe_ifmedia_sts);
-	mii_attach(self, &sc->sc_mii, 0xffffffff, MII_PHY_ANY,
-	    MII_OFFSET_ANY, 0);
+	mii_attach(self, &sc->sc_mii, 0xffffffff, MII_PHY_ANY, 0, 0);
 	if (LIST_FIRST(&sc->sc_mii.mii_phys) == NULL) {
 		printf("%s: no PHY found!\n", sc->sc_dev.dv_xname);
 		ifmedia_add(&sc->sc_mii.mii_media, IFM_ETHER | IFM_MANUAL,
@@ -380,24 +381,6 @@ nfe_attach(struct device *parent, struct device *self, void *aux)
 	ether_ifattach(ifp);
 
 	timeout_set(&sc->sc_tick_ch, nfe_tick, sc);
-
-	sc->sc_powerhook = powerhook_establish(nfe_power, sc);
-}
-
-void
-nfe_power(int why, void *arg)
-{
-	struct nfe_softc *sc = arg;
-	struct ifnet *ifp;
-
-	if (why == PWR_RESUME) {
-		ifp = &sc->sc_arpcom.ac_if;
-		if (ifp->if_flags & IFF_UP) {
-			nfe_init(ifp);
-			if (ifp->if_flags & IFF_RUNNING)
-				nfe_start(ifp);
-		}
-	}
 }
 
 void

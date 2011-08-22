@@ -1,4 +1,4 @@
-/*	$OpenBSD: relay.c,v 1.122 2010/08/01 22:18:35 sthen Exp $	*/
+/*	$OpenBSD: relay.c,v 1.128 2010/12/20 12:38:06 dhill Exp $	*/
 
 /*
  * Copyright (c) 2006, 2007, 2008 Reyk Floeter <reyk@openbsd.org>
@@ -24,7 +24,6 @@
 #include <sys/un.h>
 #include <sys/tree.h>
 #include <sys/hash.h>
-#include <sys/resource.h>
 
 #include <net/if.h>
 #include <netinet/in_systm.h>
@@ -60,7 +59,7 @@ void		 relay_protodebug(struct relay *);
 void		 relay_init(void);
 void		 relay_launch(void);
 int		 relay_socket(struct sockaddr_storage *, in_port_t,
-		    struct protocol *, int);
+		    struct protocol *, int, int);
 int		 relay_socket_listen(struct sockaddr_storage *, in_port_t,
 		    struct protocol *);
 int		 relay_socket_connect(struct sockaddr_storage *, in_port_t,
@@ -460,19 +459,9 @@ relay_init(void)
 	struct relay	*rlay;
 	struct host	*host;
 	struct timeval	 tv;
-	struct rlimit	 rl;
 
-	if (getrlimit(RLIMIT_NOFILE, &rl) == -1)
-		fatal("relay_init: failed to get resource limit");
-	log_debug("relay_init: max open files %d", rl.rlim_max);
-
-	/*
-	 * Allow the maximum number of open file descriptors for this
-	 * login class (which should be the class "daemon" by default).
-	 */
-	rl.rlim_cur = rl.rlim_max;
-	if (setrlimit(RLIMIT_NOFILE, &rl) == -1)
-		fatal("relay_init: failed to set resource limit");
+	/* Unlimited file descriptors (use system limits) */
+	socket_rlimit(-1);
 
 	TAILQ_FOREACH(rlay, env->sc_relays, rl_entry) {
 		if ((rlay->rl_conf.flags & (F_SSL|F_SSLCLIENT)) &&
@@ -633,7 +622,7 @@ relay_socket_af(struct sockaddr_storage *ss, in_port_t port)
 
 int
 relay_socket(struct sockaddr_storage *ss, in_port_t port,
-    struct protocol *proto, int fd)
+    struct protocol *proto, int fd, int reuseport)
 {
 	int s = -1, val;
 	struct linger lng;
@@ -651,9 +640,12 @@ relay_socket(struct sockaddr_storage *ss, in_port_t port,
 	bzero(&lng, sizeof(lng));
 	if (setsockopt(s, SOL_SOCKET, SO_LINGER, &lng, sizeof(lng)) == -1)
 		goto bad;
-	val = 1;
-	if (setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(int)) == -1)
-		goto bad;
+	if (reuseport) {
+		val = 1;
+		if (setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &val,
+			sizeof(int)) == -1)
+			goto bad;
+	}
 	if (fcntl(s, F_SETFL, O_NONBLOCK) == -1)
 		goto bad;
 	if (proto->tcpflags & TCPFLAG_BUFSIZ) {
@@ -719,7 +711,7 @@ relay_socket_connect(struct sockaddr_storage *ss, in_port_t port,
 {
 	int	s;
 
-	if ((s = relay_socket(ss, port, proto, fd)) == -1)
+	if ((s = relay_socket(ss, port, proto, fd, 0)) == -1)
 		return (-1);
 
 	if (connect(s, (struct sockaddr *)ss, ss->ss_len) == -1) {
@@ -740,7 +732,7 @@ relay_socket_listen(struct sockaddr_storage *ss, in_port_t port,
 {
 	int s;
 
-	if ((s = relay_socket(ss, port, proto, -1)) == -1)
+	if ((s = relay_socket(ss, port, proto, -1, 1)) == -1)
 		return (-1);
 
 	if (bind(s, (struct sockaddr *)ss, ss->ss_len) == -1)
@@ -2400,6 +2392,12 @@ relay_close(struct rsession *con, const char *msg)
 		bufferevent_free(con->se_out.bev);
 	else if (con->se_out.output != NULL)
 		evbuffer_free(con->se_out.output);
+	if (con->se_out.ssl != NULL) {
+		/* XXX handle non-blocking shutdown */
+		if (SSL_shutdown(con->se_out.ssl) == 0)
+			SSL_shutdown(con->se_out.ssl);
+		SSL_free(con->se_out.ssl);
+	}
 	if (con->se_out.s != -1)
 		close(con->se_out.s);
 	if (con->se_out.path != NULL)
@@ -2485,6 +2483,24 @@ relay_dispatch_pfe(int fd, short event, void *ptr)
 				fatalx("relay_dispatch_pfe: desynchronized");
 			host->flags &= ~(F_DISABLE);
 			host->up = HOST_UNKNOWN;
+			break;
+		case IMSG_TABLE_DISABLE:
+			memcpy(&id, imsg.data, sizeof(id));
+			if ((table = table_find(env, id)) == NULL)
+				fatalx("relay_dispatch_pfe: desynchronized");
+			table->conf.flags |= F_DISABLE;
+			table->up = 0;
+			TAILQ_FOREACH(host, &table->hosts, entry)
+				host->up = HOST_UNKNOWN;
+			break;
+		case IMSG_TABLE_ENABLE:
+			memcpy(&id, imsg.data, sizeof(id));
+			if ((table = table_find(env, id)) == NULL)
+				fatalx("relay_dispatch_pfe: desynchronized");
+			table->conf.flags &= ~(F_DISABLE);
+			table->up = 0;
+			TAILQ_FOREACH(host, &table->hosts, entry)
+				host->up = HOST_UNKNOWN;
 			break;
 		case IMSG_HOST_STATUS:
 			if (imsg.hdr.len - IMSG_HEADER_SIZE != sizeof(st))
@@ -2697,11 +2713,11 @@ relay_ssl_ctx_create(struct relay *rlay)
 void
 relay_ssl_transaction(struct rsession *con, struct ctl_relay_event *cre)
 {
-	struct relay	*rlay = (struct relay *)con->se_relay;
-	SSL		*ssl;
-	SSL_METHOD	*method;
-	void		(*cb)(int, short, void *);
-	u_int		 flags = EV_TIMEOUT;
+	struct relay		*rlay = (struct relay *)con->se_relay;
+	SSL			*ssl;
+	const SSL_METHOD	*method;
+	void			(*cb)(int, short, void *);
+	u_int			 flags = EV_TIMEOUT;
 
 	ssl = SSL_new(rlay->rl_ssl_ctx);
 	if (ssl == NULL)

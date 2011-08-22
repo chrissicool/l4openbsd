@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_upgt.c,v 1.49 2010/04/20 22:05:43 tedu Exp $ */
+/*	$OpenBSD: if_upgt.c,v 1.55 2011/01/25 20:03:35 jakemsr Exp $ */
 
 /*
  * Copyright (c) 2007 Marcus Glocker <mglocker@openbsd.org>
@@ -273,8 +273,9 @@ upgt_attach(struct device *parent, struct device *self, void *aux)
 	}
 
 	/* setup tasks and timeouts */
-	usb_init_task(&sc->sc_task_newstate, upgt_newstate_task, sc);
-	usb_init_task(&sc->sc_task_tx, upgt_tx_task, sc);
+	usb_init_task(&sc->sc_task_newstate, upgt_newstate_task, sc,
+	    USB_TASK_TYPE_GENERIC);
+	usb_init_task(&sc->sc_task_tx, upgt_tx_task, sc, USB_TASK_TYPE_GENERIC);
 	timeout_set(&sc->scan_to, upgt_next_scan, sc);
 	timeout_set(&sc->led_to, upgt_set_led_blink, sc);
 
@@ -421,7 +422,6 @@ upgt_attach_hook(void *arg)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = upgt_init;
 	ifp->if_ioctl = upgt_ioctl;
 	ifp->if_start = upgt_start;
 	ifp->if_watchdog = upgt_watchdog;
@@ -449,13 +449,8 @@ upgt_attach_hook(void *arg)
 	sc->sc_txtap.wt_ihdr.it_present = htole32(UPGT_TX_RADIOTAP_PRESENT);
 #endif
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev, &sc->sc_dev);
-
 	printf("%s: address %s\n",
 	    sc->sc_dev.dv_xname, ether_sprintf(ic->ic_myaddr));
-
-	/* device attached */
-	sc->sc_flags |= UPGT_DEVICE_ATTACHED;
 
 	return;
 fail:
@@ -486,8 +481,10 @@ upgt_detach(struct device *self, int flags)
 	/* remove tasks and timeouts */
 	usb_rem_task(sc->sc_udev, &sc->sc_task_newstate);
 	usb_rem_task(sc->sc_udev, &sc->sc_task_tx);
-	timeout_del(&sc->scan_to);
-	timeout_del(&sc->led_to);
+	if (timeout_initialized(&sc->scan_to))
+		timeout_del(&sc->scan_to);
+	if (timeout_initialized(&sc->led_to))
+		timeout_del(&sc->led_to);
 
 	/* free xfers */
 	upgt_free_tx(sc);
@@ -497,7 +494,7 @@ upgt_detach(struct device *self, int flags)
 	/* free firmware */
 	upgt_fw_free(sc);
 
-	if (sc->sc_flags & UPGT_DEVICE_ATTACHED) {
+	if (ifp->if_softc != NULL) {
 		/* detach interface */
 		ieee80211_ifdetach(ifp);
 		if_detach(ifp);
@@ -505,18 +502,19 @@ upgt_detach(struct device *self, int flags)
 
 	splx(s);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev, &sc->sc_dev);
-
 	return (0);
 }
 
 int
 upgt_activate(struct device *self, int act)
 {
+	struct upgt_softc *sc = (struct upgt_softc *)self;
+
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
 	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
 		break;
 	}
 

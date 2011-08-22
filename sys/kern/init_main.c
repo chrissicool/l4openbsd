@@ -1,4 +1,4 @@
-/*	$OpenBSD: init_main.c,v 1.170 2010/07/26 01:56:27 guenther Exp $	*/
+/*	$OpenBSD: init_main.c,v 1.174 2011/01/08 19:45:09 deraadt Exp $	*/
 /*	$NetBSD: init_main.c,v 1.84.4.1 1996/06/02 09:08:06 mrg Exp $	*/
 
 /*
@@ -89,6 +89,7 @@
 
 #include <net/if.h>
 #include <net/raw_cb.h>
+#include <net/netisr.h>
 
 #if defined(CRYPTO)
 #include <crypto/cryptodev.h>
@@ -106,7 +107,7 @@ extern void nfs_init(void);
 const char	copyright[] =
 "Copyright (c) 1982, 1986, 1989, 1991, 1993\n"
 "\tThe Regents of the University of California.  All rights reserved.\n"
-"Copyright (c) 1995-2010 OpenBSD. All rights reserved.  http://www.OpenBSD.org\n";
+"Copyright (c) 1995-2011 OpenBSD. All rights reserved.  http://www.OpenBSD.org\n";
 
 /* Components of the first process -- never freed. */
 struct	session session0;
@@ -140,7 +141,7 @@ void	start_init(void *);
 void	start_cleaner(void *);
 void	start_update(void *);
 void	start_reaper(void *);
-void	init_crypto(void);
+void	crypto_init(void);
 void	init_exec(void);
 void	kqueue_init(void);
 void	workq_init(void);
@@ -218,6 +219,8 @@ main(void *framep)
 
 	KERNEL_LOCK_INIT();
 	SCHED_LOCK_INIT();
+
+	random_init();
 
 	uvm_init();
 	disk_init();		/* must come before autoconfiguration */
@@ -344,6 +347,8 @@ main(void *framep)
 	/* Initialize work queues */
 	workq_init();
 
+	random_start();
+
 	/* Initialize the interface/address trees */
 	ifinit();
 
@@ -381,12 +386,12 @@ main(void *framep)
 #endif
 
 	/* Attach pseudo-devices. */
-	randomattach();
 	for (pdev = pdevinit; pdev->pdev_attach != NULL; pdev++)
 		if (pdev->pdev_count > 0)
 			(*pdev->pdev_attach)(pdev->pdev_count);
 
 #ifdef CRYPTO
+	crypto_init();
 	swcr_init();
 #endif /* CRYPTO */
 	
@@ -395,6 +400,7 @@ main(void *framep)
 	 * until everything is ready.
 	 */
 	s = splnet();
+	netisr_init();
 	domaininit();
 	if_attachdomain();
 	splx(s);
@@ -523,11 +529,6 @@ main(void *framep)
 	/* Create the aiodone daemon kernel thread. */ 
 	if (kthread_create(uvm_aiodone_daemon, NULL, NULL, "aiodoned"))
 		panic("fork aiodoned");
-
-#ifdef CRYPTO
-	/* Create the crypto kernel thread. */
-	init_crypto();
-#endif /* CRYPTO */
 
 	microtime(&rtv);
 	srandom((u_int32_t)(rtv.tv_sec ^ rtv.tv_usec) ^ arc4random());

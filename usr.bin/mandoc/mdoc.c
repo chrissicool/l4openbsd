@@ -1,6 +1,6 @@
-/*	$Id: mdoc.c,v 1.63 2010/08/07 18:06:45 schwarze Exp $ */
+/*	$Id: mdoc.c,v 1.79 2011/02/10 00:06:30 schwarze Exp $ */
 /*
- * Copyright (c) 2008, 2009, 2010 Kristaps Dzonsons <kristaps@bsd.lv>
+ * Copyright (c) 2008, 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
  * Copyright (c) 2010 Ingo Schwarze <schwarze@openbsd.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -18,7 +18,6 @@
 #include <sys/types.h>
 
 #include <assert.h>
-#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,15 +94,13 @@ static	int		  node_append(struct mdoc *,
 				struct mdoc_node *);
 static	int		  mdoc_ptext(struct mdoc *, int, char *, int);
 static	int		  mdoc_pmacro(struct mdoc *, int, char *, int);
-static	int		  macrowarn(struct mdoc *, int, 
-				const char *, int);
-
 
 const struct mdoc_node *
 mdoc_node(const struct mdoc *m)
 {
 
-	return(MDOC_HALT & m->flags ? NULL : m->first);
+	assert( ! (MDOC_HALT & m->flags));
+	return(m->first);
 }
 
 
@@ -111,7 +108,8 @@ const struct mdoc_meta *
 mdoc_meta(const struct mdoc *m)
 {
 
-	return(MDOC_HALT & m->flags ? NULL : &m->meta);
+	assert( ! (MDOC_HALT & m->flags));
+	return(&m->meta);
 }
 
 
@@ -188,8 +186,7 @@ mdoc_free(struct mdoc *mdoc)
  * Allocate volatile and non-volatile parse resources.  
  */
 struct mdoc *
-mdoc_alloc(struct regset *regs, void *data, 
-		int pflags, mandocmsg msg)
+mdoc_alloc(struct regset *regs, void *data, mandocmsg msg)
 {
 	struct mdoc	*p;
 
@@ -197,7 +194,6 @@ mdoc_alloc(struct regset *regs, void *data,
 
 	p->msg = msg;
 	p->data = data;
-	p->pflags = pflags;
 	p->regs = regs;
 
 	mdoc_hash_init();
@@ -214,12 +210,35 @@ int
 mdoc_endparse(struct mdoc *m)
 {
 
-	if (MDOC_HALT & m->flags)
-		return(0);
-	else if (mdoc_macroend(m))
+	assert( ! (MDOC_HALT & m->flags));
+	if (mdoc_macroend(m))
 		return(1);
 	m->flags |= MDOC_HALT;
 	return(0);
+}
+
+int
+mdoc_addspan(struct mdoc *m, const struct tbl_span *sp)
+{
+	struct mdoc_node *n;
+
+	assert( ! (MDOC_HALT & m->flags));
+
+	/* No text before an initial macro. */
+
+	if (SEC_NONE == m->lastnamed) {
+		mdoc_pmsg(m, sp->line, 0, MANDOCERR_NOTEXT);
+		return(1);
+	}
+
+	n = node_alloc(m, sp->line, 0, MDOC_MAX, MDOC_TBL);
+	n->span = sp;
+
+	if ( ! node_append(m, n))
+		return(0);
+
+	m->next = MDOC_NEXT_SIBLING;
+	return(1);
 }
 
 
@@ -231,8 +250,7 @@ int
 mdoc_parseln(struct mdoc *m, int ln, char *buf, int offs)
 {
 
-	if (MDOC_HALT & m->flags)
-		return(0);
+	assert( ! (MDOC_HALT & m->flags));
 
 	m->flags |= MDOC_NEWLINE;
 
@@ -278,15 +296,18 @@ mdoc_macro(MACRO_PROT_ARGS)
 	/* If we're in the body, deny prologue calls. */
 
 	if (MDOC_PROLOGUE & mdoc_macros[tok].flags && 
-			MDOC_PBODY & m->flags)
-		return(mdoc_pmsg(m, line, ppos, MANDOCERR_BADBODY));
+			MDOC_PBODY & m->flags) {
+		mdoc_pmsg(m, line, ppos, MANDOCERR_BADBODY);
+		return(1);
+	}
 
 	/* If we're in the prologue, deny "body" macros.  */
 
 	if ( ! (MDOC_PROLOGUE & mdoc_macros[tok].flags) && 
 			! (MDOC_PBODY & m->flags)) {
-		if ( ! mdoc_pmsg(m, line, ppos, MANDOCERR_BADPROLOG))
-			return(0);
+		mdoc_pmsg(m, line, ppos, MANDOCERR_BADPROLOG);
+		if (NULL == m->meta.msec)
+			m->meta.msec = mandoc_strdup("1");
 		if (NULL == m->meta.title)
 			m->meta.title = mandoc_strdup("UNKNOWN");
 		if (NULL == m->meta.vol)
@@ -327,9 +348,24 @@ node_append(struct mdoc *mdoc, struct mdoc_node *p)
 
 	p->parent->nchild++;
 
+	/*
+	 * Copy over the normalised-data pointer of our parent.  Not
+	 * everybody has one, but copying a null pointer is fine.
+	 */
+
+	switch (p->type) {
+	case (MDOC_BODY):
+		/* FALLTHROUGH */
+	case (MDOC_TAIL):
+		/* FALLTHROUGH */
+	case (MDOC_HEAD):
+		p->norm = p->parent->norm;
+		break;
+	default:
+		break;
+	}
+
 	if ( ! mdoc_valid_pre(mdoc, p))
-		return(0);
-	if ( ! mdoc_action_pre(mdoc, p))
 		return(0);
 
 	switch (p->type) {
@@ -354,10 +390,10 @@ node_append(struct mdoc *mdoc, struct mdoc_node *p)
 	mdoc->last = p;
 
 	switch (p->type) {
+	case (MDOC_TBL):
+		/* FALLTHROUGH */
 	case (MDOC_TEXT):
 		if ( ! mdoc_valid_post(mdoc))
-			return(0);
-		if ( ! mdoc_action_post(mdoc))
 			return(0);
 		break;
 	default:
@@ -463,6 +499,21 @@ mdoc_block_alloc(struct mdoc *m, int line, int pos,
 	p->args = args;
 	if (p->args)
 		(args->refcnt)++;
+
+	switch (tok) {
+	case (MDOC_Bd):
+		/* FALLTHROUGH */
+	case (MDOC_Bf):
+		/* FALLTHROUGH */
+	case (MDOC_Bl):
+		/* FALLTHROUGH */
+	case (MDOC_Rs):
+		p->norm = mandoc_calloc(1, sizeof(union mdoc_data));
+		break;
+	default:
+		break;
+	}
+
 	if ( ! node_append(m, p))
 		return(0);
 	m->next = MDOC_NEXT_CHILD;
@@ -480,12 +531,20 @@ mdoc_elem_alloc(struct mdoc *m, int line, int pos,
 	p->args = args;
 	if (p->args)
 		(args->refcnt)++;
+
+	switch (tok) {
+	case (MDOC_An):
+		p->norm = mandoc_calloc(1, sizeof(union mdoc_data));
+		break;
+	default:
+		break;
+	}
+
 	if ( ! node_append(m, p))
 		return(0);
 	m->next = MDOC_NEXT_CHILD;
 	return(1);
 }
-
 
 int
 mdoc_word_alloc(struct mdoc *m, int line, int pos, const char *p)
@@ -514,22 +573,8 @@ static void
 mdoc_node_free(struct mdoc_node *p)
 {
 
-	/*
-	 * XXX: if these end up being problematic in terms of memory
-	 * management and dereferencing freed blocks, then make them
-	 * into reference-counted double-pointers.
-	 */
-
-	if (MDOC_Bd == p->tok && MDOC_BLOCK == p->type)
-		if (p->data.Bd)
-			free(p->data.Bd);
-	if (MDOC_Bl == p->tok && MDOC_BLOCK == p->type)
-		if (p->data.Bl)
-			free(p->data.Bl);
-	if (MDOC_Bf == p->tok && MDOC_HEAD == p->type)
-		if (p->data.Bf)
-			free(p->data.Bf);
-
+	if (MDOC_BLOCK == p->type || MDOC_ELEM == p->type)
+		free(p->norm);
 	if (p->string)
 		free(p->string);
 	if (p->args)
@@ -555,6 +600,8 @@ mdoc_node_unlink(struct mdoc *m, struct mdoc_node *n)
 		n->parent->nchild--;
 		if (n->parent->child == n)
 			n->parent->child = n->prev ? n->prev : n->next;
+		if (n->parent->last == n)
+			n->parent->last = n->prev ? n->prev : NULL;
 	}
 
 	/* Adjust parse point, if applicable. */
@@ -603,13 +650,17 @@ mdoc_ptext(struct mdoc *m, int line, char *buf, int offs)
 
 	if ('\\' == buf[offs] && 
 			'.' == buf[offs + 1] && 
-			'"' == buf[offs + 2])
-		return(mdoc_pmsg(m, line, offs, MANDOCERR_BADCOMMENT));
+			'"' == buf[offs + 2]) {
+		mdoc_pmsg(m, line, offs, MANDOCERR_BADCOMMENT);
+		return(1);
+	}
 
 	/* No text before an initial macro. */
 
-	if (SEC_NONE == m->lastnamed)
-		return(mdoc_pmsg(m, line, offs, MANDOCERR_NOTEXT));
+	if (SEC_NONE == m->lastnamed) {
+		mdoc_pmsg(m, line, offs, MANDOCERR_NOTEXT);
+		return(1);
+	}
 
 	assert(m->last);
 	n = m->last;
@@ -622,7 +673,7 @@ mdoc_ptext(struct mdoc *m, int line, char *buf, int offs)
 	 */
 
 	if (MDOC_Bl == n->tok && MDOC_BODY == n->type &&
-			LIST_column == n->data.Bl->type) {
+			LIST_column == n->norm->Bl.type) {
 		/* `Bl' is open without any children. */
 		m->flags |= MDOC_FREECOL;
 		return(mdoc_macro(m, MDOC_It, line, offs, &offs, buf));
@@ -631,7 +682,7 @@ mdoc_ptext(struct mdoc *m, int line, char *buf, int offs)
 	if (MDOC_It == n->tok && MDOC_BLOCK == n->type &&
 			NULL != n->parent &&
 			MDOC_Bl == n->parent->tok &&
-			LIST_column == n->parent->data.Bl->type) {
+			LIST_column == n->parent->norm->Bl.type) {
 		/* `Bl' has block-level `It' children. */
 		m->flags |= MDOC_FREECOL;
 		return(mdoc_macro(m, MDOC_It, line, offs, &offs, buf));
@@ -684,19 +735,17 @@ mdoc_ptext(struct mdoc *m, int line, char *buf, int offs)
 	*end = '\0';
 
 	if (ws)
-		if ( ! mdoc_pmsg(m, line, (int)(ws-buf), MANDOCERR_EOLNSPACE))
-			return(0);
+		mdoc_pmsg(m, line, (int)(ws-buf), MANDOCERR_EOLNSPACE);
 
 	if ('\0' == buf[offs] && ! (MDOC_LITERAL & m->flags)) {
-		if ( ! mdoc_pmsg(m, line, (int)(c-buf), MANDOCERR_NOBLANKLN))
-			return(0);
+		mdoc_pmsg(m, line, (int)(c-buf), MANDOCERR_NOBLANKLN);
 
 		/*
-		 * Insert a `Pp' in the case of a blank line.  Technically,
+		 * Insert a `sp' in the case of a blank line.  Technically,
 		 * blank lines aren't allowed, but enough manuals assume this
 		 * behaviour that we want to work around it.
 		 */
-		if ( ! mdoc_elem_alloc(m, line, offs, MDOC_Pp, NULL))
+		if ( ! mdoc_elem_alloc(m, line, offs, MDOC_sp, NULL))
 			return(0);
 
 		m->next = MDOC_NEXT_SIBLING;
@@ -721,21 +770,6 @@ mdoc_ptext(struct mdoc *m, int line, char *buf, int offs)
 		m->last->flags |= MDOC_EOS;
 
 	return(1);
-}
-
-
-static int
-macrowarn(struct mdoc *m, int ln, const char *buf, int offs)
-{
-	int		 rc;
-
-	rc = mdoc_vmsg(m, MANDOCERR_MACRO, ln, offs, 
-			"unknown macro: %s%s", 
-			buf, strlen(buf) > 3 ? "..." : "");
-
-	/* FIXME: logic should be in driver. */
-	/* FIXME: broken, will error out and not omit a message. */
-	return(MDOC_IGN_MACRO & m->pflags ? rc : 0);
 }
 
 
@@ -773,37 +807,18 @@ mdoc_pmacro(struct mdoc *m, int ln, char *buf, int offs)
 	sv = i;
 
 	/* 
-	 * Copy the first word into a nil-terminated buffer.  Stop
-	 * copying when a tab, space, or eoln is encountered.
+	 * Copy the first word into a nil-terminated buffer.
+	 * Stop copying when a tab, space, or eoln is encountered.
 	 */
 
-	for (j = 0; j < 4; j++, i++) {
-		if ('\0' == (mac[j] = buf[i]))
-			break;
-		else if (' ' == buf[i] || '\t' == buf[i])
-			break;
-
-		/* Check for invalid characters. */
-		/* TODO: remove me, already done in main.c. */
-
-		if (isgraph((u_char)buf[i]))
-			continue;
-		if ( ! mdoc_pmsg(m, ln, i, MANDOCERR_BADCHAR))
-			return(0);
-		i--;
-	}
-
+	j = 0;
+	while (j < 4 && '\0' != buf[i] && ' ' != buf[i] && '\t' != buf[i])
+		mac[j++] = buf[i++];
 	mac[j] = '\0';
 
-	if (j == 4 || j < 2) {
-		if ( ! macrowarn(m, ln, mac, sv))
-			goto err;
-		return(1);
-	} 
-	
-	if (MDOC_MAX == (tok = mdoc_hash_find(mac))) {
-		if ( ! macrowarn(m, ln, mac, sv))
-			goto err;
+	tok = (j > 1 || j < 4) ? mdoc_hash_find(mac) : MDOC_MAX;
+	if (MDOC_MAX == tok) {
+		mdoc_vmsg(m, MANDOCERR_MACRO, ln, sv, "%s", buf + sv - 1);
 		return(1);
 	}
 
@@ -823,8 +838,7 @@ mdoc_pmacro(struct mdoc *m, int ln, char *buf, int offs)
 	 */
 
 	if ('\0' == buf[i] && ' ' == buf[i - 1])
-		if ( ! mdoc_pmsg(m, ln, i - 1, MANDOCERR_EOLNSPACE))
-			goto err;
+		mdoc_pmsg(m, ln, i - 1, MANDOCERR_EOLNSPACE);
 
 	/*
 	 * If an initial macro or a list invocation, divert directly
@@ -846,7 +860,7 @@ mdoc_pmacro(struct mdoc *m, int ln, char *buf, int offs)
 	 */
 
 	if (MDOC_Bl == n->tok && MDOC_BODY == n->type &&
-			LIST_column == n->data.Bl->type) {
+			LIST_column == n->norm->Bl.type) {
 		m->flags |= MDOC_FREECOL;
 		if ( ! mdoc_macro(m, MDOC_It, ln, sv, &sv, buf))
 			goto err;
@@ -862,7 +876,7 @@ mdoc_pmacro(struct mdoc *m, int ln, char *buf, int offs)
 	if (MDOC_It == n->tok && MDOC_BLOCK == n->type &&
 			NULL != n->parent &&
 			MDOC_Bl == n->parent->tok &&
-			LIST_column == n->parent->data.Bl->type) {
+			LIST_column == n->parent->norm->Bl.type) {
 		m->flags |= MDOC_FREECOL;
 		if ( ! mdoc_macro(m, MDOC_It, ln, sv, &sv, buf)) 
 			goto err;

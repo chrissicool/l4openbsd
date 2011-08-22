@@ -1,4 +1,4 @@
-/*	$OpenBSD: aac.c,v 1.48 2010/08/07 03:50:01 krw Exp $	*/
+/*	$OpenBSD: aac.c,v 1.51 2010/10/12 00:53:32 krw Exp $	*/
 
 /*-
  * Copyright (c) 2000 Michael Smith
@@ -1048,7 +1048,7 @@ aac_bio_command(struct aac_softc *sc, struct aac_command **cmp)
 			br->Flags = 0;
 			fib->Header.Size += sizeof(struct aac_blockread64);
 			cm->cm_flags |= AAC_CMD_DATAOUT;
-			(struct aac_sg_table64 *)cm->cm_sgtable = &br->SgMap64;
+			cm->cm_sgtable = (struct aac_sg_table *)&br->SgMap64;
 		} else {
 			struct aac_blockwrite64 *bw;
 			bw = (struct aac_blockwrite64 *)&fib->data[0];
@@ -1060,7 +1060,7 @@ aac_bio_command(struct aac_softc *sc, struct aac_command **cmp)
 			bw->Flags = 0;
 			fib->Header.Size += sizeof(struct aac_blockwrite64);
 			cm->cm_flags |= AAC_CMD_DATAIN;
-			(struct aac_sg_table64 *)cm->cm_sgtable = &bw->SgMap64;
+			cm->cm_sgtable = (struct aac_sg_table *)&bw->SgMap64;
 		}
 	}
 
@@ -1547,7 +1547,8 @@ aac_init(struct aac_softc *sc)
 	sc->aac_common_busaddr = sc->aac_common_map->dm_segs[0].ds_addr;
 
 	if (sc->aac_common_busaddr < 8192) {
-		(uint8_t *)sc->aac_common += 8192;
+		sc->aac_common = (struct aac_common *)
+		    ((uint8_t *)sc->aac_common + 8192);
 		sc->aac_common_busaddr += 8192;
 	}
     
@@ -2429,7 +2430,7 @@ aac_internal_cache_cmd(struct scsi_xfer *xs)
 	case REQUEST_SENSE:
 		AAC_DPRINTF(AAC_D_CMD, ("REQUEST SENSE tgt %d ", target));
 		bzero(&sd, sizeof sd);
-		sd.error_code = 0x70;
+		sd.error_code = SSD_ERRCODE_CURRENT;
 		sd.segment = 0;
 		sd.flags = SKEY_NO_SENSE;
 		aac_enc32(sd.info, 0);
@@ -2447,6 +2448,7 @@ aac_internal_cache_cmd(struct scsi_xfer *xs)
 		inq.version = 2;
 		inq.response_format = 2;
 		inq.additional_length = 32;
+		inq.flags |= SID_CmdQue;
 		strlcpy(inq.vendor, "Adaptec", sizeof inq.vendor);
 		snprintf(inq.product, sizeof inq.product, "Container #%02d",
 		    target);

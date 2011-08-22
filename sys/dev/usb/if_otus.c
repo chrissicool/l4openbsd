@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_otus.c,v 1.17 2010/04/20 22:05:43 tedu Exp $	*/
+/*	$OpenBSD: if_otus.c,v 1.30 2011/02/10 17:26:40 jakemsr Exp $	*/
 
 /*-
  * Copyright (c) 2009 Damien Bergamini <damien.bergamini@free.fr>
@@ -16,9 +16,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*-
+/*
  * Driver for Atheros AR9001U chipset.
- * http://www.atheros.com/pt/bulletins/AR9001USBBulletin.pdf
  */
 
 #include "bpfilter.h"
@@ -105,6 +104,7 @@ static const struct usb_devno otus_devs[] = {
 int		otus_match(struct device *, void *, void *);
 void		otus_attach(struct device *, struct device *, void *);
 int		otus_detach(struct device *, int);
+int		otus_activate(struct device *, int);
 void		otus_attachhook(void *);
 void		otus_get_chanlist(struct otus_softc *);
 int		otus_load_firmware(struct otus_softc *, const char *,
@@ -179,7 +179,8 @@ struct cfdriver otus_cd = {
 };
 
 const struct cfattach otus_ca = {
-	sizeof (struct otus_softc), otus_match, otus_attach, otus_detach
+	sizeof (struct otus_softc), otus_match, otus_attach, otus_detach,
+	    otus_activate
 };
 
 int
@@ -203,7 +204,7 @@ otus_attach(struct device *parent, struct device *self, void *aux)
 
 	sc->sc_udev = uaa->device;
 
-	usb_init_task(&sc->sc_task, otus_task, sc);
+	usb_init_task(&sc->sc_task, otus_task, sc, USB_TASK_TYPE_GENERIC);
 	timeout_set(&sc->scan_to, otus_next_scan, sc);
 	timeout_set(&sc->calib_to, otus_calibrate_to, sc);
 
@@ -233,8 +234,6 @@ otus_attach(struct device *parent, struct device *self, void *aux)
 		mountroothook_establish(otus_attachhook, sc);
 	else
 		otus_attachhook(sc);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev, &sc->sc_dev);
 }
 
 int
@@ -244,16 +243,19 @@ otus_detach(struct device *self, int flags)
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
 	int s;
 
-	s = splnet();
+	s = splusb();
+
+	if (timeout_initialized(&sc->scan_to))
+		timeout_del(&sc->scan_to);
+	if (timeout_initialized(&sc->calib_to))
+		timeout_del(&sc->calib_to);
 
 	/* Wait for all queued asynchronous commands to complete. */
-	while (sc->cmdq.queued > 0)
-		tsleep(&sc->cmdq, 0, "cmdq", 0);
+	usb_rem_wait_task(sc->sc_udev, &sc->sc_task);
 
-	timeout_del(&sc->scan_to);
-	timeout_del(&sc->calib_to);
+	usbd_ref_wait(sc->sc_udev);
 
-	if (ifp->if_flags != 0) {	/* if_attach() has been called. */
+	if (ifp->if_softc != NULL) {
 		ifp->if_flags &= ~(IFF_RUNNING | IFF_OACTIVE);
 		ieee80211_ifdetach(ifp);
 		if_detach(ifp);
@@ -263,7 +265,22 @@ otus_detach(struct device *self, int flags)
 
 	splx(s);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev, &sc->sc_dev);
+	return 0;
+}
+
+int
+otus_activate(struct device *self, int act)
+{
+	struct otus_softc *sc = (struct otus_softc *)self;
+
+	switch (act) {
+	case DVACT_ACTIVATE:
+		break;
+
+	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
+		break;
+	}
 
 	return 0;
 }
@@ -366,7 +383,6 @@ otus_attachhook(void *xsc)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = otus_init;
 	ifp->if_ioctl = otus_ioctl;
 	ifp->if_start = otus_start;
 	ifp->if_watchdog = otus_watchdog;
@@ -712,8 +728,15 @@ otus_next_scan(void *arg)
 {
 	struct otus_softc *sc = arg;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return;
+
+	usbd_ref_incr(sc->sc_udev);
+
 	if (sc->sc_ic.ic_state == IEEE80211_S_SCAN)
 		ieee80211_next_scan(&sc->sc_ic.ic_if);
+
+	usbd_ref_decr(sc->sc_udev);
 }
 
 void
@@ -735,7 +758,6 @@ otus_task(void *arg)
 		ring->queued--;
 		ring->next = (ring->next + 1) % OTUS_HOST_CMD_RING_COUNT;
 	}
-	wakeup(ring);
 	splx(s);
 }
 
@@ -789,7 +811,8 @@ otus_newstate_cb(struct otus_softc *sc, void *arg)
 
 	case IEEE80211_S_SCAN:
 		(void)otus_set_chan(sc, ic->ic_bss->ni_chan, 0);
-		timeout_add_msec(&sc->scan_to, 200);
+		if (!usbd_is_dying(sc->sc_udev))
+			timeout_add_msec(&sc->scan_to, 200);
 		break;
 
 	case IEEE80211_S_AUTH:
@@ -810,7 +833,8 @@ otus_newstate_cb(struct otus_softc *sc, void *arg)
 			otus_newassoc(ic, ni, 1);
 
 			/* Start calibration timer. */
-			timeout_add_sec(&sc->calib_to, 1);
+			if (!usbd_is_dying(sc->sc_udev))
+				timeout_add_sec(&sc->calib_to, 1);
 		}
 		break;
 	}
@@ -1260,16 +1284,18 @@ otus_txeof(usbd_xfer_handle xfer, usbd_private_handle priv, usbd_status status)
 	struct ifnet *ifp = &ic->ic_if;
 	int s;
 
+	s = splnet();
+	sc->tx_queued--;
 	if (__predict_false(status != USBD_NORMAL_COMPLETION)) {
 		DPRINTF(("TX status=%d\n", status));
 		if (status == USBD_STALLED)
 			usbd_clear_endpoint_stall_async(sc->data_tx_pipe);
 		ifp->if_oerrors++;
+		splx(s);
 		return;
 	}
-	s = splnet();
-	sc->tx_queued--;
 	sc->sc_tx_timer = 0;
+	ifp->if_opackets++;
 	ifp->if_flags &= ~IFF_OACTIVE;
 	otus_start(ifp);
 	splx(s);
@@ -1380,7 +1406,6 @@ otus_tx(struct otus_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 	xferlen = sizeof (*head) + m->m_pkthdr.len;
 	m_copydata(m, 0, m->m_pkthdr.len, (caddr_t)&head[1]);
 	m_freem(m);
-	ieee80211_release_node(ic, ni);
 
 	DPRINTFN(5, ("tx queued=%d len=%d mac=0x%04x phy=0x%08x rate=%d\n",
 	    sc->tx_queued, head->len, head->macctl, head->phyctl,
@@ -1390,6 +1415,8 @@ otus_tx(struct otus_softc *sc, struct mbuf *m, struct ieee80211_node *ni)
 	error = usbd_transfer(data->xfer);
 	if (__predict_false(error != USBD_IN_PROGRESS && error != 0))
 		return error;
+
+	ieee80211_release_node(ic, ni);
 
 	sc->tx_queued++;
 	sc->tx_cur = (sc->tx_cur + 1) % OTUS_TX_DATA_LIST_COUNT;
@@ -1476,6 +1503,11 @@ otus_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	struct ifreq *ifr;
 	int s, error = 0;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return ENXIO;
+
+	usbd_ref_incr(sc->sc_udev);
+
 	s = splnet();
 
 	switch (cmd) {
@@ -1532,6 +1564,9 @@ otus_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	}
 
 	splx(s);
+
+	usbd_ref_decr(sc->sc_udev);
+
 	return error;
 }
 
@@ -2153,12 +2188,20 @@ otus_calibrate_to(void *arg)
 	struct ieee80211_node *ni;
 	int s;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return;
+
+	usbd_ref_incr(sc->sc_udev);
+
 	s = splnet();
 	ni = ic->ic_bss;
 	ieee80211_amrr_choose(&sc->amrr, ni, &((struct otus_node *)ni)->amn);
 	splx(s);
 
-	timeout_add_sec(&sc->calib_to, 1);
+	if (!usbd_is_dying(sc->sc_udev))
+		timeout_add_sec(&sc->calib_to, 1);
+
+	usbd_ref_decr(sc->sc_udev);
 }
 
 int
@@ -2306,8 +2349,7 @@ otus_stop(struct ifnet *ifp)
 	s = splusb();
 	ieee80211_new_state(ic, IEEE80211_S_INIT, -1);
 	/* Wait for all queued asynchronous commands to complete. */
-	while (sc->cmdq.queued > 0)
-		tsleep(&sc->cmdq, 0, "cmdq", 0);
+	usb_wait_task(sc->sc_udev, &sc->sc_task);
 	splx(s);
 
 	/* Stop Rx. */

@@ -1,4 +1,4 @@
-/*	$OpenBSD: ikeca.c,v 1.9 2010/06/23 19:28:18 jsg Exp $	*/
+/*	$OpenBSD: ikeca.c,v 1.19 2010/10/08 16:15:22 reyk Exp $	*/
 /*	$vantronix: ikeca.c,v 1.13 2010/06/03 15:52:52 reyk Exp $	*/
 
 /*
@@ -52,29 +52,29 @@ struct ca {
 	char		 passfile[PATH_MAX];
 	char		 sslcnf[PATH_MAX];
 	char		 extcnf[PATH_MAX];
+	char		 batch[PATH_MAX];
 	char		*caname;
 };
 
-struct ca	*ca_setup(char *, int);
-int		 ca_create(struct ca *);
-int		 ca_delete(struct ca *);
-int		 ca_delkey(struct ca *, char *);
-int		 ca_sign(struct ca *, char *, int);
-int		 ca_request(char *, char *, char *);
-int		 ca_certificate(struct ca *, char *, int);
-int		 ca_cert_install(struct ca *, char *);
-int		 ca_key_install(struct ca *, char *);
-int		 ca_key_create(struct ca *, char *);
-int		 ca_key_delete(struct ca *, char *);
-int		 ca_key_import(struct ca *, char *, char *);
-int		 ca_newpass(char *);
-int		 ca_export(struct ca *, char *, char *);
-int		 ca_revoke(struct ca *, char *);
-int		 ca_install(struct ca *);
-int		 ca_show_certs(struct ca *);
+struct {
+	char	*dir;
+	mode_t	 mode;
+} hier[] = {
+	{ "",		0755 },
+	{ "/ca",	0755 },
+	{ "/certs",	0755 },
+	{ "/crls",	0755 },
+	{ "/export",	0755 },
+	{ "/private",	0700 }
+};
+
+int		 ca_sign(struct ca *, char *, int, char *);
+int		 ca_request(struct ca *, char *);
+int		 ca_newpass(char *, char *);
 char *		 ca_readpass(char *, size_t *);
 int		 fcopy(char *, char *, mode_t);
 int		 rm_dir(char *);
+int		 ca_hier(char *);
 
 int
 ca_delete(struct ca *ca)
@@ -154,15 +154,17 @@ ca_delkey(struct ca *ca, char *keyname)
 }
 
 int
-ca_request(char *sslpath, char *sslcnf, char *keyname)
+ca_request(struct ca *ca, char *keyname)
 {
 	char		cmd[PATH_MAX * 2];
 	char		path[PATH_MAX];
 
-	snprintf(path, sizeof(path), "%s/private/%s.csr", sslpath, keyname);
-	snprintf(cmd, sizeof(cmd), "env CERT_CN=%s %s req -new"
+	snprintf(path, sizeof(path), "%s/private/%s.csr", ca->sslpath, keyname);
+	snprintf(cmd, sizeof(cmd), "env CERT_CN=%s %s req %s-new"
 	    " -key %s/private/%s.key -out %s -config %s",
-	    keyname, PATH_OPENSSL, sslpath, keyname, path, sslcnf);
+	    keyname, PATH_OPENSSL, ca->batch, ca->sslpath, keyname,
+	    path, ca->sslcnf);
+
 	system(cmd);
 	chmod(path, 0600);
 
@@ -170,7 +172,7 @@ ca_request(char *sslpath, char *sslcnf, char *keyname)
 }
 
 int
-ca_sign(struct ca *ca, char *keyname, int type)
+ca_sign(struct ca *ca, char *keyname, int type, char *envargs)
 {
 	char		cmd[PATH_MAX * 2];
 	char		hostname[MAXHOSTNAMELEN];
@@ -178,27 +180,30 @@ ca_sign(struct ca *ca, char *keyname, int type)
 
 	strlcpy(name, keyname, sizeof(name));
 
+	if (envargs == NULL)
+		envargs = "";
+
 	if (type == HOST_IPADDR) {
-		snprintf(cmd, sizeof(cmd), "env CERTIP=%s %s x509 -req"
+		snprintf(cmd, sizeof(cmd), "env CERTIP=%s%s %s x509 -req"
 		    " -days 365 -in %s/private/%s.csr"
 		    " -CA %s/ca.crt -CAkey %s/private/ca.key -CAcreateserial"
 		    " -extfile %s -extensions x509v3_IPAddr -out %s/%s.crt"
-		    " -passin file:%s", name, PATH_OPENSSL, ca->sslpath,
-		    keyname, ca->sslpath, ca->sslpath, ca->extcnf, ca->sslpath,
-		    keyname, ca->passfile);
+		    " -passin file:%s", name, envargs, PATH_OPENSSL,
+		    ca->sslpath, keyname, ca->sslpath, ca->sslpath,
+		    ca->extcnf, ca->sslpath, keyname, ca->passfile);
 	} else if (type == HOST_FQDN) {
 		if (!strcmp(keyname, "local")) {
 			if (gethostname(hostname, sizeof(hostname)))
 				err(1, "gethostname");
 			strlcpy(name, hostname, sizeof(name));
 		}
-		snprintf(cmd, sizeof(cmd), "env CERTFQDN=%s %s x509 -req"
+		snprintf(cmd, sizeof(cmd), "env CERTFQDN=%s%s %s x509 -req"
 		    " -days 365 -in %s/private/%s.csr"
 		    " -CA %s/ca.crt -CAkey %s/private/ca.key -CAcreateserial"
 		    " -extfile %s -extensions x509v3_FQDN -out %s/%s.crt"
-		    " -passin file:%s", name, PATH_OPENSSL, ca->sslpath,
-		    keyname, ca->sslpath, ca->sslpath, ca->extcnf, ca->sslpath,
-		    keyname, ca->passfile);
+		    " -passin file:%s", name, envargs, PATH_OPENSSL,
+		    ca->sslpath, keyname, ca->sslpath, ca->sslpath,
+		    ca->extcnf, ca->sslpath, keyname, ca->passfile);
 	} else 
 	    err(1, "unknown host type %d", type);
 
@@ -208,22 +213,38 @@ ca_sign(struct ca *ca, char *keyname, int type)
 }
 
 int
-ca_certificate(struct ca *ca, char *keyname, int type)
+ca_certificate(struct ca *ca, char *keyname, int type, int action)
 {
+	char	*envargs = "";
+
+	switch (action) {
+	case CA_SERVER:
+		envargs = " EXTCERTUSAGE=serverAuth NSCERTTYPE=server"
+		    " CERTUSAGE=digitalSignature,keyEncipherment";
+		break;
+	case CA_CLIENT:
+		envargs = " EXTCERTUSAGE=clientAuth NSCERTTYPE=client"
+		    " CERTUSAGE=digitalSignature,keyAgreement";
+		break;
+	default:
+		break;
+	}
+
 	ca_key_create(ca, keyname);
-	ca_request(ca->sslpath, ca->sslcnf, keyname);
-	ca_sign(ca, keyname, type);
+	ca_request(ca, keyname);
+	ca_sign(ca, keyname, type, envargs);
 	
 	return (0);
 }
 
 int
-ca_key_install(struct ca *ca, char *keyname)
+ca_key_install(struct ca *ca, char *keyname, char *dir)
 {
-	struct stat	st;
-	char		cmd[PATH_MAX * 2];
-	char		src[PATH_MAX];
-	char		dst[PATH_MAX];
+	struct stat	 st;
+	char		 cmd[PATH_MAX * 2];
+	char		 src[PATH_MAX];
+	char		 dst[PATH_MAX];
+	char		*p = NULL;
 
 	snprintf(src, sizeof(src), "%s/private/%s.key", ca->sslpath, keyname);
 	if (stat(src, &st) == -1) {
@@ -234,41 +255,61 @@ ca_key_install(struct ca *ca, char *keyname)
 		return (1);
 	}
 
-	snprintf(dst, sizeof(dst), "%s/private/local.key", KEYBASE);
+	if (dir == NULL)
+		p = dir = strdup(KEYBASE);
+
+	ca_hier(dir);
+
+	snprintf(dst, sizeof(dst), "%s/private/local.key", dir);
 	fcopy(src, dst, 0600);
 
 	snprintf(cmd, sizeof(cmd), "%s rsa -out %s/local.pub"
-	    " -in %s/private/local.key -pubout", PATH_OPENSSL, KEYBASE,
-	    KEYBASE);
+	    " -in %s/private/local.key -pubout", PATH_OPENSSL, dir, dir);
 	system(cmd);
 
+	free(p);
 
 	return (0);
 }
 
 int
-ca_cert_install(struct ca *ca, char *keyname)
+ca_cert_install(struct ca *ca, char *keyname, char *dir)
 {
-	char		src[PATH_MAX];
-	char		dst[PATH_MAX];
-	int		r;
+	char		 src[PATH_MAX];
+	char		 dst[PATH_MAX];
+	int		 r;
+	char		*p = NULL;
 
-	if ((r = ca_key_install(ca, keyname)) != 0)
+	if (dir == NULL)
+		p = dir = strdup(KEYBASE);
+
+	ca_hier(dir);
+
+	if ((r = ca_key_install(ca, keyname, dir)) != 0) {
+		free(dir);
 		return (r);
+	}
 
 	snprintf(src, sizeof(src), "%s/%s.crt", ca->sslpath, keyname);
-	snprintf(dst, sizeof(dst), "%s/certs/%s.crt", KEYBASE, keyname);
+	snprintf(dst, sizeof(dst), "%s/certs/%s.crt", dir, keyname);
 	fcopy(src, dst, 0644);
+
+	free(p);
 
 	return (0);
 }
 
 int
-ca_newpass(char *passfile)
+ca_newpass(char *passfile, char *password)
 {
 	FILE	*f;
 	char	*pass;
 	char	 prev[_PASSWORD_LEN + 1];
+
+	if (password != NULL) {
+		pass = password;
+		goto done;
+	}
 
 	pass = getpass("CA passphrase:");
 	if (pass == NULL || *pass == '\0')
@@ -279,6 +320,7 @@ ca_newpass(char *passfile)
 	if (pass == NULL || strcmp(prev, pass) != 0)
 		errx(1, "passphrase does not match!");
 
+ done:
 	if ((f = fopen(passfile, "wb")) == NULL)
 		err(1, "could not open passfile %s", passfile);
 	chmod(passfile, 0600);
@@ -304,10 +346,10 @@ ca_create(struct ca *ca)
 	chmod(path, 0600);
 
 	snprintf(path, sizeof(path), "%s/private/ca.csr", ca->sslpath);
-	snprintf(cmd, sizeof(cmd), "env CERT_CN='VPN CA' %s req -new"
+	snprintf(cmd, sizeof(cmd), "env CERT_CN='VPN CA' %s req %s-new"
 	    " -key %s/private/ca.key"
-	    " -config %s -out %s -passin file:%s",
-	    PATH_OPENSSL, ca->sslpath, ca->sslcnf, path, ca->passfile);
+	    " -config %s -out %s -passin file:%s", PATH_OPENSSL,
+	    ca->batch, ca->sslpath, ca->sslcnf, path, ca->passfile);
 	system(cmd);
 	chmod(path, 0600);
 
@@ -318,15 +360,19 @@ ca_create(struct ca *ca)
 	    ca->passfile);
 	system(cmd);
 
+	/* Create the CRL revocation list */
+	ca_revoke(ca, NULL);
+
 	return (0);
 }
 
 int
-ca_install(struct ca *ca)
+ca_install(struct ca *ca, char *dir)
 {
-	struct stat	st;
-	char		src[PATH_MAX];
-	char		dst[PATH_MAX];
+	struct stat	 st;
+	char		 src[PATH_MAX];
+	char		 dst[PATH_MAX];
+	char		*p = NULL;
 	
 	snprintf(src, sizeof(src), "%s/ca.crt", ca->sslpath);
 	if (stat(src, &st) == -1) {
@@ -334,30 +380,50 @@ ca_install(struct ca *ca)
 		return (1);
 	}
 
-	snprintf(dst, sizeof(dst), "%s/ca/ca.crt", KEYBASE);
+	if (dir == NULL)
+		p = dir = strdup(KEYBASE);
+
+	ca_hier(dir);
+
+	snprintf(dst, sizeof(dst), "%s/ca/ca.crt", dir);
 	if (fcopy(src, dst, 0644) == 0)
 		printf("certificate for CA '%s' installed into %s\n",
 		    ca->caname, dst);
 
 	snprintf(src, sizeof(src), "%s/ca.crl", ca->sslpath);
 	if (stat(src, &st) == 0) {
-		snprintf(dst, sizeof(dst), "%s/crls/ca.crl", KEYBASE);
+		snprintf(dst, sizeof(dst), "%s/crls/ca.crl", dir);
 		if (fcopy(src, dst, 0644) == 0)
 			printf("CRL for CA '%s' installed to %s\n",
 			    ca->caname, dst);
 	}
 
+	free(p);
+
 	return (0);
 }
 
 int
-ca_show_certs(struct ca *ca)
+ca_show_certs(struct ca *ca, char *name)
 {
 	DIR		*dir;
 	struct dirent	*de;
 	char		 cmd[PATH_MAX * 2];
 	char		 path[PATH_MAX];
 	char		*p;
+	struct stat	 st;
+
+	if (name != NULL) {
+		snprintf(path, sizeof(path), "%s/%s.crt",
+		    ca->sslpath, name);
+		if (stat(path, &st) != 0)
+			err(1, "could not open file %s.crt", name);
+		snprintf(cmd, sizeof(cmd), "%s x509 -text"
+		    " -in %s", PATH_OPENSSL, path);
+		system(cmd);
+		printf("\n");
+		return (0);
+	}
 
 	if ((dir = opendir(ca->sslpath)) == NULL)
 		err(1, "could not open directory %s", ca->sslpath);
@@ -442,8 +508,27 @@ rm_dir(char *path)
 	return (0);
 }
 
+
 int
-ca_export(struct ca *ca, char *keyname, char *myname)
+ca_hier(char *path)
+{
+	struct stat	 st;
+	char		 dst[PATH_MAX];
+	u_int		 i;
+
+	for (i = 0; i < nitems(hier); i++) {
+		strlcpy(dst, path, sizeof(dst));
+		strlcat(dst, hier[i].dir, sizeof(dst));
+		if (stat(dst, &st) != 0 && errno == ENOENT &&
+		    mkdir(dst, hier[i].mode) != 0)
+			err(1, "failed to create dir %s", dst);
+	}
+
+	return (0);
+}
+
+int
+ca_export(struct ca *ca, char *keyname, char *myname, char *password)
 {
 	DIR		*dexp;
 	struct dirent	*de;
@@ -459,17 +544,6 @@ ca_export(struct ca *ca, char *keyname, char *myname)
 	u_int		 i;
 	int		 fd;
 
-	struct {
-		char	*dir;
-		mode_t	 mode;
-	} exdirs[] = {
-		{ "/ca",	0755 },
-		{ "/certs",	0755 },
-		{ "/crls",	0755 },
-		{ "/export",	0755 },
-		{ "/private",	0700 }
-	};
-
 	if (keyname != NULL) {
 		if (strlcpy(oname, keyname, sizeof(oname)) >= sizeof(oname))
 			err(1, "name too long");
@@ -481,14 +555,18 @@ ca_export(struct ca *ca, char *keyname, char *myname)
 	while ((p = strchr(oname, ':')) != NULL)
 		*p = '_';
 
-	pass = getpass("Export passphrase:");
-	if (pass == NULL || *pass == '\0')
-		err(1, "password not set");
+	if (password != NULL)
+		pass = password;
+	else {
+		pass = getpass("Export passphrase:");
+		if (pass == NULL || *pass == '\0')
+			err(1, "password not set");
 
-	strlcpy(prev, pass, sizeof(prev));
-	pass = getpass("Retype export passphrase:");
-	if (pass == NULL || strcmp(prev, pass) != 0)
-		errx(1, "passphrase does not match!");
+		strlcpy(prev, pass, sizeof(prev));
+		pass = getpass("Retype export passphrase:");
+		if (pass == NULL || strcmp(prev, pass) != 0)
+			errx(1, "passphrase does not match!");
+	}
 
 	if (keyname != NULL) {
 		snprintf(cmd, sizeof(cmd), "env EXPASS=%s %s pkcs12 -export"
@@ -510,10 +588,13 @@ ca_export(struct ca *ca, char *keyname, char *myname)
 	if ((p = mkdtemp(tpl)) == NULL)
 		err(1, "could not create temp dir");
 
-	for (i = 0; i < nitems(exdirs); i++) {
+	chmod(p, 0755);
+
+	for (i = 0; i < nitems(hier); i++) {
 		strlcpy(dst, p, sizeof(dst));
-		strlcat(dst, exdirs[i].dir, sizeof(dst));
-		if (mkdir(dst, exdirs[i].mode) != 0)
+		strlcat(dst, hier[i].dir, sizeof(dst));
+		if (stat(dst, &st) != 0 && errno == ENOENT &&
+		    mkdir(dst, hier[i].mode) != 0)
 			err(1, "failed to create dir %s", dst);
 	}
 
@@ -650,11 +731,13 @@ ca_revoke(struct ca *ca, char *keyname)
 	char		*pass;
 	size_t		 len;
 
-	snprintf(path, sizeof(path), "%s/%s.crt",
-	    ca->sslpath, keyname);
-	if (stat(path, &st) != 0) {
-		warn("Problem with certificate for '%s'", keyname);
-		return (1);
+	if (keyname) {
+		snprintf(path, sizeof(path), "%s/%s.crt",
+		    ca->sslpath, keyname);
+		if (stat(path, &st) != 0) {
+			warn("Problem with certificate for '%s'", keyname);
+			return (1);
+		}
 	}
 
 	snprintf(path, sizeof(path), "%s/ikeca.passwd", ca->sslpath);
@@ -673,26 +756,28 @@ ca_revoke(struct ca *ca, char *keyname)
 			err(1, "could not access %s", path);
 	}
 
-	snprintf(cmd, sizeof(cmd), "env CADB='%s/index.txt' "
-	    " %s ca -config %s -keyfile %s/private/ca.key"
-	    " -key %s"
-	    " -cert %s/ca.crt"
-	    " -md sha1"
-	    " -revoke %s/%s.crt",
-	    ca->sslpath, PATH_OPENSSL,  ca->sslcnf, ca->sslpath, pass,
-	    ca->sslpath, ca->sslpath, keyname);
-	system(cmd);
+	if (keyname) {
+		snprintf(cmd, sizeof(cmd), "env CADB='%s/index.txt' "
+		    " %s ca %s-config %s -keyfile %s/private/ca.key"
+		    " -key %s"
+		    " -cert %s/ca.crt"
+		    " -md sha1"
+		    " -revoke %s/%s.crt",
+		    ca->sslpath, PATH_OPENSSL, ca->batch, ca->sslcnf,
+		    ca->sslpath, pass, ca->sslpath, ca->sslpath, keyname);
+		system(cmd);
+	}
 
 	snprintf(cmd, sizeof(cmd), "env CADB='%s/index.txt' "
-	    " %s ca -config %s -keyfile %s/private/ca.key"
+	    " %s ca %s-config %s -keyfile %s/private/ca.key"
 	    " -key %s"
 	    " -gencrl"
 	    " -cert %s/ca.crt"
 	    " -md sha1"
 	    " -crldays 365"
 	    " -out %s/ca.crl",
-	    ca->sslpath, PATH_OPENSSL,  ca->sslcnf, ca->sslpath, pass,
-	    ca->sslpath, ca->sslpath);
+	    ca->sslpath, PATH_OPENSSL, ca->batch, ca->sslcnf, ca->sslpath,
+	    pass, ca->sslpath, ca->sslpath);
 	system(cmd);
 
 	bzero(pass, len);
@@ -702,7 +787,7 @@ ca_revoke(struct ca *ca, char *keyname)
 }
 
 struct ca *
-ca_setup(char *caname, int create)
+ca_setup(char *caname, int create, int quiet, char *pass)
 {
 	struct stat	 st;
 	struct ca	*ca;
@@ -718,9 +803,11 @@ ca_setup(char *caname, int create)
 	ca->caname = strdup(caname);
 	strlcpy(ca->sslpath, "/etc/ssl/", sizeof(ca->sslpath));
 	strlcat(ca->sslpath, caname, sizeof(ca->sslpath));
-
 	strlcpy(ca->passfile, ca->sslpath, sizeof(ca->passfile));
 	strlcat(ca->passfile, "/ikeca.passwd", sizeof(ca->passfile));
+
+	if (quiet)
+		strlcpy(ca->batch, "-batch ", sizeof(ca->batch));
 
 	if (stat(IKECA_CNF, &st) == 0) {
 		strlcpy(ca->extcnf, IKECA_CNF, sizeof(ca->extcnf));
@@ -743,8 +830,8 @@ ca_setup(char *caname, int create)
 	if (mkdir(path, 0700) == -1 && errno != EEXIST)
 		err(1, "failed to create dir %s", path);
 
-	if (stat(ca->passfile, &st) == -1 && errno == ENOENT)
-		ca_newpass(ca->passfile);
+	if (create && stat(ca->passfile, &st) == -1 && errno == ENOENT)
+		ca_newpass(ca->passfile, pass);
 
 	arc4random_buf(rnd, sizeof(rnd));
 	RAND_seed(rnd, sizeof(rnd));

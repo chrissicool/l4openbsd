@@ -1,4 +1,4 @@
-/*	$OpenBSD: ehcivar.h,v 1.18 2009/10/13 19:33:17 pirofti Exp $ */
+/*	$OpenBSD: ehcivar.h,v 1.21 2010/12/14 16:13:16 jakemsr Exp $ */
 /*	$NetBSD: ehcivar.h,v 1.19 2005/04/29 15:04:29 augustss Exp $	*/
 
 /*
@@ -34,6 +34,8 @@ typedef struct ehci_soft_qtd {
 	ehci_qtd_t qtd;
 	struct ehci_soft_qtd *nextqtd; /* mirrors nextqtd in TD */
 	ehci_physaddr_t physaddr;
+	usb_dma_t dma;                  /* qTD's DMA infos */
+	int offs;                       /* qTD's offset in usb_dma_t */
 	usbd_xfer_handle xfer;
 	LIST_ENTRY(ehci_soft_qtd) hnext;
 	u_int16_t len;
@@ -47,6 +49,8 @@ typedef struct ehci_soft_qh {
 	struct ehci_soft_qh *prev;
 	struct ehci_soft_qtd *sqtd;
 	ehci_physaddr_t physaddr;
+	usb_dma_t dma;                  /* QH's DMA infos */
+	int offs;                       /* QH's offset in usb_dma_t */
 	int islot;
 } ehci_soft_qh_t;
 #define EHCI_SQH_SIZE ((sizeof (struct ehci_soft_qh) + EHCI_QH_ALIGN - 1) / EHCI_QH_ALIGN * EHCI_QH_ALIGN)
@@ -123,7 +127,6 @@ typedef struct ehci_softc {
 	int sc_id_vendor;		/* vendor ID for root hub */
 
 	u_int32_t sc_cmd;		/* shadow of cmd reg during suspend */
-	void *sc_powerhook;		/* cookie from power hook */
 	void *sc_shutdownhook;		/* cookie from shutdown hook */
 
 	usb_dma_t sc_fldma;
@@ -161,8 +164,6 @@ typedef struct ehci_softc {
 	struct timeout sc_tmo_intrlist;
 
 	struct device *sc_child;		/* /dev/usb# device */
-
-	char sc_dying;
 } ehci_softc_t;
 
 #define EREAD1(sc, a) bus_space_read_1((sc)->iot, (sc)->ioh, (a))

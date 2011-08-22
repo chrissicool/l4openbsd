@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_athn_cardbus.c,v 1.9 2010/05/16 15:06:22 damien Exp $	*/
+/*	$OpenBSD: if_athn_cardbus.c,v 1.13 2011/01/08 10:02:32 damien Exp $	*/
 
 /*-
  * Copyright (c) 2009 Damien Bergamini <damien.bergamini@free.fr>
@@ -62,19 +62,24 @@ struct athn_cardbus_softc {
 	cardbus_devfunc_t	sc_ct;
 	pcitag_t		sc_tag;
 	void			*sc_ih;
+	bus_space_tag_t		sc_st;
+	bus_space_handle_t	sc_sh;
 	bus_size_t		sc_mapsize;
 	pcireg_t		sc_bar_val;
 	int			sc_intrline;
 	pci_chipset_tag_t	sc_pc;
 };
 
-int	athn_cardbus_match(struct device *, void *, void *);
-void	athn_cardbus_attach(struct device *, struct device *, void *);
-int	athn_cardbus_detach(struct device *, int);
-int	athn_cardbus_enable(struct athn_softc *);
-void	athn_cardbus_disable(struct athn_softc *);
-void	athn_cardbus_power(struct athn_softc *, int);
-void	athn_cardbus_setup(struct athn_cardbus_softc *);
+int		athn_cardbus_match(struct device *, void *, void *);
+void		athn_cardbus_attach(struct device *, struct device *, void *);
+int		athn_cardbus_detach(struct device *, int);
+int		athn_cardbus_enable(struct athn_softc *);
+void		athn_cardbus_disable(struct athn_softc *);
+void		athn_cardbus_power(struct athn_softc *, int);
+void		athn_cardbus_setup(struct athn_cardbus_softc *);
+uint32_t	athn_cardbus_read(struct athn_softc *, uint32_t);
+void		athn_cardbus_write(struct athn_softc *, uint32_t, uint32_t);
+void		athn_cardbus_write_barrier(struct athn_softc *);
 
 struct cfattach athn_cardbus_ca = {
 	sizeof (struct athn_cardbus_softc),
@@ -124,9 +129,13 @@ athn_cardbus_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_disable = athn_cardbus_disable;
 	sc->sc_power = athn_cardbus_power;
 
+	sc->ops.read = athn_cardbus_read;
+	sc->ops.write = athn_cardbus_write;
+	sc->ops.write_barrier = athn_cardbus_write_barrier;
+
 	/* Map control/status registers. */
 	error = Cardbus_mapreg_map(ct, CARDBUS_BASE0_REG,
-	    PCI_MAPREG_TYPE_MEM, 0, &sc->sc_st, &sc->sc_sh, &base,
+	    PCI_MAPREG_TYPE_MEM, 0, &csc->sc_st, &csc->sc_sh, &base,
 	    &csc->sc_mapsize);
 	if (error != 0) {
 		printf(": can't map mem space\n");
@@ -137,7 +146,7 @@ athn_cardbus_attach(struct device *parent, struct device *self, void *aux)
 	/* Set up the PCI configuration registers. */
 	athn_cardbus_setup(csc);
 
-	printf(": irq %d", csc->sc_intrline);
+	printf(": irq %d\n", csc->sc_intrline);
 
 	athn_attach(sc);
 	Cardbus_function_disable(ct);
@@ -159,7 +168,7 @@ athn_cardbus_detach(struct device *self, int flags)
 		cardbus_intr_disestablish(cc, cf, csc->sc_ih);
 
 	/* Release bus space and close window. */
-	Cardbus_mapreg_unmap(ct, CARDBUS_BASE0_REG, sc->sc_st, sc->sc_sh,
+	Cardbus_mapreg_unmap(ct, CARDBUS_BASE0_REG, csc->sc_st, csc->sc_sh,
 	    csc->sc_mapsize);
 
 	return (0);
@@ -212,7 +221,7 @@ athn_cardbus_power(struct athn_softc *sc, int why)
 {
 	struct athn_cardbus_softc *csc = (struct athn_cardbus_softc *)sc;
 
-	if (why == PWR_RESUME) {
+	if (why == DVACT_RESUME) {
 		/* Restore the PCI configuration registers. */
 		athn_cardbus_setup(csc);
 	}
@@ -248,12 +257,37 @@ athn_cardbus_setup(struct athn_cardbus_softc *csc)
 	 * the card: http://bugzilla.kernel.org/show_bug.cgi?id=13483
 	 */
 	reg = pci_conf_read(pc, csc->sc_tag, 0x40);
-	reg &= ~0xff00;
-	pci_conf_write(pc, csc->sc_tag, 0x40, reg);
+	if (reg & 0xff00)
+		pci_conf_write(pc, csc->sc_tag, 0x40, reg & ~0xff00);
 
 	/* Change latency timer; default value yields poor results. */
 	reg = pci_conf_read(pc, csc->sc_tag, PCI_BHLC_REG);
 	reg &= ~(PCI_LATTIMER_MASK << PCI_LATTIMER_SHIFT);
 	reg |= 168 << PCI_LATTIMER_SHIFT;
 	pci_conf_write(pc, csc->sc_tag, PCI_BHLC_REG, reg);
+}
+
+uint32_t
+athn_cardbus_read(struct athn_softc *sc, uint32_t addr)
+{
+	struct athn_cardbus_softc *csc = (struct athn_cardbus_softc *)sc;
+
+	return (bus_space_read_4(csc->sc_st, csc->sc_sh, addr));
+}
+
+void
+athn_cardbus_write(struct athn_softc *sc, uint32_t addr, uint32_t val)
+{
+	struct athn_cardbus_softc *csc = (struct athn_cardbus_softc *)sc;
+
+	bus_space_write_4(csc->sc_st, csc->sc_sh, addr, val);
+}
+
+void
+athn_cardbus_write_barrier(struct athn_softc *sc)
+{
+	struct athn_cardbus_softc *csc = (struct athn_cardbus_softc *)sc;
+
+	bus_space_barrier(csc->sc_st, csc->sc_sh, 0, csc->sc_mapsize,
+	    BUS_SPACE_BARRIER_WRITE);
 }

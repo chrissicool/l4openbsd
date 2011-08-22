@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpu.h,v 1.54 2010/08/05 21:10:10 deraadt Exp $	*/
+/*	$OpenBSD: cpu.h,v 1.62 2010/11/29 00:04:09 dlg Exp $	*/
 /*	$NetBSD: cpu.h,v 1.1 2003/04/26 18:39:39 fvdl Exp $	*/
 
 /*-
@@ -43,7 +43,6 @@
  */
 #include <machine/frame.h>
 #include <machine/segments.h>
-#include <machine/tss.h>
 #include <machine/intrdefs.h>
 #include <machine/cacheinfo.h>
 
@@ -59,6 +58,7 @@
 
 #ifdef _KERNEL
 
+struct x86_64_tss;
 struct cpu_info {
 	struct device *ci_dev;
 	struct cpu_info *ci_self;
@@ -79,7 +79,6 @@ struct cpu_info {
 
 	struct pcb *ci_curpcb;
 	struct pcb *ci_idle_pcb;
-	int ci_idle_tss_sel;
 
 	struct intrsource *ci_isources[MAX_INTR_SOURCES];
 	u_int32_t	ci_ipending;
@@ -87,8 +86,11 @@ struct cpu_info {
 	int		ci_idepth;
 	u_int32_t	ci_imask[NIPL];
 	u_int32_t	ci_iunmask[NIPL];
+#ifdef DIAGNOSTIC
+	int		ci_mutex_level;
+#endif
 
-	u_int		ci_flags;
+	volatile u_int	ci_flags;
 	u_int32_t	ci_ipis;
 
 	u_int32_t	ci_feature_flags;
@@ -107,6 +109,7 @@ struct cpu_info {
 
 	struct x86_cache_info ci_cinfo[CAI_COUNT];
 
+	struct	x86_64_tss *ci_tss;
 	char		*ci_gdt;
 
 	volatile int	ci_ddb_paused;
@@ -121,10 +124,6 @@ struct cpu_info {
 #define CI_SETPERF_SHOULDSTOP	1
 #define CI_SETPERF_INTRANSIT	2
 #define CI_SETPERF_DONE		3
-
-	struct x86_64_tss	ci_doubleflt_tss;
-
-	char *ci_doubleflt_stack;
 
 	struct ksensordev	ci_sensordev;
 	struct ksensor		ci_sensor;
@@ -160,7 +159,7 @@ extern void need_resched(struct cpu_info *);
 
 #if defined(MULTIPROCESSOR)
 
-#define MAXCPUS		32	/* bitmask; can be bumped to 64 */
+#define MAXCPUS		64	/* bitmask; can be bumped to 64 */
 
 #define CPU_STARTUP(_ci)	((_ci)->ci_func->start(_ci))
 #define CPU_STOP(_ci)		((_ci)->ci_func->stop(_ci))
@@ -211,8 +210,6 @@ extern struct cpu_info cpu_info_primary;
 #endif
 
 #define aston(p)	((p)->p_md.md_astpending = 1)
-
-extern u_int32_t cpus_attached;
 
 #define curpcb		curcpu()->ci_curpcb
 
@@ -269,7 +266,6 @@ void cpu_probe_features(struct cpu_info *);
 
 /* machdep.c */
 void	dumpconf(void);
-int	cpu_maxproc(void);
 void	cpu_reset(void);
 void	x86_64_proc0_tss_ldt_init(void);
 void	x86_64_bufinit(void);
@@ -293,6 +289,7 @@ void	child_trampoline(void);
 extern void (*initclock_func)(void);
 void	startclocks(void);
 void	rtcstart(void);
+void	rtcstop(void);
 void	i8254_delay(int);
 void	i8254_initclocks(void);
 void	i8254_startclock(void);
@@ -311,9 +308,6 @@ void	child_return(void *);
 
 /* dkcsum.c */
 void	dkcsumattach(void);
-
-/* consinit.c */
-void kgdb_port_init(void);
 
 /* bus_machdep.c */
 void x86_bus_space_init(void);

@@ -7,15 +7,12 @@
  *    You may distribute under the terms of either the GNU General Public
  *    License or the Artistic License, as specified in the README file.
  *
- * $Date: 2009/10/12 18:24:27 $
- * $Source: /cvs/src/gnu/usr.bin/perl/ext/DynaLoader/dl_dld.xs,v $
- * $Revision: 1.9 $
+ * $Date: 1994/03/07 00:21:43 $
+ * $Source: /home/rsanders/src/perl5alpha6/RCS/dld_dl.c,v $
+ * $Revision: 1.4 $
  * $State: Exp $
  *
- * $Log: dl_dld.xs,v $
- * Revision 1.9  2009/10/12 18:24:27  millert
- * Merge in perl 5.10.1
- *
+ * $Log: dld_dl.c,v $
  * Removed implicit link against libc.  1994/09/14 William Setzer.
  *
  * Integrated other DynaLoader changes. 1994/06/08 Tim Bunce.

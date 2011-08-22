@@ -1,4 +1,4 @@
-/*	$OpenBSD: cac.c,v 1.40 2010/07/01 03:20:38 matthew Exp $	*/
+/*	$OpenBSD: cac.c,v 1.42 2010/10/12 00:53:32 krw Exp $	*/
 /*	$NetBSD: cac.c,v 1.15 2000/11/08 19:20:35 ad Exp $	*/
 
 /*
@@ -611,7 +611,7 @@ cac_scsi_cmd(xs)
 
 	case REQUEST_SENSE:
 		bzero(&sd, sizeof sd);
-		sd.error_code = 0x70;
+		sd.error_code = SSD_ERRCODE_CURRENT;
 		sd.segment = 0;
 		sd.flags = SKEY_NO_SENSE;
 		*(u_int32_t*)sd.info = htole32(0);
@@ -630,6 +630,7 @@ cac_scsi_cmd(xs)
 		inq.version = 2;
 		inq.response_format = 2;
 		inq.additional_length = 32;
+		inq.flags |= SID_CmdQue;
 		strlcpy(inq.vendor, "Compaq  ", sizeof inq.vendor);
 		switch (CAC_GET1(dinfo->mirror)) {
 		case 0: p = "RAID0";	break;

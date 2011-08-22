@@ -1,7 +1,8 @@
-/*	$OpenBSD: pfvar.h,v 1.311 2010/06/28 23:21:41 mcbride Exp $ */
+/*	$OpenBSD: pfvar.h,v 1.320 2011/01/11 13:35:58 mcbride Exp $ */
 
 /*
  * Copyright (c) 2001 Daniel Hartmeier
+ * Copyright (c) 2002 - 2010 Henning Brauer
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -122,6 +123,7 @@ enum	{ PF_ADDR_ADDRMASK, PF_ADDR_NOROUTE, PF_ADDR_DYNIFTL,
 #define	PF_LOG_ALL		0x02
 #define	PF_LOG_SOCKET_LOOKUP	0x04
 #define	PF_LOG_FORCE		0x08
+#define	PF_LOG_MATCHES		0x10
 
 struct pf_addr {
 	union {
@@ -1211,6 +1213,7 @@ struct pf_pdesc {
 	u_int16_t	 ndport;	/* dst port after NAT */
 
 	u_int32_t	 p_len;		/* total length of payload */
+	u_int32_t	 rh_cnt;	/* # of routing headers */
 
 	u_int16_t	*ip_sum;
 	u_int16_t	*proto_sum;
@@ -1225,6 +1228,7 @@ struct pf_pdesc {
 	u_int8_t	 sidx;		/* key index for source */
 	u_int8_t	 didx;		/* key index for destination */
 	u_int8_t	 destchg;	/* flag set when destination changed */
+	u_int8_t	 pflog;		/* flags for packet logging */
 };
 
 /* flags for RDR options */
@@ -1559,7 +1563,6 @@ struct pfioc_trans {
 	}		*array;
 };
 
-#define PFR_FLAG_ATOMIC		0x00000001
 #define PFR_FLAG_DUMMY		0x00000002
 #define PFR_FLAG_FEEDBACK	0x00000004
 #define PFR_FLAG_CLSTATS	0x00000008
@@ -1735,6 +1738,11 @@ extern void			 pf_addrcpy(struct pf_addr *, struct pf_addr *,
 void				 pf_rm_rule(struct pf_rulequeue *,
 				    struct pf_rule *);
 struct pf_divert		*pf_find_divert(struct mbuf *);
+int				 pf_setup_pdesc(sa_family_t, int,
+				    struct pf_pdesc *, struct mbuf *,
+				    u_short *, u_short *, struct pfi_kif *,
+				    struct pf_rule **, struct pf_rule **,
+				    struct pf_ruleset **, int *, int *);
 
 #ifdef INET
 int	pf_test(int, struct ifnet *, struct mbuf **, struct ether_header *);
@@ -1790,6 +1798,8 @@ int	pf_socket_lookup(int, struct pf_pdesc *);
 struct pf_state_key *pf_alloc_state_key(int);
 void	pf_pkt_addr_changed(struct mbuf *);
 int	pf_state_key_attach(struct pf_state_key *, struct pf_state *, int);
+int	pf_translate(struct pf_pdesc *, struct pf_addr *, u_int16_t,
+	    struct pf_addr *, u_int16_t, u_int16_t, int);
 
 void	pfr_initialize(void);
 int	pfr_match_addr(struct pfr_ktable *, struct pf_addr *, sa_family_t);

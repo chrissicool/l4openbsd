@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_bgereg.h,v 1.101 2010/07/09 00:04:42 sthen Exp $	*/
+/*	$OpenBSD: if_bgereg.h,v 1.104 2011/02/15 19:49:47 robert Exp $	*/
 
 /*
  * Copyright (c) 2001 Wind River Systems
@@ -301,6 +301,7 @@
 #define BGE_CHIPID_BCM5787_A0		0xb000
 #define BGE_CHIPID_BCM5787_A1		0xb001
 #define BGE_CHIPID_BCM5787_A2		0xb002
+#define BGE_CHIPID_BCM5906_A0		0xc000
 #define BGE_CHIPID_BCM5906_A1		0xc001
 #define BGE_CHIPID_BCM5906_A2		0xc002
 #define BGE_CHIPID_BCM57780_A0		0x57780000
@@ -941,6 +942,7 @@
 #define BGE_SDI_STATS_CTL		0x0C08
 #define BGE_SDI_STATS_ENABLE_MASK	0x0C0C
 #define BGE_SDI_STATS_INCREMENT_MASK	0x0C10
+#define BGE_ISO_PKT_TX			0x0C20
 #define BGE_LOCSTATS_COS0		0x0C80
 #define BGE_LOCSTATS_COS1		0x0C84
 #define BGE_LOCSTATS_COS2		0x0C88
@@ -2641,8 +2643,6 @@ struct bge_softc {
 	int			bge_txcnt;
 	struct timeout		bge_timeout;
 	struct timeout		bge_rxtimeout;
-	void			*sc_powerhook;
-	void			*sc_shutdownhook;
 	u_int32_t		bge_rx_discards;
 	u_int32_t		bge_tx_discards;
 	u_int32_t		bge_rx_inerrors;

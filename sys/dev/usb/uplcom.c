@@ -1,4 +1,4 @@
-/*	$OpenBSD: uplcom.c,v 1.52 2009/10/13 19:33:19 pirofti Exp $	*/
+/*	$OpenBSD: uplcom.c,v 1.55 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*	$NetBSD: uplcom.c,v 1.29 2002/09/23 05:51:23 simonb Exp $	*/
 /*
  * Copyright (c) 2001 The NetBSD Foundation, Inc.
@@ -164,6 +164,7 @@ static const struct usb_devno uplcom_devs[] = {
 	{ USB_VENDOR_PROLIFIC, USB_PRODUCT_PROLIFIC_PL2303X },
 	{ USB_VENDOR_PROLIFIC, USB_PRODUCT_PROLIFIC_PL2303X2 },
 	{ USB_VENDOR_PROLIFIC, USB_PRODUCT_PROLIFIC_RSAQ2 },
+	{ USB_VENDOR_PROLIFIC, USB_PRODUCT_PROLIFIC_PL2303BENQ },
 	{ USB_VENDOR_PROLIFIC2, USB_PRODUCT_PROLIFIC2_PL2303 },
 	{ USB_VENDOR_RADIOSHACK, USB_PRODUCT_RADIOSHACK_PL2303 },
 	{ USB_VENDOR_RATOC, USB_PRODUCT_RATOC_REXUSB60 },
@@ -409,9 +410,6 @@ uplcom_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
-
 	DPRINTF(("uplcom: in=0x%x out=0x%x intr=0x%x\n",
 			uca.bulkin, uca.bulkout, sc->sc_intr_number ));
 	sc->sc_subdev = config_found_sm(self, &uca, ucomprint, ucomsubmatch);
@@ -432,14 +430,10 @@ uplcom_detach(struct device *self, int flags)
                 sc->sc_intr_pipe = NULL;
         }
 
-	sc->sc_dying = 1;
 	if (sc->sc_subdev != NULL) {
 		rv = config_detach(sc->sc_subdev, flags);
 		sc->sc_subdev = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (rv);
 }

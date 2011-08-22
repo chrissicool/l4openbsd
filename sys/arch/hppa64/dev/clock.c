@@ -1,4 +1,4 @@
-/*	$OpenBSD: clock.c,v 1.2 2010/07/24 21:27:57 kettenis Exp $	*/
+/*	$OpenBSD: clock.c,v 1.4 2011/01/09 19:37:51 jasper Exp $	*/
 
 /*
  * Copyright (c) 2005 Michael Shalayeff
@@ -28,6 +28,7 @@
 #include <dev/clock_subr.h>
 
 u_long	cpu_hzticks;
+int	timeset;
 
 u_int	itmr_get_timecount(struct timecounter *);
 
@@ -50,6 +51,68 @@ cpu_initclocks()
 	ci->ci_itmr = __itmr;
 	__itmr += cpu_hzticks;
 	mtctl(__itmr, CR_ITMR);
+}
+
+/*
+ * initialize the system time from the time of day clock
+ */
+void
+inittodr(time_t t)
+{
+	struct pdc_tod tod PDC_ALIGNMENT;
+	int 	error, tbad = 0;
+	struct timespec ts;
+
+	if (t < 12*SECYR) {
+		printf ("WARNING: preposterous time in file system");
+		t = 6*SECYR + 186*SECDAY + SECDAY/2;
+		tbad = 1;
+	}
+
+	if ((error = pdc_call((iodcio_t)pdc,
+	    1, PDC_TOD, PDC_TOD_READ, &tod, 0, 0, 0, 0, 0)))
+		printf("clock: failed to fetch (%d)\n", error);
+
+	ts.tv_sec = tod.sec;
+	ts.tv_nsec = tod.usec * 1000;
+	tc_setclock(&ts);
+	timeset = 1;
+
+	if (!tbad) {
+		u_long	dt;
+
+		dt = (tod.sec < t)?  t - tod.sec : tod.sec - t;
+
+		if (dt < 2 * SECDAY)
+			return;
+		printf("WARNING: clock %s %ld days",
+		    tod.sec < t? "lost" : "gained", dt / SECDAY);
+	}
+
+	printf (" -- CHECK AND RESET THE DATE!\n");
+}
+
+/*
+ * reset the time of day clock to the value in time
+ */
+void
+resettodr()
+{
+	struct timeval tv;
+	int error;
+
+	/*
+	 * We might have been called by boot() due to a crash early
+	 * on.  Don't reset the clock chip in this case.
+	 */
+	if (!timeset)
+		return;
+
+	microtime(&tv);
+
+	if ((error = pdc_call((iodcio_t)pdc, 1, PDC_TOD, PDC_TOD_WRITE,
+	    tv.tv_sec, tv.tv_usec)))
+		printf("clock: failed to save (%d)\n", error);
 }
 
 void

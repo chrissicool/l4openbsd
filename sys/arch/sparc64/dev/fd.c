@@ -1,4 +1,4 @@
-/*	$OpenBSD: fd.c,v 1.31 2010/05/19 04:10:34 dlg Exp $	*/
+/*	$OpenBSD: fd.c,v 1.35 2010/09/23 13:11:38 jsing Exp $	*/
 /*	$NetBSD: fd.c,v 1.112 2003/08/07 16:29:35 agc Exp $	*/
 
 /*-
@@ -289,8 +289,6 @@ int fd_get_parms(struct fd_softc *);
 void fdstrategy(struct buf *);
 void fdstart(struct fd_softc *);
 int fdprint(void *, const char *);
-
-struct dkdriver fddkdriver = { fdstrategy };
 
 struct	fd_type *fd_nvtotype(char *, int, int);
 void	fd_set_motor(struct fdc_softc *fdc);
@@ -669,9 +667,9 @@ fdattach(parent, self, aux)
 	/*
 	 * Initialize and attach the disk structure.
 	 */
+	fd->sc_dk.dk_flags = DKF_NOLABELREAD;
 	fd->sc_dk.dk_name = fd->sc_dv.dv_xname;
-	fd->sc_dk.dk_driver = &fddkdriver;
-	disk_attach(&fd->sc_dk);
+	disk_attach(&fd->sc_dv, &fd->sc_dk);
 
 	/* Make sure the drive motor gets turned off at shutdown time. */
 	fd->sc_sdhook = shutdownhook_establish(fd_motor_off, fd);
@@ -1038,7 +1036,7 @@ fdread(dev, uio, flag)
 	int flag;
 {
 
-        return (physio(fdstrategy, NULL, dev, B_READ, minphys, uio));
+        return (physio(fdstrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -1048,7 +1046,7 @@ fdwrite(dev, uio, flag)
 	int flag;
 {
 
-        return (physio(fdstrategy, NULL, dev, B_WRITE, minphys, uio));
+        return (physio(fdstrategy, dev, B_WRITE, minphys, uio));
 }
 
 void

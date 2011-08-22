@@ -1,4 +1,4 @@
-/* $OpenBSD: subr.S,v 1.18 2010/04/20 20:28:18 miod Exp $	*/
+/* $OpenBSD: subr.S,v 1.20 2011/01/05 22:16:16 miod Exp $	*/
 /*
  * Mach Operating System
  * Copyright (c) 1993-1992 Carnegie Mellon University
@@ -1103,12 +1103,15 @@ GLOBAL(esigcode)
 /*
  * Helper functions for pmap_copy_page() and pmap_zero_page().
  */
+
+#ifdef M88100
+
 /*
  * void copypage(vaddr_t src, vaddr_t dst);
  *
  * This copies PAGE_SIZE bytes from src to dst in 32 byte chunks.
  */
-ENTRY(copypage)
+ENTRY(m8820x_copypage)
 	addu	r12, r2, PAGE_SIZE
 1:
 	ld.d	r4,  r2, 0x00
@@ -1130,7 +1133,7 @@ ENTRY(copypage)
  *
  * This zeroes PAGE_SIZE bytes from src to dst in 64 byte chunks.
  */
-ENTRY(zeropage)
+ENTRY(m8820x_zeropage)
 	addu	r12, r2, PAGE_SIZE
 	or	r3,  r1, r0
 	or	r1,  r0, r0
@@ -1147,6 +1150,56 @@ ENTRY(zeropage)
 	cmp	r4,  r2, r12
 	bb1	ne,  r4, 1b
 	jmp	r3
+
+#endif	/* M88100 */
+
+#ifdef M88110
+
+/*
+ * void copypage(vaddr_t src, vaddr_t dst);
+ *
+ * This copies PAGE_SIZE bytes from src to dst in 32 byte chunks (one
+ * cache line).
+ */
+ENTRY(m88110_copypage)
+	addu	r12, r2, PAGE_SIZE
+1:
+	ld.h	r0,  r2, 0x00	# load allocate
+	ld.d	r4,  r2, 0x00
+	ld.d	r6,  r2, 0x08
+	st.d	r4,  r3, 0x00
+	ld.d	r8,  r2, 0x10
+	st.d	r6,  r3, 0x08
+	ld.d	r10, r2, 0x18
+	st.d	r8,  r3, 0x10
+	addu	r2,  r2, 0x20
+	st.d	r10, r3, 0x18
+	cmp	r4,  r2, r12
+	addu	r3,  r3, 0x20
+	bb1	ne,  r4, 1b
+	jmp	r1
+
+/*
+ * void zeropage(vaddr_t dst);
+ *
+ * This zeroes PAGE_SIZE bytes from src to dst in 32 byte chunks.
+ */
+ENTRY(m88110_zeropage)
+	addu	r12, r2, PAGE_SIZE
+	or	r3,  r1, r0
+	or	r1,  r0, r0
+1:
+	ld.h	r0,  r2, 0x00	# load allocate
+	st.d	r0,  r2, 0x00
+	st.d	r0,  r2, 0x08
+	st.d	r0,  r2, 0x10
+	st.d	r0,  r2, 0x18
+	addu	r2,  r2, 0x20
+	cmp	r4,  r2, r12
+	bb1	ne,  r4, 1b
+	jmp	r3
+
+#endif	/* M88110 */
 
 /*
  * PSR initialization code, invoked from locore on every processor startup.
@@ -1193,3 +1246,37 @@ ASENTRY(setup_psr)
 	FLUSH_PIPELINE
 
 	jmp	r1
+
+/*
+ * Update the VBR value.
+ * This needs to be done with interrupts and shadowing disabled.
+ */
+GLOBAL(set_vbr)
+	ldcr	r3, PSR
+	set	r4, r3, 1<PSR_INTERRUPT_DISABLE_BIT>
+	set	r4, r4, 1<PSR_SHADOW_FREEZE_BIT>
+	stcr	r4, PSR
+	FLUSH_PIPELINE
+
+	stcr	r2, VBR
+	FLUSH_PIPELINE
+
+#if defined(M88100) && defined(M88110)
+	ldcr	r2,  PID
+	extu	r5,  r2, 8<8>
+	cmp	r4, r5, CPU_88110
+	bb1	eq, r4, 1f
+#endif
+#ifdef M88100
+	/* 88100 */
+	stcr	r3, PSR
+	FLUSH_PIPELINE
+	jmp	r1
+#endif
+#ifdef M88110
+1:
+	/* 88110 */
+	stcr	r1, EXIP
+	stcr	r3, EPSR
+	RTE
+#endif

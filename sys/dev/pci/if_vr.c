@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_vr.c,v 1.105 2010/05/19 15:27:35 oga Exp $	*/
+/*	$OpenBSD: if_vr.c,v 1.107 2011/01/13 11:28:14 kettenis Exp $	*/
 
 /*
  * Copyright (c) 1997, 1998
@@ -1048,15 +1048,11 @@ vr_intr(void *arg)
 	/* Disable interrupts. */
 	CSR_WRITE_2(sc, VR_IMR, 0x0000);
 
-	for (;;) {
+	status = CSR_READ_2(sc, VR_ISR);
+	if (status)
+		CSR_WRITE_2(sc, VR_ISR, status);
 
-		status = CSR_READ_2(sc, VR_ISR);
-		if (status)
-			CSR_WRITE_2(sc, VR_ISR, status);
-
-		if ((status & VR_INTRS) == 0)
-			break;
-
+	if (status & VR_INTRS) {
 		claimed = 1;
 
 		if (status & VR_ISR_RX_OK)
@@ -1092,7 +1088,7 @@ vr_intr(void *arg)
 				    sc->sc_dev.dv_xname);
 			vr_reset(sc);
 			vr_init(sc);
-			break;
+			status = 0;
 		}
 
 		if ((status & VR_ISR_TX_OK) || (status & VR_ISR_TX_ABRT) ||
@@ -1562,6 +1558,10 @@ vr_alloc_mbuf(struct vr_softc *sc, struct vr_chain_onefrag *r)
 	d = r->vr_ptr;
 	d->vr_data = htole32(r->vr_map->dm_segs[0].ds_addr);
 	d->vr_ctl = htole32(VR_RXCTL | VR_RXLEN);
+
+	bus_dmamap_sync(sc->sc_dmat, sc->sc_listmap, 0,
+	    sc->sc_listmap->dm_mapsize, BUS_DMASYNC_PREWRITE);
+
 	d->vr_status = htole32(VR_RXSTAT);
 
 	bus_dmamap_sync(sc->sc_dmat, sc->sc_listmap, 0,

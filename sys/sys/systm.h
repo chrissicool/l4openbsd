@@ -1,4 +1,4 @@
-/*	$OpenBSD: systm.h,v 1.81 2010/07/08 20:15:01 deraadt Exp $	*/
+/*	$OpenBSD: systm.h,v 1.87 2011/01/10 23:23:56 tedu Exp $	*/
 /*	$NetBSD: systm.h,v 1.50 1996/06/09 04:55:09 briggs Exp $	*/
 
 /*-
@@ -179,6 +179,8 @@ void	ttyprintf(struct tty *, const char *, ...)
 void	splassert_fail(int, int, const char *);
 extern	int splassert_ctl;
 
+void	assertwaitok(void);
+
 void	tablefull(const char *);
 
 int	kcopy(const void *, void *, size_t)
@@ -192,6 +194,8 @@ void	ovbcopy(const void *, void *, size_t)
 		__attribute__ ((__bounded__(__buffer__,1,3)))
 		__attribute__ ((__bounded__(__buffer__,2,3)));
 void	bzero(void *, size_t)
+		__attribute__ ((__bounded__(__buffer__,1,2)));
+void	explicit_bzero(void *, size_t)
 		__attribute__ ((__bounded__(__buffer__,1,2)));
 int	bcmp(const void *, const void *, size_t);
 void	*memcpy(void *, const void *, size_t)
@@ -213,8 +217,8 @@ int	copyin(const void *, void *, size_t)
 int	copyout(const void *, void *, size_t);
 
 struct timeval;
-int	hzto(struct timeval *);
-int	tvtohz(struct timeval *);
+int	hzto(const struct timeval *);
+int	tvtohz(const struct timeval *);
 void	realitexpire(void *);
 
 struct clockframe;
@@ -293,16 +297,6 @@ void	dohooks(struct hook_desc_head *, int);
 #define mountroothook_disestablish(vhook) \
 	hook_disestablish(&mountroothook_list, (vhook))
 #define domountroothooks() dohooks(&mountroothook_list, HOOK_REMOVE|HOOK_FREE)
-
-/*
- * Power management hooks.
- */
-void	*powerhook_establish(void (*)(int, void *), void *);
-void	powerhook_disestablish(void *);
-void	dopowerhooks(int);
-#define PWR_RESUME 0
-#define PWR_SUSPEND 1
-#define PWR_STANDBY 2
 
 struct uio;
 int	uiomove(void *, int, struct uio *);

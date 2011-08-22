@@ -1,4 +1,4 @@
-/*	$OpenBSD: pcmcia.c,v 1.39 2007/09/11 13:39:34 gilles Exp $	*/
+/*	$OpenBSD: pcmcia.c,v 1.43 2010/09/07 16:21:46 deraadt Exp $	*/
 /*	$NetBSD: pcmcia.c,v 1.9 1998/08/13 02:10:55 eeh Exp $	*/
 
 /*
@@ -55,9 +55,9 @@ int	pcmcia_verbose = 0;
 int	pcmcia_match(struct device *, void *, void *);
 int	pcmcia_submatch(struct device *, void *, void *);
 void	pcmcia_attach(struct device *, struct device *, void *);
+int	pcmcia_activate(struct device *, int);
 int	pcmcia_print(void *, const char *);
 void	pcmcia_card_detach_notify(struct device *, void *);
-void	pcmcia_power(int why, void *arg);
 
 static inline void pcmcia_socket_enable(pcmcia_chipset_tag_t,
 					     pcmcia_chipset_handle_t *);
@@ -71,7 +71,8 @@ struct cfdriver pcmcia_cd = {
 };
 
 struct cfattach pcmcia_ca = {
-	sizeof(struct pcmcia_softc), pcmcia_match, pcmcia_attach
+	sizeof(struct pcmcia_softc), pcmcia_match, pcmcia_attach, NULL,
+	pcmcia_activate
 };
 
 int
@@ -128,34 +129,40 @@ pcmcia_attach(parent, self, aux)
 	sc->iosize = paa->iosize;
 
 	sc->ih = NULL;
-	powerhook_establish(pcmcia_power, sc);
 }
 
-void
-pcmcia_power(why, arg)
-	int why;
-	void *arg;
+int
+pcmcia_activate(struct device *self, int act)
 {
-	struct pcmcia_softc *sc = (struct pcmcia_softc *) arg;
+	struct pcmcia_softc *sc = (struct pcmcia_softc *)self;
 	struct pcmcia_function *pf;
-	struct device *d;
-	int act = DVACT_ACTIVATE;
 
-	if (why != PWR_RESUME)
-		act = DVACT_DEACTIVATE;
-
-	for (pf = SIMPLEQ_FIRST(&sc->card.pf_head); pf != NULL;
-	     pf = SIMPLEQ_NEXT(pf, pf_list)) {
-		if (SIMPLEQ_FIRST(&pf->cfe_head) == NULL)
-			continue;
-		d = pf->child;
-		if (d == NULL)
-			continue;
-		if (act == DVACT_ACTIVATE)
-			config_activate(pf->child);
-		else
+	switch (act) {
+	case DVACT_ACTIVATE:
+		/* No children yet */
+		break;
+	case DVACT_QUIESCE:
+	case DVACT_SUSPEND:
+	case DVACT_RESUME:
+		for (pf = SIMPLEQ_FIRST(&sc->card.pf_head); pf != NULL;
+		     pf = SIMPLEQ_NEXT(pf, pf_list)) {
+			if (SIMPLEQ_FIRST(&pf->cfe_head) == NULL ||
+			    pf->child == NULL)
+				continue;
+			config_suspend(pf->child, act);
+		}
+		break;
+	case DVACT_DEACTIVATE:
+		for (pf = SIMPLEQ_FIRST(&sc->card.pf_head); pf != NULL;
+		     pf = SIMPLEQ_NEXT(pf, pf_list)) {
+			if (SIMPLEQ_FIRST(&pf->cfe_head) == NULL ||
+			    pf->child == NULL)
+				continue;
 			config_deactivate(pf->child);
+		}
+		break;
 	}
+	return (0);
 }
 
 int
@@ -233,7 +240,8 @@ pcmcia_card_attach(dev)
 		if (pf->child) {
 			attached++;
 
-			if ((pf->pf_flags & PFF_FAKE) == 0)
+			if ((pf->pf_flags & (PFF_FAKE | PFF_ENABLED)) ==
+			    PFF_ENABLED)
 				DPRINTF(("%s: function %d CCR at %d offset %lx"
 					": %x %x %x %x, %x %x %x %x, %x\n",
 					sc->dev.dv_xname, pf->number,
@@ -296,9 +304,8 @@ pcmcia_card_deactivate(dev)
 	 */
 	for (pf = SIMPLEQ_FIRST(&sc->card.pf_head); pf != NULL;
 	     pf = SIMPLEQ_NEXT(pf, pf_list)) {
-		if (SIMPLEQ_FIRST(&pf->cfe_head) == NULL)
-			continue;
-		if (pf->child == NULL)
+		if (SIMPLEQ_FIRST(&pf->cfe_head) == NULL ||
+		    pf->child == NULL)
 			continue;
 		DPRINTF(("%s: deactivating %s (function %d)\n",
 		    sc->dev.dv_xname, pf->child->dv_xname, pf->number));

@@ -1,4 +1,4 @@
-/*	$OpenBSD: procfs_subr.c,v 1.31 2009/08/10 14:55:11 oga Exp $	*/
+/*	$OpenBSD: procfs_subr.c,v 1.34 2010/12/21 20:14:43 thib Exp $	*/
 /*	$NetBSD: procfs_subr.c,v 1.15 1996/02/12 15:01:42 christos Exp $	*/
 
 /*
@@ -111,7 +111,7 @@ loop:
 		}
 	}
 
-	if ((error = getnewvnode(VT_PROCFS, mp, procfs_vnodeop_p, vpp)) != 0)
+	if ((error = getnewvnode(VT_PROCFS, mp, &procfs_vops, vpp)) != 0)
 		goto out;
 	vp = *vpp;
 

@@ -1,4 +1,4 @@
-/*	$OpenBSD: rtl81x9.c,v 1.71 2010/07/02 02:40:16 blambert Exp $ */
+/*	$OpenBSD: rtl81x9.c,v 1.74 2010/09/07 16:21:42 deraadt Exp $ */
 
 /*
  * Copyright (c) 1997, 1998
@@ -130,7 +130,6 @@
  */
 
 void rl_tick(void *);
-void rl_powerhook(int, void *);
 
 int rl_encap(struct rl_softc *, struct mbuf * );
 
@@ -1245,16 +1244,32 @@ rl_attach(struct rl_softc *sc)
 	if_attach(ifp);
 	ether_ifattach(ifp);
 
-	sc->sc_pwrhook = powerhook_establish(rl_powerhook, sc);
-
 	return (0);
 }
 
-void
-rl_powerhook(int why, void *arg)
+int
+rl_activate(struct device *self, int act)
 {
-	if (why == PWR_RESUME)
-		rl_init(arg);
+	struct rl_softc	*sc = (struct rl_softc *)self;
+	struct ifnet *ifp = &sc->sc_arpcom.ac_if;
+	int rv = 0;
+
+	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_SUSPEND:
+		if (ifp->if_flags & IFF_RUNNING)
+			rl_stop(sc);
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_RESUME:
+		rv = config_activate_children(self, act);
+		if (ifp->if_flags & IFF_UP)
+			rl_init(sc);
+		break;
+	}
+	return (rv);
 }
 
 int
@@ -1374,9 +1389,6 @@ rl_detach(struct rl_softc *sc)
 
 	/* Unhook our tick handler. */
 	timeout_del(&sc->sc_tick_tmo);
-
-	if (sc->sc_pwrhook != NULL)
-		powerhook_disestablish(sc->sc_pwrhook);
 
 	/* Detach any PHYs we might have. */
 	if (LIST_FIRST(&sc->sc_mii.mii_phys) != NULL)

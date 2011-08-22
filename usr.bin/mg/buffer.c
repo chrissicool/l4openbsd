@@ -1,4 +1,4 @@
-/*	$OpenBSD: buffer.c,v 1.74 2010/06/30 19:12:54 oga Exp $	*/
+/*	$OpenBSD: buffer.c,v 1.77 2011/01/23 00:45:03 kjell Exp $	*/
 
 /* This file is in the public domain. */
 
@@ -6,14 +6,16 @@
  *		Buffer handling.
  */
 
-#include <libgen.h>
-#include <stdarg.h>
-
 #include "def.h"
 #include "kbd.h"		/* needed for modes */
 
+#include <libgen.h>
+#include <stdarg.h>
+
 static struct buffer  *makelist(void);
 static struct buffer *bnew(const char *);
+
+static int usebufname(const char *);
 
 /* Flag for global working dir */
 extern int globalwd;
@@ -664,8 +666,7 @@ augbname(char *bn, const char *fn, size_t bs)
 	int	 count;
 	size_t	 remain, len;
 
-	len = strlcpy(bn, basename(fn), bs);
-	if (len >= bs)
+	if ((len = xbasename(bn, fn, bs)) >= bs)
 		return (FALSE);
 
 	remain = bs - len;

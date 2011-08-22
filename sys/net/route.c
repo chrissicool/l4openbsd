@@ -1,4 +1,4 @@
-/*	$OpenBSD: route.c,v 1.125 2010/07/09 16:58:06 reyk Exp $	*/
+/*	$OpenBSD: route.c,v 1.128 2010/11/16 19:39:17 bluhm Exp $	*/
 /*	$NetBSD: route.c,v 1.14 1996/02/13 22:00:46 christos Exp $	*/
 
 /*
@@ -185,7 +185,7 @@ rtable_init(struct radix_node_head ***table, u_int id)
 
 	if ((p = malloc(sizeof(void *) * (rtafidx_max + 1), M_RTABLE,
 	    M_NOWAIT|M_ZERO)) == NULL)
-		return (-1);
+		return (ENOMEM);
 
 	/* 2nd pass: attach */
 	for (dom = domains; dom != NULL; dom = dom->dom_next)
@@ -220,7 +220,7 @@ route_init(void)
 		if (dom->dom_rtattach)
 			af2rtafidx[dom->dom_family] = rtafidx_max++;
 
-	if (rtable_add(0) == -1)
+	if (rtable_add(0) != 0)
 		panic("route_init rtable_add");
 }
 
@@ -230,17 +230,17 @@ rtable_add(u_int id)	/* must be called at splsoftnet */
 	void	*p, *q;
 
 	if (id > RT_TABLEID_MAX)
-		return (-1);
+		return (EINVAL);
 
 	if (id == 0 || id > rtbl_id_max) {
 		size_t	newlen = sizeof(void *) * (id+1);
 		size_t	newlen2 = sizeof(u_int) * (id+1);
 
 		if ((p = malloc(newlen, M_RTABLE, M_NOWAIT|M_ZERO)) == NULL)
-			return (-1);
+			return (ENOMEM);
 		if ((q = malloc(newlen2, M_RTABLE, M_NOWAIT|M_ZERO)) == NULL) {
 			free(p, M_RTABLE);
-			return (-1);
+			return (ENOMEM);
 		}
 		if (rt_tables) {
 			bcopy(rt_tables, p, sizeof(void *) * (rtbl_id_max+1));
@@ -254,26 +254,10 @@ rtable_add(u_int id)	/* must be called at splsoftnet */
 	}
 
 	if (rt_tables[id] != NULL)	/* already exists */
-		return (-1);
+		return (EEXIST);
 
 	rt_tab2dom[id] = 0;	/* use main table/domain by default */
 	return (rtable_init(&rt_tables[id], id));
-}
-
-void
-rtable_addif(struct ifnet *ifp, u_int id)
-{
-	/* make sure that the routing table exists */
-	if (!rtable_exists(id)) {
-		if (rtable_add(id) == -1)
-			panic("rtable_addif: rtable_add");
-	}
-	if (id != rtable_l2(id)) {
-		/* XXX we should probably flush the table */
-		rtable_l2set(id, id);
-	}
-
-	ifp->if_rdomain = id;
 }
 
 u_int
@@ -808,7 +792,20 @@ rtrequest1(int req, struct rt_addrinfo *info, u_int8_t prio,
 			senderr(EINVAL);
 		if ((rt->rt_flags & RTF_CLONING) == 0)
 			senderr(EINVAL);
-		ifa = rt->rt_ifa;
+		if (rt->rt_ifa->ifa_ifp) {
+			info->rti_ifa = rt->rt_ifa;
+		} else {
+			/*
+			 * The interface address at the cloning route
+			 * is not longer referenced by an interface.
+			 * Try to find a similar active address and use
+			 * it for the cloned route.  The cloning route
+			 * will get the new address and interface later.
+			 */
+			info->rti_ifa = NULL;
+			info->rti_info[RTAX_IFA] = rt->rt_ifa->ifa_addr;
+		}
+		info->rti_ifp = rt->rt_ifp;
 		info->rti_flags = rt->rt_flags & ~(RTF_CLONING | RTF_STATIC);
 		info->rti_flags |= RTF_CLONED;
 		info->rti_info[RTAX_GATEWAY] = rt->rt_gateway;
@@ -816,13 +813,12 @@ rtrequest1(int req, struct rt_addrinfo *info, u_int8_t prio,
 			info->rti_flags |= RTF_HOST;
 		info->rti_info[RTAX_LABEL] =
 		    rtlabel_id2sa(rt->rt_labelid, &sa_rl2);
-		goto makeroute;
+		/* FALLTHROUGH */
 
 	case RTM_ADD:
-		if (info->rti_ifa == 0 && (error = rt_getifa(info, tableid)))
+		if (info->rti_ifa == NULL && (error = rt_getifa(info, tableid)))
 			senderr(error);
 		ifa = info->rti_ifa;
-makeroute:
 		rt = pool_get(&rtentry_pool, PR_NOWAIT | PR_ZERO);
 		if (rt == NULL)
 			senderr(ENOBUFS);
@@ -832,14 +828,6 @@ makeroute:
 		if (prio == 0)
 			prio = ifa->ifa_ifp->if_priority + RTP_STATIC;
 		rt->rt_priority = prio;	/* init routing priority */
-		if ((LINK_STATE_IS_UP(ifa->ifa_ifp->if_link_state) ||
-		    ifa->ifa_ifp->if_link_state == LINK_STATE_UNKNOWN) &&
-		    ifa->ifa_ifp->if_flags & IFF_UP)
-			rt->rt_flags |= RTF_UP;
-		else {
-			rt->rt_flags &= ~RTF_UP;
-			rt->rt_priority |= RTP_DOWN;
-		}
 		LIST_INIT(&rt->rt_timer);
 		if (rt_setgate(rt, info->rti_info[RTAX_DST],
 		    info->rti_info[RTAX_GATEWAY], tableid)) {
@@ -854,15 +842,26 @@ makeroute:
 			Bcopy(info->rti_info[RTAX_DST], ndst,
 			    info->rti_info[RTAX_DST]->sa_len);
 #ifndef SMALL_KERNEL
-		/* do not permit exactly the same dst/mask/gw pair */
-		if (rn_mpath_capable(rnh) &&
-		    rt_mpath_conflict(rnh, rt, info->rti_info[RTAX_NETMASK],
-		    info->rti_flags & RTF_MPATH)) {
-			if (rt->rt_gwroute)
-				rtfree(rt->rt_gwroute);
-			Free(rt_key(rt));
-			pool_put(&rtentry_pool, rt);
-			senderr(EEXIST);
+		if (rn_mpath_capable(rnh)) {
+			/* do not permit exactly the same dst/mask/gw pair */
+			if (rt_mpath_conflict(rnh, rt,
+			    info->rti_info[RTAX_NETMASK],
+			    info->rti_flags & RTF_MPATH)) {
+				if (rt->rt_gwroute)
+					rtfree(rt->rt_gwroute);
+				Free(rt_key(rt));
+				pool_put(&rtentry_pool, rt);
+				senderr(EEXIST);
+			}
+			/* check the link state since the table supports it */
+			if ((LINK_STATE_IS_UP(ifa->ifa_ifp->if_link_state) ||
+			    ifa->ifa_ifp->if_link_state == LINK_STATE_UNKNOWN)
+			    && ifa->ifa_ifp->if_flags & IFF_UP)
+				rt->rt_flags |= RTF_UP;
+			else {
+				rt->rt_flags &= ~RTF_UP;
+				rt->rt_priority |= RTP_DOWN;
+			}
 		}
 #endif
 
@@ -911,6 +910,26 @@ makeroute:
 		rt->rt_ifa = ifa;
 		rt->rt_ifp = ifa->ifa_ifp;
 		if (req == RTM_RESOLVE) {
+			/*
+			 * If the ifa of the cloning route was stale, a
+			 * successful lookup for an ifa with the same address
+			 * has been made.  Use this ifa also for the cloning
+			 * route.
+			 */
+			if ((*ret_nrt)->rt_ifa->ifa_ifp == NULL) {
+				printf("rtrequest1 RTM_RESOLVE: wrong ifa (%p) "
+				    "was (%p)\n", ifa, (*ret_nrt)->rt_ifa);
+				if ((*ret_nrt)->rt_ifa->ifa_rtrequest)
+					(*ret_nrt)->rt_ifa->ifa_rtrequest(
+					    RTM_DELETE, *ret_nrt, NULL);
+				IFAFREE((*ret_nrt)->rt_ifa);
+				(*ret_nrt)->rt_ifa = ifa;
+				(*ret_nrt)->rt_ifp = ifa->ifa_ifp;
+				ifa->ifa_refcnt++;
+				if (ifa->ifa_rtrequest)
+					ifa->ifa_rtrequest(RTM_ADD, *ret_nrt,
+					    NULL);
+			}
 			/*
 			 * Copy both metrics and a back pointer to the cloned
 			 * route's parent.

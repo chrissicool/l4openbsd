@@ -1,4 +1,4 @@
-/*	$OpenBSD: vfs_subr.c,v 1.187 2010/06/29 04:09:32 tedu Exp $	*/
+/*	$OpenBSD: vfs_subr.c,v 1.193 2010/12/21 20:14:43 thib Exp $	*/
 /*	$NetBSD: vfs_subr.c,v 1.53 1996/04/22 01:39:13 christos Exp $	*/
 
 /*
@@ -136,7 +136,7 @@ void
 vntblinit(void)
 {
 	/* buffer cache may need a vnode for each buffer */
-	maxvnodes = desiredvnodes;
+	maxvnodes = 2 * desiredvnodes;
 	pool_init(&vnode_pool, sizeof(struct vnode), 0, 0, 0, "vnodes",
 	    &pool_allocator_nointr);
 	TAILQ_INIT(&vnode_hold_list);
@@ -301,14 +301,13 @@ vattr_null(struct vattr *vap)
 /*
  * Routines having to do with the management of the vnode table.
  */
-extern int (**dead_vnodeop_p)(void *);
 long numvnodes;
 
 /*
  * Return the next vnode from the free list.
  */
 int
-getnewvnode(enum vtagtype tag, struct mount *mp, int (**vops)(void *),
+getnewvnode(enum vtagtype tag, struct mount *mp, struct vops *vops,
     struct vnode **vpp)
 {
 	struct proc *p = curproc;
@@ -316,6 +315,13 @@ getnewvnode(enum vtagtype tag, struct mount *mp, int (**vops)(void *),
 	static int toggle;
 	struct vnode *vp;
 	int s;
+
+	/*
+	 * allow maxvnodes to increase if the buffer cache itself
+	 * is big enough to justify it. (we don't shrink it ever)
+	 */
+	maxvnodes = maxvnodes < bcstats.numbufs ? bcstats.numbufs
+	    : maxvnodes;
 
 	/*
 	 * We must choose whether to allocate a new vnode or recycle an
@@ -333,7 +339,7 @@ getnewvnode(enum vtagtype tag, struct mount *mp, int (**vops)(void *),
 	 * referencing buffers.
 	 */
 	toggle ^= 1;
-	if (numvnodes > 2 * maxvnodes)
+	if (numvnodes / 2 > maxvnodes)
 		toggle = 0;
 
 	s = splbio();
@@ -457,7 +463,7 @@ getdevvp(dev_t dev, struct vnode **vpp, enum vtype type)
 		*vpp = NULLVP;
 		return (0);
 	}
-	error = getnewvnode(VT_NON, NULL, spec_vnodeop_p, &nvp);
+	error = getnewvnode(VT_NON, NULL, &spec_vops, &nvp);
 	if (error) {
 		*vpp = NULLVP;
 		return (error);
@@ -757,7 +763,7 @@ vdrop(struct vnode *vp)
 {
 #ifdef DIAGNOSTIC
 	if (vp->v_holdcnt == 0)
-		panic("vdrop: zero holdcnt"); 
+		panic("vdrop: zero holdcnt");
 #endif
 
 	vp->v_holdcnt--;
@@ -843,7 +849,7 @@ vflush_vnode(struct vnode *vp, void *arg) {
 		vgonel(vp, p);
 		return (0);
 	}
-		
+
 	/*
 	 * If FORCECLOSE is set, forcibly close the vnode.
 	 * For block or character devices, revert to an
@@ -854,7 +860,7 @@ vflush_vnode(struct vnode *vp, void *arg) {
 			vgonel(vp, p);
 		} else {
 			vclean(vp, 0, p);
-			vp->v_op = spec_vnodeop_p;
+			vp->v_op = &spec_vops;
 			insmntque(vp, (struct mount *)0);
 		}
 		return (0);
@@ -960,7 +966,7 @@ vclean(struct vnode *vp, int flags, struct proc *p)
 	/*
 	 * Done with purge, notify sleepers of the grim news.
 	 */
-	vp->v_op = dead_vnodeop_p;
+	vp->v_op = &dead_vops;
 	VN_KNOTE(vp, NOTE_REVOKE);
 	vp->v_tag = VT_NON;
 	vp->v_flag &= ~VXLOCK;
@@ -2178,10 +2184,9 @@ vfs_vnode_print(void *v, int full, int (*pr)(const char *, ...))
 {
 	struct vnode *vp = v;
 
-#define	NENTS(n)	(sizeof n / sizeof(n[0]))
 	(*pr)("tag %s(%d) type %s(%d) mount %p typedata %p\n",
-	      vp->v_tag > NENTS(vtags)? "<unk>":vtags[vp->v_tag], vp->v_tag,
-	      vp->v_type > NENTS(vtypes)? "<unk>":vtypes[vp->v_type],
+	      vp->v_tag > nitems(vtags)? "<unk>":vtags[vp->v_tag], vp->v_tag,
+	      vp->v_type > nitems(vtypes)? "<unk>":vtypes[vp->v_type],
 	      vp->v_type, vp->v_mount, vp->v_mountedhere);
 
 	(*pr)("data %p usecount %d writecount %ld holdcnt %ld numoutput %d\n",

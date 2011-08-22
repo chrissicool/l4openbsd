@@ -1,10 +1,8 @@
 #!./perl
 
-# $RCSfile: odbm.t,v $$Revision: 1.4 $$Date: 2009/10/12 18:24:33 $
+# $RCSfile: dbm.t,v $$Revision: 4.1 $$Date: 92/08/07 18:27:43 $
 
 BEGIN {
-    chdir 't' if -d 't';
-    @INC = '../lib';
     require Config; import Config;
     if ($Config{'extensions'} !~ /\bODBM_File\b/ or $Config{'d_cplusplus'}) {
 	print "1..0 # Skip: ODBM_File was not built\n";

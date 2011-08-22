@@ -1,5 +1,5 @@
 # ex:ts=8 sw=4:
-# $OpenBSD: Add.pm,v 1.115 2010/08/07 21:19:04 espie Exp $
+# $OpenBSD: Add.pm,v 1.122 2011/01/25 11:46:57 espie Exp $
 #
 # Copyright (c) 2003-2007 Marc Espie <espie@openbsd.org>
 #
@@ -39,7 +39,7 @@ sub manpages_index
 				$destdir.$k, join(@l)) if $state->verbose >= 2;
 		} else {
 			try {
-				OpenBSD::Makewhatis::merge($destdir.$k, \@l, 
+				OpenBSD::Makewhatis::merge($destdir.$k, \@l,
 				    $state);
 			} catchall {
 				$state->errsay("Error in makewhatis: #1", $_);
@@ -50,11 +50,11 @@ sub manpages_index
 
 sub register_installation
 {
-	my $plist = shift;
-	return if $main::not;
+	my ($plist, $state) = @_;
+	return if $state->{not};
 	my $dest = installed_info($plist->pkgname);
 	mkdir($dest);
-	$plist->copy_info($dest);
+	$plist->copy_info($dest, $state);
 	$plist->set_infodir($dest);
 	$plist->to_installation;
 }
@@ -93,7 +93,7 @@ sub record_partial_installation
 			undef $last->{d};
 		}
 	}
-	register_installation($n);
+	register_installation($n, $state);
 	return $borked;
 }
 
@@ -374,6 +374,9 @@ sub install
 	$self->SUPER::install($state);
 	my $fullname = $self->fullname;
 	my $destdir = $state->{destdir};
+	if ($fullname =~ m,^/usr/local/share/doc/pkg-readmes/,) {
+		$state->{readmes}++;
+	}
 
 	if ($state->{extracted_first}) {
 		if ($state->{not}) {
@@ -455,6 +458,14 @@ sub prepare_to_extract
 		$file->{linkname} = $destdir.$file->{linkname};
 	}
 	return $file;
+}
+
+package OpenBSD::PackingElement::RcScript;
+sub install
+{
+	my ($self, $state) = @_;
+	$state->{add_rcscripts}{$self->fullname} = 1;
+	$self->SUPER::install($state);
 }
 
 package OpenBSD::PackingElement::EndFake;
@@ -649,7 +660,7 @@ sub install
 	my ($self, $state) = @_;
 	$self->SUPER::install($state);
 	return if $state->{do_faked};
-	$self->mark_ldconfig_directory($state->{destdir});
+	$self->mark_ldconfig_directory($state);
 }
 
 package OpenBSD::PackingElement::SpecialFile;
@@ -687,12 +698,12 @@ sub prepare_for_addition
 
 sub copy_info
 {
-	my ($self, $dest) = @_;
+	my ($self, $dest, $state) = @_;
 	require File::Copy;
 
 	File::Copy::move($self->fullname, $dest) or
-		print STDERR "Problem while moving ", $self->fullname,
-			" into $dest: $!\n";
+	    $state->errsay("Problem while moving #1 into #2: #3", 
+		$self->fullname, $dest, $!);
 }
 
 package OpenBSD::PackingElement::FINSTALL;
@@ -716,7 +727,7 @@ sub prepare_for_addition
 		my $key = "update_".OpenBSD::PackageName::splitstem($pkgname);
 		return if $state->defines($key);
 		if ($state->{interactive}) {
-			if ($state->confirm($self->{message}."\n".
+			if ($state->confirm($pkgname.":".$self->{message}."\n".
 			    "Do you want to update now", 0)) {
 			    	return;
 			}

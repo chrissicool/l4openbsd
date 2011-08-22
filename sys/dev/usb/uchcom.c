@@ -1,4 +1,4 @@
-/*	$OpenBSD: uchcom.c,v 1.10 2010/02/20 11:44:56 jsg Exp $	*/
+/*	$OpenBSD: uchcom.c,v 1.14 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*	$NetBSD: uchcom.c,v 1.1 2007/09/03 17:57:37 tshiozak Exp $	*/
 
 /*
@@ -160,7 +160,6 @@ static const struct uchcom_divider_record dividers[] =
 	{    2941,    368,               93750, { 1,    0, 0 } },
 	{     367,      1,               11719, { 0,    0, 0 } },
 };
-#define NUM_DIVIDERS	(sizeof (dividers) / sizeof (dividers[0]))
 
 void		uchcom_get_status(void *, int, u_char *, u_char *);
 void		uchcom_set(void *, int, int, int);
@@ -225,7 +224,6 @@ static const struct usb_devno uchcom_devs[] = {
 	{ USB_VENDOR_WCH2, USB_PRODUCT_WCH2_CH340 },
 	{ USB_VENDOR_WCH2, USB_PRODUCT_WCH2_CH341A }
 };
-#define uchcom_lookup(v, p)	usb_lookup(uchcom_devs, v, p)
 
 struct cfdriver uchcom_cd = { 
 	NULL, "uchcom", DV_DULL 
@@ -251,8 +249,8 @@ uchcom_match(struct device *parent, void *match, void *aux)
 	if (uaa->iface != NULL)
 		return UMATCH_NONE;
 
-	return (uchcom_lookup(uaa->vendor, uaa->product) != NULL ?
-		UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
+	return (usb_lookup(uchcom_devs, uaa->vendor, uaa->product) != NULL ?
+	    UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
 }
 
 void
@@ -305,9 +303,6 @@ uchcom_attach(struct device *parent, struct device *self, void *aux)
 	uca.methods = &uchcom_methods;
 	uca.arg = sc;
 	uca.info = NULL;
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
 	
 	sc->sc_subdev = config_found_sm(self, &uca, ucomprint, ucomsubmatch);
 
@@ -327,15 +322,10 @@ uchcom_detach(struct device *self, int flags)
 
 	uchcom_close_intr_pipe(sc);
 
-	sc->sc_dying = 1;
-
 	if (sc->sc_subdev != NULL) {
 		rv = config_detach(sc->sc_subdev, flags);
 		sc->sc_subdev = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return rv;
 }
@@ -668,7 +658,7 @@ uchcom_calc_divider_settings(struct uchcom_divider *dp, uint32_t rate)
 	uint32_t div, rem, mod;
 
 	/* find record */
-	for (i=0; i<NUM_DIVIDERS; i++) {
+	for (i=0; i<nitems(dividers); i++) {
 		if (dividers[i].dvr_high >= rate &&
 		    dividers[i].dvr_low <= rate) {
 			rp = &dividers[i];

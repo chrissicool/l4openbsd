@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_zyd.c,v 1.81 2009/11/22 22:13:51 jsg Exp $	*/
+/*	$OpenBSD: if_zyd.c,v 1.87 2011/01/25 20:03:36 jakemsr Exp $	*/
 
 /*-
  * Copyright (c) 2006 by Damien Bergamini <damien.bergamini@free.fr>
@@ -323,7 +323,7 @@ zyd_complete_attach(struct zyd_softc *sc)
 	usbd_status error;
 	int i;
 
-	usb_init_task(&sc->sc_task, zyd_task, sc);
+	usb_init_task(&sc->sc_task, zyd_task, sc, USB_TASK_TYPE_GENERIC);
 	timeout_set(&sc->scan_to, zyd_next_scan, sc);
 
 	sc->amrr.amrr_min_success_threshold =  1;
@@ -398,7 +398,6 @@ zyd_complete_attach(struct zyd_softc *sc)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = zyd_init;
 	ifp->if_ioctl = zyd_ioctl;
 	ifp->if_start = zyd_start;
 	ifp->if_watchdog = zyd_watchdog;
@@ -428,9 +427,6 @@ zyd_complete_attach(struct zyd_softc *sc)
 	sc->sc_txtap.wt_ihdr.it_present = htole32(ZYD_TX_RADIOTAP_PRESENT);
 #endif
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
-
 fail:	return error;
 }
 
@@ -444,8 +440,10 @@ zyd_detach(struct device *self, int flags)
 	s = splusb();
 
 	usb_rem_task(sc->sc_udev, &sc->sc_task);
-	timeout_del(&sc->scan_to);
-	timeout_del(&sc->amrr_to);
+	if (timeout_initialized(&sc->scan_to))
+		timeout_del(&sc->scan_to);
+	if (timeout_initialized(&sc->amrr_to))
+		timeout_del(&sc->amrr_to);
 
 	zyd_close_pipes(sc);
 
@@ -454,8 +452,10 @@ zyd_detach(struct device *self, int flags)
 		return 0;
 	}
 
-	ieee80211_ifdetach(ifp);
-	if_detach(ifp);
+	if (ifp->if_softc != NULL) {
+		ieee80211_ifdetach(ifp);
+		if_detach(ifp);
+	}
 
 	zyd_free_rx_list(sc);
 	zyd_free_tx_list(sc);
@@ -463,9 +463,6 @@ zyd_detach(struct device *self, int flags)
 	sc->attached = 0;
 
 	splx(s);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
 
 	return 0;
 }
@@ -2585,11 +2582,14 @@ zyd_newassoc(struct ieee80211com *ic, struct ieee80211_node *ni, int isnew)
 int
 zyd_activate(struct device *self, int act)
 {
+	struct zyd_softc *sc = (struct zyd_softc *)self;
+
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
 
 	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
 		break;
 	}
 	return 0;

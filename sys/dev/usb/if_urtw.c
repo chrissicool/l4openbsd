@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_urtw.c,v 1.30 2010/08/07 03:50:02 krw Exp $	*/
+/*	$OpenBSD: if_urtw.c,v 1.38 2011/01/25 20:03:35 jakemsr Exp $	*/
 
 /*-
  * Copyright (c) 2009 Martynas Venckus <martynas@openbsd.org>
@@ -690,8 +690,9 @@ urtw_attach(struct device *parent, struct device *self, void *aux)
 	/* XXX for what? */
 	sc->sc_preamble_mode = 2;
 
-	usb_init_task(&sc->sc_task, urtw_task, sc);
-	usb_init_task(&sc->sc_ledtask, urtw_ledusbtask, sc);
+	usb_init_task(&sc->sc_task, urtw_task, sc, USB_TASK_TYPE_GENERIC);
+	usb_init_task(&sc->sc_ledtask, urtw_ledusbtask, sc,
+	    USB_TASK_TYPE_GENERIC);
 	timeout_set(&sc->scan_to, urtw_next_scan, sc);
 	timeout_set(&sc->sc_led_ch, urtw_ledtask, sc);
 
@@ -724,9 +725,9 @@ urtw_attach(struct device *parent, struct device *self, void *aux)
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
 	if (sc->sc_hwrev & URTW_HWREV_8187) {
-		ifp->if_init = urtw_init;
+		sc->sc_init = urtw_init;
 	} else {
-		ifp->if_init = urtw_8187b_init;
+		sc->sc_init = urtw_8187b_init;
 	}
 	ifp->if_ioctl = urtw_ioctl;
 	ifp->if_start = urtw_start;
@@ -755,9 +756,6 @@ urtw_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_txtap.wt_ihdr.it_present = htole32(URTW_TX_RADIOTAP_PRESENT);
 #endif
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
-
 	printf(", address %s\n", ether_sprintf(ic->ic_myaddr));
 
 	return;
@@ -774,13 +772,20 @@ urtw_detach(struct device *self, int flags)
 
 	s = splusb();
 
-	ieee80211_ifdetach(ifp);	/* free all nodes */
-	if_detach(ifp);
+	if (timeout_initialized(&sc->scan_to))
+		timeout_del(&sc->scan_to);
+	if (timeout_initialized(&sc->sc_led_ch))
+		timeout_del(&sc->sc_led_ch);
 
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
-	usb_rem_task(sc->sc_udev, &sc->sc_ledtask);
-	timeout_del(&sc->scan_to);
-	timeout_del(&sc->sc_led_ch);
+	usb_rem_wait_task(sc->sc_udev, &sc->sc_task);
+	usb_rem_wait_task(sc->sc_udev, &sc->sc_ledtask);
+
+	usbd_ref_wait(sc->sc_udev);
+
+	if (ifp->if_softc != NULL) {
+		ieee80211_ifdetach(ifp);	/* free all nodes */
+		if_detach(ifp);
+	}
 
 	/* abort and free xfers */
 	urtw_free_tx_data_list(sc);
@@ -789,19 +794,19 @@ urtw_detach(struct device *self, int flags)
 
 	splx(s);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
-
 	return (0);
 }
 
 int
 urtw_activate(struct device *self, int act)
 {
+	struct urtw_softc *sc = (struct urtw_softc *)self;
+
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
 	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
 		break;
 	}
 
@@ -1028,6 +1033,7 @@ urtw_free_tx_data_list(struct urtw_softc *sc)
 int
 urtw_media_change(struct ifnet *ifp)
 {
+	struct urtw_softc *sc = ifp->if_softc;
 	int error;
 
 	error = ieee80211_media_change(ifp);
@@ -1036,7 +1042,7 @@ urtw_media_change(struct ifnet *ifp)
 
 	if ((ifp->if_flags & (IFF_UP | IFF_RUNNING)) ==
 	    (IFF_UP | IFF_RUNNING))
-		ifp->if_init(ifp);
+		sc->sc_init(ifp);
 
 	return (0);
 }
@@ -1904,7 +1910,8 @@ urtw_led_mode0(struct urtw_softc *sc, int mode)
 			URTW_LED_OFF : URTW_LED_ON;
 		t.tv_sec = 0;
 		t.tv_usec = 100 * 1000L;
-		timeout_add(&sc->sc_led_ch, tvtohz(&t));
+		if (!usbd_is_dying(sc->sc_udev))
+			timeout_add(&sc->sc_led_ch, tvtohz(&t));
 		break;
 	case URTW_LED_POWER_ON_BLINK:
 		urtw_led_on(sc, URTW_LED_GPIO);
@@ -2025,7 +2032,8 @@ urtw_led_blink(struct urtw_softc *sc)
 	case URTW_LED_BLINK_NORMAL:
 		t.tv_sec = 0;
 		t.tv_usec = 100 * 1000L;
-		timeout_add(&sc->sc_led_ch, tvtohz(&t));
+		if (!usbd_is_dying(sc->sc_udev))
+			timeout_add(&sc->sc_led_ch, tvtohz(&t));
 		break;
 	default:
 		panic("unknown LED status 0x%x", sc->sc_gpio_ledstate);
@@ -2388,6 +2396,11 @@ urtw_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	struct ifreq *ifr;
 	int s, error = 0;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return (ENXIO);
+
+	usbd_ref_incr(sc->sc_udev);
+
 	s = splnet();
 
 	switch (cmd) {
@@ -2412,7 +2425,7 @@ urtw_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 				urtw_set_multi(sc);
 			} else {
 				if (!(ifp->if_flags & IFF_RUNNING))
-					ifp->if_init(ifp);
+					sc->sc_init(ifp);
 			}
 		} else {
 			if (ifp->if_flags & IFF_RUNNING)
@@ -2455,11 +2468,13 @@ urtw_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	if (error == ENETRESET) {
 		if ((ifp->if_flags & (IFF_RUNNING | IFF_UP)) ==
 		    (IFF_RUNNING | IFF_UP))
-			ifp->if_init(ifp);
+			sc->sc_init(ifp);
 		error = 0;
 	}
 
 	splx(s);
+
+	usbd_ref_decr(sc->sc_udev);
 
 	return (error);
 }
@@ -3195,8 +3210,8 @@ urtw_rxeof(usbd_xfer_handle xfer, usbd_private_handle priv, usbd_status status)
 		struct urtw_rx_radiotap_header *tap = &sc->sc_rxtap;
 
 		/* XXX Are variables correct? */
-		tap->wr_chan_freq = htole16(ic->ic_bss->ni_chan->ic_freq);
-		tap->wr_chan_flags = htole16(ic->ic_bss->ni_chan->ic_flags);
+		tap->wr_chan_freq = htole16(ic->ic_ibss_chan->ic_freq);
+		tap->wr_chan_flags = htole16(ic->ic_ibss_chan->ic_flags);
 		tap->wr_dbm_antsignal = (int8_t)rssi;
 
 		mb.m_data = (caddr_t)tap;
@@ -3504,8 +3519,15 @@ urtw_next_scan(void *arg)
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct ifnet *ifp = &ic->ic_if;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return;
+
+	usbd_ref_incr(sc->sc_udev);
+
 	if (ic->ic_state == IEEE80211_S_SCAN)
 		ieee80211_next_scan(ifp);
+
+	usbd_ref_decr(sc->sc_udev);
 }
 
 void
@@ -3516,6 +3538,9 @@ urtw_task(void *arg)
 	struct ieee80211_node *ni;
 	enum ieee80211_state ostate;
 	usbd_status error = 0;
+
+	if (usbd_is_dying(sc->sc_udev))
+		return;
 
 	ostate = ic->ic_state;
 
@@ -3529,7 +3554,8 @@ urtw_task(void *arg)
 
 	case IEEE80211_S_SCAN:
 		urtw_set_chan(sc, ic->ic_bss->ni_chan);
-		timeout_add_msec(&sc->scan_to, 200);
+		if (!usbd_is_dying(sc->sc_udev))
+			timeout_add_msec(&sc->scan_to, 200);
 		break;
 
 	case IEEE80211_S_AUTH:

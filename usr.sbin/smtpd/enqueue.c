@@ -1,4 +1,4 @@
-/*	$OpenBSD: enqueue.c,v 1.38 2010/08/02 11:49:02 jacekm Exp $	*/
+/*	$OpenBSD: enqueue.c,v 1.41 2010/11/28 14:35:58 gilles Exp $	*/
 
 /*
  * Copyright (c) 2005 Henning Brauer <henning@bulabula.org>
@@ -25,17 +25,12 @@
 
 #include <ctype.h>
 #include <err.h>
-#include <errno.h>
 #include <event.h>
-#include <fcntl.h>
-#include <netdb.h>
+#include <imsg.h>
 #include <pwd.h>
-#include <signal.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 
 #include "smtpd.h"
@@ -163,6 +158,7 @@ enqueue(int argc, char *argv[])
 		case 'x':
 			break;
 		case 'q':
+			/* XXX: implement "process all now" */
 			return (0);
 		default:
 			usage();
@@ -188,7 +184,6 @@ enqueue(int argc, char *argv[])
 	}
 
 	signal(SIGALRM, sighdlr);
-	signal(SIGPIPE, SIG_IGN);
 	alarm(300);
 
 	fp = tmpfile();

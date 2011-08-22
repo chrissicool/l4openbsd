@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.14 2010/07/03 03:59:16 krw Exp $	*/
+/*	$OpenBSD: conf.c,v 1.16 2011/01/14 19:04:08 jasper Exp $	*/
 
 /*-
  * Copyright (c) 1991 The Regents of the University of California.
@@ -70,6 +70,7 @@ cdev_decl(nnpfs_dev);
 #include "pf.h"
 #include "systrace.h"
 #include "vscsi.h"
+#include "pppx.h"
 
 struct bdevsw	bdevsw[] =
 {
@@ -93,7 +94,7 @@ struct bdevsw	bdevsw[] =
 	bdev_lkm_dummy(),		/* 17 */
 	bdev_lkm_dummy(),		/* 18 */
 };
-int	nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
+int	nblkdev = nitems(bdevsw);
 
 struct cdevsw	cdevsw[] =
 {
@@ -158,8 +159,9 @@ struct cdevsw	cdevsw[] =
 	cdev_ptm_init(NPTY,ptm),	/* 52: pseudo-tty ptm device */
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 53: vscsi */
 	cdev_disk_init(1,diskmap),	/* 54: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 55: pppx */
 };
-int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+int	nchrdev = nitems(cdevsw);
 
 int	mem_no = 2;	/* major device number of memory special file */
 
@@ -227,4 +229,4 @@ int chrtoblktbl[] = {
 	/* 19 */	8,	/* vnd */
 	/* 20 */	5,	/* st */
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);

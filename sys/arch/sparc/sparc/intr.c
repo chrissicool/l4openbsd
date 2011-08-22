@@ -1,4 +1,4 @@
-/*	$OpenBSD: intr.c,v 1.34 2010/07/10 19:32:25 miod Exp $ */
+/*	$OpenBSD: intr.c,v 1.37 2010/12/21 14:56:24 claudio Exp $ */
 /*	$NetBSD: intr.c,v 1.20 1997/07/29 09:42:03 fair Exp $ */
 
 /*
@@ -51,9 +51,6 @@
 
 #include <dev/cons.h>
 
-#include <net/netisr.h>
-#include <net/if.h>
-
 #include <machine/atomic.h>
 #include <machine/cpu.h>
 #include <machine/ctlreg.h>
@@ -62,26 +59,11 @@
 
 #include <sparc/sparc/cpuvar.h>
 
-#ifdef INET
-#include <netinet/in.h>
-#include <netinet/if_ether.h>
-#include <netinet/ip_var.h>
-#endif
-
-#ifdef INET6
-# ifndef INET
-#  include <netinet/in.h>
-# endif
-#include <netinet/ip6.h>
-#include <netinet6/ip6_var.h>
-#endif
-
 extern void raise(int, int);
 
 void	ih_insert(struct intrhand **, struct intrhand *);
 void	ih_remove(struct intrhand **, struct intrhand *);
 
-void	softnet(void *);
 void	strayintr(struct clockframe *);
 
 /*
@@ -177,13 +159,9 @@ void
 intr_init()
 {
 	level10.ih_vec = level10.ih_ipl >> 8;
-	evcount_attach(&level10.ih_count, "clock", &level10.ih_vec,
-	    &evcount_intr);
+	evcount_attach(&level10.ih_count, "clock", &level10.ih_vec);
 	level14.ih_vec = level14.ih_ipl >> 8;
-	evcount_attach(&level14.ih_count, "prof", &level14.ih_vec,
-	    &evcount_intr);
-
-	softnet_ih = softintr_establish(IPL_SOFTNET, softnet, NULL);
+	evcount_attach(&level14.ih_count, "prof", &level14.ih_vec);
 }
 
 /*
@@ -297,7 +275,7 @@ intr_establish(level, ih, ipl_block, name)
 	ih->ih_vec = ipl_block;
 	ih->ih_ipl = (ipl_block << 8);
 	if (name != NULL)
-		evcount_attach(&ih->ih_count, name, &ih->ih_vec, &evcount_intr);
+		evcount_attach(&ih->ih_count, name, &ih->ih_vec);
 
 	s = splhigh();
 
@@ -487,7 +465,8 @@ softintr_establish(int level, void (*fn)(void *), void *arg)
 	}
 #endif
 
-	sih = (struct sintrhand *)malloc(sizeof *sih, M_DEVBUF, M_ZERO);
+	sih = (struct sintrhand *)malloc(sizeof *sih, M_DEVBUF,
+	    M_NOWAIT|M_ZERO);
 	if (sih == NULL)
 		return NULL;
 
@@ -555,29 +534,6 @@ softintr_schedule(void *arg)
 		}
 	}
 	splx(s);
-}
-
-void *softnet_ih;
-int netisr;
-
-void
-softnet(void *arg)
-{
-	int n;
-
-	while ((n = netisr) != 0) {
-		atomic_clearbits_int(&netisr, n);
-
-#define DONETISR(bit, fn)						\
-		do {							\
-			if (n & (1 << bit))				\
-				fn();					\
-		} while (0)
-
-#include <net/netisr_dispatch.h>
-
-#undef DONETISR
-	}
 }
 
 #ifdef DIAGNOSTIC

@@ -1,4 +1,4 @@
-/*	$OpenBSD: pciide.c,v 1.318 2010/08/06 05:34:29 deraadt Exp $	*/
+/*	$OpenBSD: pciide.c,v 1.323 2010/11/18 18:12:52 kettenis Exp $	*/
 /*	$NetBSD: pciide.c,v 1.127 2001/08/03 01:31:08 tsutsui Exp $	*/
 
 /*
@@ -217,6 +217,7 @@ void ns_scx200_setup_channel(struct channel_softc *);
 void acer_chip_map(struct pciide_softc *, struct pci_attach_args *);
 void acer_setup_channel(struct channel_softc *);
 int  acer_pci_intr(void *);
+int  acer_dma_init(void *, int, int, void *, size_t, int);
 
 void pdc202xx_chip_map(struct pciide_softc *, struct pci_attach_args *);
 void pdc202xx_setup_channel(struct channel_softc *);
@@ -1129,6 +1130,22 @@ const struct pciide_product_desc pciide_nvidia_products[] = {
 	{ PCI_PRODUCT_NVIDIA_MCP79_SATA_4,
 	  0,
 	  sata_chip_map
+	},
+	{ PCI_PRODUCT_NVIDIA_MCP89_SATA_1,
+	  0,
+	  sata_chip_map
+	},
+	{ PCI_PRODUCT_NVIDIA_MCP89_SATA_2,
+	  0,
+	  sata_chip_map
+	},
+	{ PCI_PRODUCT_NVIDIA_MCP89_SATA_3,
+	  0,
+	  sata_chip_map
+	},
+	{ PCI_PRODUCT_NVIDIA_MCP89_SATA_4,
+	  0,
+	  sata_chip_map
 	}
 };
 
@@ -1409,6 +1426,9 @@ pciide_activate(struct device *self, int act)
 	int i;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		rv = config_activate_children(self, act);
 
@@ -1454,6 +1474,7 @@ pciide_activate(struct device *self, int act)
 		if (sc->sc_pp->chip_map == default_chip_map ||
 		    sc->sc_pp->chip_map == sata_chip_map ||
 		    sc->sc_pp->chip_map == piix_chip_map ||
+		    sc->sc_pp->chip_map == amd756_chip_map ||
 		    sc->sc_pp->chip_map == phison_chip_map ||
 		    sc->sc_pp->chip_map == ixp_chip_map ||
 		    sc->sc_pp->chip_map == acard_chip_map ||
@@ -5650,6 +5671,8 @@ acer_chip_map(struct pciide_softc *sc, struct pci_attach_args *pa)
 		}
 		sc->sc_wdcdev.cap |= WDC_CAPABILITY_IRQACK;
 		sc->sc_wdcdev.irqack = pciide_irqack;
+		if (rev <= 0xC4)
+			sc->sc_wdcdev.dma_init = acer_dma_init;
 	}
 
 	sc->sc_wdcdev.PIO_cap = 4;
@@ -5842,6 +5865,17 @@ acer_pci_intr(void *arg)
 		}
 	}
 	return (rv);
+}
+
+int
+acer_dma_init(void *v, int channel, int drive, void *databuf,
+    size_t datalen, int flags)
+{
+	/* Use PIO for LBA48 transfers. */
+	if (flags & WDC_DMA_LBA48)
+		return (EINVAL);
+
+	return (pciide_dma_init(v, channel, drive, databuf, datalen, flags));
 }
 
 void

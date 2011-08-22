@@ -1,4 +1,4 @@
-/*	$OpenBSD: pmap.c,v 1.14 2010/04/21 03:03:26 deraadt Exp $	*/
+/*	$OpenBSD: pmap.c,v 1.17 2010/12/14 20:24:25 jasper Exp $	*/
 /*	$NetBSD: pmap.c,v 1.55 2006/08/07 23:19:36 tsutsui Exp $	*/
 
 /*-
@@ -56,8 +56,9 @@
 
 struct pmap __pmap_kernel;
 STATIC vaddr_t __pmap_kve;	/* VA of last kernel virtual */
-paddr_t avail_start;		/* PA of first available physical page */
-paddr_t avail_end;		/* PA of last available physical page */
+
+/* For the fast tlb miss handler */
+pt_entry_t **curptd;		/* p1 va of curlwp->...->pm_ptp */
 
 /* pmap pool */
 STATIC struct pool __pmap_pmap_pool;
@@ -101,8 +102,6 @@ pmap_bootstrap()
 	/* Steal msgbuf area */
 	initmsgbuf((caddr_t)uvm_pageboot_alloc(MSGBUFSIZE), MSGBUFSIZE);
 
-	avail_start = ptoa(vm_physmem[0].start);
-	avail_end = ptoa(vm_physmem[vm_nphysseg - 1].end);
 	__pmap_kve = VM_MIN_KERNEL_ADDRESS;
 
 	pmap_kernel()->pm_refcnt = 1;
@@ -281,7 +280,9 @@ pmap_activate(struct proc *p)
 		pmap->pm_asid = __pmap_asid_alloc();
 
 	KDASSERT(pmap->pm_asid >=0 && pmap->pm_asid < 256);
+
 	sh_tlb_set_asid(pmap->pm_asid);
+	curptd = pmap->pm_ptp;
 }
 
 int
@@ -894,16 +895,13 @@ pmap_clear_modify(struct vm_page *pg)
  * Find first virtual address >= *vap that doesn't cause
  * a virtual cache alias against vaddr_t foff.
  */
-void
-pmap_prefer(vaddr_t foff, vaddr_t *vap)
+vaddr_t
+pmap_prefer(vaddr_t foff, vaddr_t va)
 {
-	vaddr_t va;
+	if (SH_HAS_VIRTUAL_ALIAS)
+		va += ((foff - va) & sh_cache_prefer_mask);
 
-	if (SH_HAS_VIRTUAL_ALIAS) {
-		va = *vap;
-
-		*vap = va + ((foff - va) & sh_cache_prefer_mask);
-	}
+	return va;
 }
 #endif /* SH4 */
 

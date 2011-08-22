@@ -1,4 +1,4 @@
-/*	$OpenBSD: sdhc_pci.c,v 1.8 2010/07/01 18:08:17 deraadt Exp $	*/
+/*	$OpenBSD: sdhc_pci.c,v 1.10 2010/09/07 16:21:46 deraadt Exp $	*/
 
 /*
  * Copyright (c) 2006 Uwe Stuehler <uwe@openbsd.org>
@@ -46,12 +46,11 @@ struct sdhc_pci_softc {
 
 int	sdhc_pci_match(struct device *, void *, void *);
 void	sdhc_pci_attach(struct device *, struct device *, void *);
-int	sdhc_pci_activate(struct device *, int act);
 void	sdhc_takecontroller(struct pci_attach_args *);
 
 struct cfattach sdhc_pci_ca = {
 	sizeof(struct sdhc_pci_softc), sdhc_pci_match, sdhc_pci_attach,
-	NULL, sdhc_pci_activate
+	NULL, sdhc_activate
 };
 
 int
@@ -144,24 +143,9 @@ sdhc_pci_attach(struct device *parent, struct device *self, void *aux)
 	}
 
 	/*
-	 * Establish power and shutdown hooks.
+	 * Establish shutdown hooks.
 	 */
-	(void)powerhook_establish(sdhc_power, &sc->sc);
 	(void)shutdownhook_establish(sdhc_shutdown, &sc->sc);
-}
-
-int
-sdhc_pci_activate(struct device *self, int act)
-{
-	switch (act) {
-	case DVACT_SUSPEND:
-		sdhc_power(PWR_SUSPEND, self);
-		break;
-	case DVACT_RESUME:
-		sdhc_power(PWR_RESUME, self);
-		break;
-	}
-	return (0);
 }
 
 void

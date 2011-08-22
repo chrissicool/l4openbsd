@@ -1,4 +1,4 @@
-/*      $OpenBSD: atapiscsi.c,v 1.94 2010/08/04 19:43:52 deraadt Exp $     */
+/*      $OpenBSD: atapiscsi.c,v 1.96 2010/11/18 21:13:19 miod Exp $     */
 
 /*
  * This code is derived from code with the copyright below.
@@ -36,9 +36,7 @@
 #include <sys/kernel.h>
 #include <sys/device.h>
 #include <sys/buf.h>
-#include <sys/dkstat.h>
 #include <sys/disklabel.h>
-#include <sys/dkstat.h>
 #include <sys/malloc.h>
 #include <sys/proc.h>
 #include <sys/reboot.h>
@@ -480,7 +478,7 @@ atapi_to_scsi_sense(xfer, flags)
 
 	xfer->error = XS_SHORTSENSE;
 
-	sense->error_code = SSD_ERRCODE_VALID | 0x70;
+	sense->error_code = SSD_ERRCODE_VALID | SSD_ERRCODE_CURRENT;
 	sense->flags = (flags >> 4);
 
 	WDCDEBUG_PRINT(("Atapi error: %d ", (flags >> 4)), DEBUG_ERRORS);

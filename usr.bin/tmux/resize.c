@@ -1,4 +1,4 @@
-/* $OpenBSD: resize.c,v 1.5 2010/06/21 01:27:46 nicm Exp $ */
+/* $OpenBSD: resize.c,v 1.7 2010/12/21 22:37:59 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -52,11 +52,7 @@ recalculate_sizes(void)
 	u_int		 	 i, j, ssx, ssy, has, limit;
 	int		 	 flag;
 
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		s = ARRAY_ITEM(&sessions, i);
-		if (s == NULL)
-			continue;
-
+	RB_FOREACH(s, sessions, &sessions) {
 		ssx = ssy = UINT_MAX;
 		for (j = 0; j < ARRAY_LENGTH(&clients); j++) {
 			c = ARRAY_ITEM(&clients, j);
@@ -98,9 +94,8 @@ recalculate_sizes(void)
 		flag = options_get_number(&w->options, "aggressive-resize");
 
 		ssx = ssy = UINT_MAX;
-		for (j = 0; j < ARRAY_LENGTH(&sessions); j++) {
-			s = ARRAY_ITEM(&sessions, j);
-			if (s == NULL || s->flags & SESSION_UNATTACHED)
+		RB_FOREACH(s, sessions, &sessions) {
+			if (s->flags & SESSION_UNATTACHED)
 				continue;
 			if (flag)
 				has = s->curw->window == w;
@@ -113,11 +108,8 @@ recalculate_sizes(void)
 					ssy = s->sy;
 			}
 		}
-		if (ssx == UINT_MAX || ssy == UINT_MAX) {
-			w->flags |= WINDOW_HIDDEN;
+		if (ssx == UINT_MAX || ssy == UINT_MAX)
 			continue;
-		}
-		w->flags &= ~WINDOW_HIDDEN;
 
 		limit = options_get_number(&w->options, "force-width");
 		if (limit != 0 && ssx > limit)

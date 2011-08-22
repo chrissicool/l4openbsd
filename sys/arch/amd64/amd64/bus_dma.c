@@ -1,4 +1,4 @@
-/*	$OpenBSD: bus_dma.c,v 1.32 2010/05/20 05:46:53 oga Exp $	*/
+/*	$OpenBSD: bus_dma.c,v 1.35 2010/12/26 15:40:58 miod Exp $	*/
 /*	$NetBSD: bus_dma.c,v 1.3 2003/05/07 21:33:58 fvdl Exp $	*/
 
 /*-
@@ -108,8 +108,6 @@
 #include <machine/i82093var.h>
 #include <machine/mpbiosvar.h>
 #endif
-
-extern	paddr_t avail_end;
 
 int _bus_dmamap_load_buffer(bus_dma_tag_t, bus_dmamap_t, void *, bus_size_t,
     struct proc *, int, paddr_t *, int *, int);
@@ -404,7 +402,6 @@ void
 _bus_dmamap_sync(bus_dma_tag_t t, bus_dmamap_t map, bus_addr_t addr,
     bus_size_t size, int op)
 {
-
 	/* Nothing to do here. */
 }
 
@@ -548,7 +545,7 @@ _bus_dmamem_mmap(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs, off_t off,
 			continue;
 		}
 
-		return (atop(segs[i].ds_addr + off));
+		return (segs[i].ds_addr + off);
 	}
 
 	/* Page not found. */

@@ -1,4 +1,4 @@
-/*	$OpenBSD: exception.S,v 1.30 2010/02/01 05:26:17 miod Exp $ */
+/*	$OpenBSD: exception.S,v 1.32 2010/12/28 18:40:28 miod Exp $ */
 
 /*
  * Copyright (c) 2002-2003 Opsycon AB  (www.opsycon.se / www.opsycon.com)
@@ -428,22 +428,15 @@ NNON_LEAF(u_general, FRAMESZ(CF_SZ), ra)
 	jal	trap
 	PTR_S	a3, CF_RA_OFFS(sp)		# for debugging
 
-	GET_CPU_INFO(t1, t0)
 0:
+	GET_CPU_INFO(t1, t0)
 	PTR_L	t0, CI_CURPROC(t1)
 	lw	v0, P_ASTPENDING(t0)	# any pending AST?
 	beq	v0, zero, 4f
 	nop
 
-	PTR_L	t0, CI_CURPROCPADDR(t1)	# curprocpaddr
-	SAVE_CPU_SREG(t0, 0)
-
 	jal	ast
 	nop
-
-	GET_CPU_INFO(t1, t0)
-	PTR_L	t0, CI_CURPROCPADDR(t1)
-	RESTORE_CPU_SREG(t0, 0)
 
 	b	0b
 	nop

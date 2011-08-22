@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_alc.c,v 1.6 2010/07/27 22:39:59 deraadt Exp $	*/
+/*	$OpenBSD: if_alc.c,v 1.10 2011/02/18 17:20:15 mikeb Exp $	*/
 /*-
  * Copyright (c) 2009, Pyun YongHyeon <yongari@FreeBSD.org>
  * All rights reserved.
@@ -104,7 +104,7 @@ void	alc_mac_config(struct alc_softc *);
 int	alc_miibus_readreg(struct device *, int, int);
 void	alc_miibus_statchg(struct device *);
 void	alc_miibus_writereg(struct device *, int, int, int);
-int	alc_newbuf(struct alc_softc *, struct alc_rxdesc *, int);
+int	alc_newbuf(struct alc_softc *, struct alc_rxdesc *);
 void	alc_phy_down(struct alc_softc *);
 void	alc_phy_reset(struct alc_softc *);
 void	alc_reset(struct alc_softc *);
@@ -589,7 +589,6 @@ alc_attach(struct device *parent, struct device *self, void *aux)
 	ifp = &sc->sc_arpcom.ac_if;
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = alc_init;
 	ifp->if_ioctl = alc_ioctl;
 	ifp->if_start = alc_start;
 	ifp->if_watchdog = alc_watchdog;
@@ -685,6 +684,9 @@ alc_activate(struct device *self, int act)
 	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		if (ifp->if_flags & IFF_RUNNING)
 			alc_stop(sc);
@@ -696,7 +698,7 @@ alc_activate(struct device *self, int act)
 			alc_init(ifp);
 		break;
 	}
-	return rv;
+	return (rv);
 }
 
 int
@@ -1550,16 +1552,16 @@ alc_txeof(struct alc_softc *sc)
 }
 
 int
-alc_newbuf(struct alc_softc *sc, struct alc_rxdesc *rxd, int init)
+alc_newbuf(struct alc_softc *sc, struct alc_rxdesc *rxd)
 {
 	struct mbuf *m;
 	bus_dmamap_t map;
 	int error;
 
-	MGETHDR(m, init ? M_WAITOK : M_DONTWAIT, MT_DATA);
+	MGETHDR(m, M_DONTWAIT, MT_DATA);
 	if (m == NULL)
 		return (ENOBUFS);
-	MCLGET(m, init ? M_WAITOK : M_DONTWAIT);
+	MCLGET(m, M_DONTWAIT);
 	if (!(m->m_flags & M_EXT)) {
 		m_freem(m);
 		return (ENOBUFS);
@@ -1571,18 +1573,8 @@ alc_newbuf(struct alc_softc *sc, struct alc_rxdesc *rxd, int init)
 	    sc->alc_cdata.alc_rx_sparemap, m, BUS_DMA_NOWAIT);
 
 	if (error != 0) {
-		if (!error) {
-			bus_dmamap_unload(sc->sc_dmat,
-			    sc->alc_cdata.alc_rx_sparemap);
-			error = EFBIG;
-			printf("%s: too many segments?!\n",
-			    sc->sc_dev.dv_xname);
-		}
 		m_freem(m);
-
-		if (init)
-			printf("%s: can't load RX mbuf\n", sc->sc_dev.dv_xname);
-
+		printf("%s: can't load RX mbuf\n", sc->sc_dev.dv_xname);
 		return (error);
 	}
 
@@ -1705,7 +1697,7 @@ alc_rxeof(struct alc_softc *sc, struct rx_rdesc *rrd)
 		rxd = &sc->alc_cdata.alc_rxdesc[rx_cons];
 		mp = rxd->rx_m;
 		/* Add a new receive buffer to the ring. */
-		if (alc_newbuf(sc, rxd, 0) != 0) {
+		if (alc_newbuf(sc, rxd) != 0) {
 			ifp->if_iqdrops++;
 			/* Reuse Rx buffers. */
 			if (sc->alc_cdata.alc_rxhead != NULL)
@@ -2189,7 +2181,7 @@ alc_stop_mac(struct alc_softc *sc)
 	/* Disable Rx/Tx MAC. */
 	reg = CSR_READ_4(sc, ALC_MAC_CFG);
 	if ((reg & (MAC_CFG_TX_ENB | MAC_CFG_RX_ENB)) != 0) {
-		reg &= ~MAC_CFG_TX_ENB | MAC_CFG_RX_ENB;
+		reg &= ~(MAC_CFG_TX_ENB | MAC_CFG_RX_ENB);
 		CSR_WRITE_4(sc, ALC_MAC_CFG, reg);
 	}
 	for (i = ALC_TIMEOUT; i > 0; i--) {
@@ -2240,7 +2232,7 @@ alc_stop_queue(struct alc_softc *sc)
 	}
 	/* Disable TxQ. */
 	reg = CSR_READ_4(sc, ALC_TXQ_CFG);
-	if ((reg & TXQ_CFG_ENB) == 0) {
+	if ((reg & TXQ_CFG_ENB) != 0) {
 		reg &= ~TXQ_CFG_ENB;
 		CSR_WRITE_4(sc, ALC_TXQ_CFG, reg);
 	}
@@ -2291,7 +2283,7 @@ alc_init_rx_ring(struct alc_softc *sc)
 		rxd = &sc->alc_cdata.alc_rxdesc[i];
 		rxd->rx_m = NULL;
 		rxd->rx_desc = &rd->alc_rx_ring[i];
-		if (alc_newbuf(sc, rxd, 1) != 0)
+		if (alc_newbuf(sc, rxd) != 0)
 			return (ENOBUFS);
 	}
 

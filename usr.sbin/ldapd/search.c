@@ -1,4 +1,4 @@
-/*	$OpenBSD: search.c,v 1.10 2010/07/02 05:23:40 martinh Exp $ */
+/*	$OpenBSD: search.c,v 1.14 2010/11/10 08:00:54 martinh Exp $ */
 
 /*
  * Copyright (c) 2009, 2010 Martin Hedenfalk <martin@bzero.se>
@@ -70,7 +70,8 @@ should_include_attribute(char *adesc, struct search *search, int explicit)
 	char			*fdesc;
 	struct ber_element	*elm;
 
-	if (search->attrlist->be_sub->be_encoding == BER_TYPE_EOC) {
+	if (search->attrlist->be_sub == NULL ||
+	    search->attrlist->be_sub->be_encoding == BER_TYPE_EOC) {
 		/* An empty list with no attributes requests the return of
 		 * all user attributes. */
 		return !is_operational(adesc);
@@ -132,6 +133,9 @@ search_result(const char *dn, size_t dnlen, struct ber_element *attrs,
 		dn, dnlen, filtered_attrs);
 	if (elm == NULL)
 		goto fail;
+
+	ldap_debug_elements(root, LDAP_RES_SEARCH_ENTRY,
+	    "sending search entry on fd %d", conn->fd);
 
 	rc = ber_write_elements(&conn->ber, root);
 	ber_free_elements(root);
@@ -231,7 +235,7 @@ check_search_entry(struct btval *key, struct btval *val, struct search *search)
 		return 0;
 	}
 
-	if (ldap_matches_filter(elm, search->filter) != 0) {
+	if (ldap_matches_filter(elm, search->plan) != 0) {
 		ber_free_elements(elm);
 		return 0;
 	}
@@ -530,7 +534,7 @@ ldap_search_subschema(struct search *search)
 	struct ber_element	*root, *elm, *key, *val;
 	struct object		*obj;
 	struct attr_type	*at;
-	int			 rc;
+	int			 rc, i;
 
 	if ((root = ber_add_sequence(NULL)) == NULL) {
 		return;
@@ -585,6 +589,21 @@ ldap_search_subschema(struct search *search)
 		}
 	}
 
+	if (should_include_attribute("matchingRules", search, 1)) {
+		elm = ber_add_sequence(elm);
+		key = ber_add_string(elm, "matchingRules");
+		val = ber_add_set(key);
+
+		for (i = 0; i < num_match_rules; i++) {
+			if (schema_dump_match_rule(&match_rules[i], buf,
+			    sizeof(buf)) != 0) {
+				rc = LDAP_OTHER;
+				goto done;
+			}
+			val = ber_add_string(val, buf);
+		}
+	}
+
 	search_result("cn=schema", 9, root, search);
 	rc = LDAP_SUCCESS;
 
@@ -616,6 +635,28 @@ add_index(struct plan *plan, const char *fmt, ...)
 	return 0;
 }
 
+static int
+plan_get_attr(struct plan *plan, struct namespace *ns, char *attr)
+{
+	if (ns->relax) {
+		/*
+		 * Under relaxed schema checking, all attributes
+		 * are considered directory strings with case-insensitive
+		 * matching.
+		 */
+		plan->at = lookup_attribute(conf->schema, "name");
+		plan->adesc = attr;
+	} else
+		plan->at = lookup_attribute(conf->schema, attr);
+
+	if (plan->at == NULL) {
+		log_debug("%s: no such attribute, undefined term", attr);
+		return -1;
+	}
+
+	return 0;
+}
+
 static struct plan *
 search_planner(struct namespace *ns, struct ber_element *filter)
 {
@@ -635,6 +676,7 @@ search_planner(struct namespace *ns, struct ber_element *filter)
 		log_warn("search_planner: calloc");
 		return NULL;
 	}
+	plan->op = filter->be_type;
 	TAILQ_INIT(&plan->args);
 	TAILQ_INIT(&plan->indices);
 
@@ -643,15 +685,31 @@ search_planner(struct namespace *ns, struct ber_element *filter)
 	case LDAP_FILT_APPR:
 		if (ber_scanf_elements(filter, "{ss", &attr, &s) != 0)
 			goto fail;
-		if (namespace_has_index(ns, attr, INDEX_EQUAL))
-			add_index(plan, "%s=%s,", attr, s);
+		if (plan_get_attr(plan, ns, attr) == -1)
+			plan->undefined = 1;
+		else if (plan->at->equality == NULL) {
+			log_debug("'%s' doesn't define equality matching",
+			    attr);
+			plan->undefined = 1;
+		} else {
+			plan->assert.value = s;
+			if (namespace_has_index(ns, attr, INDEX_EQUAL))
+				add_index(plan, "%s=%s,", attr, s);
+		}
 		break;
 	case LDAP_FILT_SUBS:
-		if (ber_scanf_elements(filter, "{s{ts",
-		    &attr, &class, &type, &s) != 0)
+		if (ber_scanf_elements(filter, "{s{ets",
+		    &attr, &plan->assert.substring, &class, &type, &s) != 0)
 			goto fail;
-		if (class == BER_CLASS_CONTEXT && type == LDAP_FILT_SUBS_INIT) {
-			/* only prefix substrings usable for index */
+		if (plan_get_attr(plan, ns, attr) == -1)
+			plan->undefined = 1;
+		else if (plan->at->substr == NULL) {
+			log_debug("'%s' doesn't define substring matching",
+			    attr);
+			plan->undefined = 1;
+		} else if (class == BER_CLASS_CONTEXT &&
+		    type == LDAP_FILT_SUBS_INIT) {
+			/* Only prefix substrings are usable as index. */
 			if (namespace_has_index(ns, attr, INDEX_EQUAL))
 				add_index(plan, "%s=%s", attr, s);
 		}
@@ -659,20 +717,31 @@ search_planner(struct namespace *ns, struct ber_element *filter)
 	case LDAP_FILT_PRES:
 		if (ber_scanf_elements(filter, "s", &attr) != 0)
 			goto fail;
-		if (strcasecmp(attr, "objectClass") != 0) {
+		if (plan_get_attr(plan, ns, attr) == -1)
+			plan->undefined = 1;
+		else if (strcasecmp(attr, "objectClass") != 0) {
 			if (namespace_has_index(ns, attr, INDEX_PRESENCE))
-				add_index(plan, "!%s,", attr);
+				add_index(plan, "%s=", attr);
 		}
 		break;
 	case LDAP_FILT_AND:
-		if (ber_scanf_elements(filter, "{e", &elm) != 0)
+		if (ber_scanf_elements(filter, "(e", &elm) != 0)
 			goto fail;
 		for (; elm; elm = elm->be_next) {
 			if ((arg = search_planner(ns, elm)) == NULL)
 				goto fail;
+			if (arg->undefined) {
+				plan->undefined = 1;
+				break;
+			}
 			TAILQ_INSERT_TAIL(&plan->args, arg, next);
 		}
-		/* select an index to use */
+
+		/* The term is undefined if any arg is undefined. */
+		if (plan->undefined)
+			break;
+
+		/* Select an index to use. */
 		TAILQ_FOREACH(arg, &plan->args, next) {
 			if (arg->indexed) {
 				while ((indx = TAILQ_FIRST(&arg->indices))) {
@@ -686,13 +755,22 @@ search_planner(struct namespace *ns, struct ber_element *filter)
 		}
 		break;
 	case LDAP_FILT_OR:
-		if (ber_scanf_elements(filter, "{e", &elm) != 0)
+		if (ber_scanf_elements(filter, "(e", &elm) != 0)
 			goto fail;
 		for (; elm; elm = elm->be_next) {
 			if ((arg = search_planner(ns, elm)) == NULL)
 				goto fail;
 			TAILQ_INSERT_TAIL(&plan->args, arg, next);
 		}
+
+		/* The term is undefined iff all args are undefined. */
+		plan->undefined = 1;
+		TAILQ_FOREACH(arg, &plan->args, next)
+			if (!arg->undefined) {
+				plan->undefined = 0;
+				break;
+			}
+
 		TAILQ_FOREACH(arg, &plan->args, next) {
 			if (!arg->indexed) {
 				plan->indexed = 0;
@@ -705,8 +783,23 @@ search_planner(struct namespace *ns, struct ber_element *filter)
 			}
 		}
 		break;
+	case LDAP_FILT_NOT:
+		if (ber_scanf_elements(filter, "{e", &elm) != 0)
+			goto fail;
+		if ((arg = search_planner(ns, elm)) == NULL)
+			goto fail;
+		TAILQ_INSERT_TAIL(&plan->args, arg, next);
+
+		plan->undefined = arg->undefined;
+		if (plan->indexed) {
+			log_debug("NOT filter forced unindexed search");
+			plan->indexed = 0;
+		}
+		break;
+
 	default:
 		log_warnx("filter type %d not implemented", filter->be_type);
+		plan->undefined = 1;
 		break;
 	}
 
@@ -861,15 +954,26 @@ ldap_search(struct request *req)
 			btval_reset(&val);
 			reason = LDAP_SUCCESS;
 		} else if (errno == ENOENT)
-			reason = LDAP_SUCCESS;
+			reason = LDAP_NO_SUCH_OBJECT;
 		else
 			reason = LDAP_OTHER;
+		goto done;
+	}
+
+	if (!namespace_exists(search->ns, search->basedn)) {
+		reason = LDAP_NO_SUCH_OBJECT;
 		goto done;
 	}
 
 	search->plan = search_planner(search->ns, search->filter);
 	if (search->plan == NULL) {
 		reason = LDAP_PROTOCOL_ERROR;
+		goto done;
+	}
+
+	if (search->plan->undefined) {
+		log_debug("whole search filter is undefined");
+		reason = LDAP_SUCCESS;
 		goto done;
 	}
 

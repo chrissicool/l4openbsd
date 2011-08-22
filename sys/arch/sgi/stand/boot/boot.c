@@ -1,4 +1,4 @@
-/*	$OpenBSD: boot.c,v 1.15 2009/11/30 05:19:20 miod Exp $ */
+/*	$OpenBSD: boot.c,v 1.17 2010/09/14 16:57:15 miod Exp $ */
 
 /*
  * Copyright (c) 2004 Opsycon AB, www.opsycon.se.

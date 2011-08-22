@@ -1,4 +1,4 @@
-/*	$OpenBSD: pf_print_state.c,v 1.56 2010/01/13 00:57:49 mcbride Exp $	*/
+/*	$OpenBSD: pf_print_state.c,v 1.58 2010/11/12 13:14:41 claudio Exp $	*/
 
 /*
  * Copyright (c) 2001 Daniel Hartmeier
@@ -165,11 +165,11 @@ print_name(struct pf_addr *addr, sa_family_t af)
 }
 
 void
-print_host(struct pf_addr *addr, u_int16_t port, sa_family_t af, int rdom,
+print_host(struct pf_addr *addr, u_int16_t port, sa_family_t af, u_int16_t rdom,
     int opts)
 {
 	if (rdom)
-		printf("(%d) ", rdom);
+		printf("(%u) ", ntohs(rdom));
 
 	if (opts & PF_OPT_USEDNS)
 		print_name(addr, af);
@@ -219,14 +219,14 @@ print_state(struct pfsync_state *s, int opts)
 		dst = &s->dst;
 		sk = &s->key[PF_SK_STACK];
 		nk = &s->key[PF_SK_WIRE];
-		if (s->proto == IPPROTO_ICMP || s->proto == IPPROTO_ICMPV6) 
+		if (s->proto == IPPROTO_ICMP || s->proto == IPPROTO_ICMPV6)
 			sk->port[0] = nk->port[0];
 	} else {
 		src = &s->dst;
 		dst = &s->src;
 		sk = &s->key[PF_SK_WIRE];
 		nk = &s->key[PF_SK_STACK];
-		if (s->proto == IPPROTO_ICMP || s->proto == IPPROTO_ICMPV6) 
+		if (s->proto == IPPROTO_ICMP || s->proto == IPPROTO_ICMPV6)
 			sk->port[1] = nk->port[1];
 	}
 	printf("%s ", s->ifname);

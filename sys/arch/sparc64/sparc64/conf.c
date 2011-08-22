@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.56 2010/07/03 03:59:17 krw Exp $	*/
+/*	$OpenBSD: conf.c,v 1.59 2011/01/14 19:04:08 jasper Exp $	*/
 /*	$NetBSD: conf.c,v 1.17 2001/03/26 12:33:26 lukem Exp $ */
 
 /*
@@ -55,6 +55,7 @@
 #include "pty.h"
 #include "bpfilter.h"
 #include "tun.h"
+#include "midi.h"
 #include "audio.h"
 #include "video.h"
 #include "vnd.h"
@@ -120,6 +121,7 @@ cdev_decl(nnpfs_dev);
 #include "systrace.h"
 #include "hotplug.h"
 #include "vscsi.h"
+#include "pppx.h"
 
 struct bdevsw	bdevsw[] =
 {
@@ -150,7 +152,7 @@ struct bdevsw	bdevsw[] =
 	bdev_lkm_dummy(),		/* 24 */
 	bdev_disk_init(NRAID,raid),	/* 25: RAIDframe disk driver */
 };
-int	nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
+int	nblkdev = nitems(bdevsw);
 
 struct cdevsw	cdevsw[] =
 {
@@ -230,7 +232,7 @@ struct cdevsw	cdevsw[] =
 	cdev_notdef(),			/* 65 */
 	cdev_notdef(),			/* 66 */
 	cdev_notdef(),			/* 67 */
-	cdev_notdef(),			/* 68 */
+	cdev_midi_init(NMIDI,midi),	/* 68: /dev/rmidi */
 	cdev_audio_init(NAUDIO,audio),	/* 69: /dev/audio */
 	cdev_openprom_init(1,openprom),	/* 70: /dev/openprom */
 	cdev_tty_init(NMTTY,mtty),	/* 71: magma serial ports */
@@ -294,8 +296,9 @@ struct cdevsw	cdevsw[] =
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 128: vscsi */
 	cdev_bthub_init(NBTHUB,bthub),	/* 129: bluetooth hub */
 	cdev_disk_init(1,diskmap),	/* 130: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 131: pppx */
 };
-int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+int	nchrdev = nitems(cdevsw);
 
 int	mem_no = 3; 	/* major device number of memory special file */
 
@@ -463,4 +466,4 @@ int chrtoblktbl[] = {
 	/*121 */	25,
 	/*122 */	NODEV,
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);

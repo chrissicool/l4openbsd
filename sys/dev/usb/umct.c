@@ -1,4 +1,4 @@
-/*	$OpenBSD: umct.c,v 1.29 2009/10/13 19:33:19 pirofti Exp $	*/
+/*	$OpenBSD: umct.c,v 1.32 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*	$NetBSD: umct.c,v 1.10 2003/02/23 04:20:07 simonb Exp $	*/
 /*
  * Copyright (c) 2001 The NetBSD Foundation, Inc.
@@ -147,7 +147,6 @@ static const struct usb_devno umct_devs[] = {
 	/* BELKIN F5U409 */
 	{ USB_VENDOR_BELKIN, USB_PRODUCT_BELKIN_F5U409 },
 };
-#define umct_lookup(v, p) usb_lookup(umct_devs, v, p)
 
 int umct_match(struct device *, void *, void *); 
 void umct_attach(struct device *, struct device *, void *); 
@@ -174,8 +173,8 @@ umct_match(struct device *parent, void *match, void *aux)
 	if (uaa->iface != NULL)
 		return (UMATCH_NONE);
 
-	return (umct_lookup(uaa->vendor, uaa->product) != NULL ?
-		UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
+	return (usb_lookup(umct_devs, uaa->vendor, uaa->product) != NULL ?
+	    UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
 }
 
 void
@@ -304,9 +303,6 @@ umct_attach(struct device *parent, struct device *self, void *aux)
 
 	umct_init(sc);
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
-
 	DPRINTF(("umct: in=0x%x out=0x%x intr=0x%x\n",
 			uca.bulkin, uca.bulkout, sc->sc_intr_number ));
 	sc->sc_subdev = config_found_sm(self, &uca, ucomprint, ucomsubmatch);
@@ -327,14 +323,10 @@ umct_detach(struct device *self, int flags)
                 sc->sc_intr_pipe = NULL;
         }
 
-	sc->sc_dying = 1;
 	if (sc->sc_subdev != NULL) {
 		rv = config_detach(sc->sc_subdev, flags);
 		sc->sc_subdev = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (rv);
 }

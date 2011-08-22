@@ -1,4 +1,4 @@
-#	$OpenBSD: RAMDISK,v 1.13 2010/07/03 03:59:16 krw Exp $
+#	$OpenBSD: RAMDISK,v 1.16 2010/09/26 21:44:35 miod Exp $
 #
 # For further information on compiling OpenBSD kernels, see the config(8)
 # man page.
@@ -54,8 +54,6 @@ mcclock0	at isa? port 0x70
 pckbc0		at isa?				# Yeeloong only
 pckbd*		at pckbc?			# Yeeloong only
 wskbd*		at pckbd? mux 1			# Yeeloong only
-pmsi*		at pckbc?			# Yeeloong only
-wsmouse*	at pmsi? mux 0			# Yeeloong only
 com0		at isa? port 0x2f8 irq 3	# Fuloong 2F only
 pciide*		at pci?
 wd*		at pciide? flags 0x0000
@@ -107,8 +105,6 @@ atapiscsi*	at umass?
 scsibus*	at atapiscsi?
 scsibus*	at umass?
 uhidev*		at uhub?	# Human Interface Devices
-ums*		at uhidev?	# USB mouse
-wsmouse*	at ums? mux 0
 ukbd*		at uhidev?	# USB keyboard
 wskbd*		at ukbd? mux 1
 uhid*		at uhidev?	# USB generic HID support

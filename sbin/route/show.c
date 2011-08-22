@@ -1,4 +1,4 @@
-/*	$OpenBSD: show.c,v 1.87 2010/07/29 16:35:40 bluhm Exp $	*/
+/*	$OpenBSD: show.c,v 1.89 2010/10/11 11:45:00 claudio Exp $	*/
 /*	$NetBSD: show.c,v 1.1 1996/11/15 18:01:41 gwr Exp $	*/
 
 /*
@@ -64,6 +64,7 @@ char	*label_print(struct sockaddr *);
 extern int nflag;
 extern int Fflag;
 extern int verbose;
+extern union sockunion so_label;
 
 #define PLEN  (LONG_BIT / 4 + 2) /* XXX this is also defined in netstat.h */
 
@@ -122,13 +123,13 @@ void	 index_pfk(struct sadb_msg *, void **);
  * Print routing tables.
  */
 void
-p_rttables(int af, u_int tableid)
+p_rttables(int af, u_int tableid, int hastable)
 {
 	struct rt_msghdr *rtm;
 	struct sadb_msg *msg;
 	char *buf = NULL, *next, *lim = NULL;
 	size_t needed;
-	int mib[7];
+	int mib[7], mcnt;
 	struct sockaddr *sa;
 
 	mib[0] = CTL_NET;
@@ -137,14 +138,18 @@ p_rttables(int af, u_int tableid)
 	mib[3] = af;
 	mib[4] = NET_RT_DUMP;
 	mib[5] = 0;
-	mib[6] = tableid;
+	if (hastable) {
+		mib[6] = tableid;
+		mcnt = 7;
+	} else
+		mcnt = 6;
 
-	if (sysctl(mib, 7, NULL, &needed, NULL, 0) < 0)
+	if (sysctl(mib, mcnt, NULL, &needed, NULL, 0) < 0)
 		err(1, "route-sysctl-estimate");
 	if (needed > 0) {
 		if ((buf = malloc(needed)) == 0)
 			err(1, NULL);
-		if (sysctl(mib, 7, buf, &needed, NULL, 0) < 0)
+		if (sysctl(mib, mcnt, buf, &needed, NULL, 0) < 0)
 			err(1, "sysctl of routing table");
 		lim = buf + needed;
 	}
@@ -285,14 +290,26 @@ p_rtentry(struct rt_msghdr *rtm)
 	struct sockaddr	*sa = (struct sockaddr *)((char *)rtm + rtm->rtm_hdrlen);
 	struct sockaddr	*mask, *rti_info[RTAX_MAX];
 	char		 ifbuf[IF_NAMESIZE];
+	char		*label;
 
 	if (sa->sa_family == AF_KEY)
 		return;
 
 	get_rtaddrs(rtm->rtm_addrs, sa, rti_info);
+
 	if (Fflag && rti_info[RTAX_GATEWAY]->sa_family != sa->sa_family) {
 		return;
 	}
+
+	if (strlen(so_label.rtlabel.sr_label)) {
+		if (!rti_info[RTAX_LABEL])
+			return;
+		label = ((struct sockaddr_rtlabel *)rti_info[RTAX_LABEL])->
+		    sr_label;
+		if (strcmp(label, so_label.rtlabel.sr_label))
+			return;
+	}
+
 	if (old_af != sa->sa_family) {
 		old_af = sa->sa_family;
 		pr_family(sa->sa_family);

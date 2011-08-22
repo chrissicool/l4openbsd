@@ -1,4 +1,4 @@
-#	$OpenBSD: special,v 1.88 2010/06/07 14:15:27 jsg Exp $
+#	$OpenBSD: special,v 1.92 2011/01/19 21:26:35 david Exp $
 #	$NetBSD: special,v 1.4 1996/05/08 21:30:18 pk Exp $
 #	@(#)special	8.2 (Berkeley) 1/23/94
 #
@@ -45,7 +45,7 @@ isakmpd.policy	type=file mode=0600 uname=root gname=wheel optional
 ..	#isakmpd
 kerberosV	type=dir mode=0755 uname=root gname=wheel optional ignore
 ..	#kerberosV
-host.random	type=file mode=0600 uname=root gname=wheel optional
+ldapd.conf	type=file mode=0600 uname=root gname=wheel
 ldpd.conf	type=file mode=0600 uname=root gname=wheel
 login.conf	type=file mode=0644 uname=root gname=wheel
 mail.rc		type=file mode=0644 uname=root gname=wheel
@@ -68,6 +68,7 @@ special		type=file mode=0600 uname=root gname=wheel
 ..	#mtree
 moduli		type=file mode=0644 uname=root gname=wheel
 netstart	type=file mode=0644 uname=root gname=wheel
+nsd.conf	type=file mode=0640 uname=root gname=_nsd
 ntpd.conf	type=file mode=0644 uname=root gname=wheel
 ospfd.conf	type=file mode=0600 uname=root gname=wheel
 ospf6d.conf	type=file mode=0600 uname=root gname=wheel
@@ -96,6 +97,8 @@ ssh		type=dir mode=0755 uname=root gname=wheel optional
 ssh_config	type=file mode=0644 uname=root gname=wheel
 ssh_host_dsa_key	type=file mode=0600 uname=root gname=wheel optional
 ssh_host_dsa_key.pub	type=file mode=0644 uname=root gname=wheel optional
+ssh_host_ecdsa_key	type=file mode=0600 uname=root gname=wheel optional
+ssh_host_ecdsa_key.pub	type=file mode=0644 uname=root gname=wheel optional
 ssh_host_key	type=file mode=0600 uname=root gname=wheel optional
 ssh_host_key.pub	type=file mode=0644 uname=root gname=wheel optional
 ssh_host_rsa_key	type=file mode=0600 uname=root gname=wheel optional
@@ -170,6 +173,7 @@ tabs		type=dir mode=01730 uname=root gname=crontab ignore
 ..	#var/cron/tabs
 ..	#var/cron
 db		type=dir mode=0755 uname=root gname=wheel
+host.random	type=file mode=0600 uname=root gname=wheel optional
 kvm_bsd.db	type=file mode=0644 uname=root gname=wheel
 ..	#var/db
 log		type=dir mode=0755 uname=root gname=wheel

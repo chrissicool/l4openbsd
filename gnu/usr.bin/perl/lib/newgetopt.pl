@@ -1,8 +1,10 @@
-# $Id: newgetopt.pl,v 1.9 2009/10/12 18:24:38 millert Exp $
+# $Id: newgetopt.pl,v 1.18 2001/09/21 13:34:59 jv Exp $
 
 # This library is no longer being maintained, and is included for backward
 # compatibility with Perl 4 programs which may require it.
 # It is now just a wrapper around the Getopt::Long module.
+# This legacy library is deprecated and will be removed in a future
+# release of perl.
 #
 # In particular, this should not be used as an example of modern Perl
 # programming techniques.

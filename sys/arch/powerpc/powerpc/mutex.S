@@ -1,4 +1,4 @@
-/*	$OpenBSD: mutex.S,v 1.10 2009/08/13 13:24:55 weingart Exp $	*/
+/*	$OpenBSD: mutex.S,v 1.12 2011/01/08 18:10:22 deraadt Exp $	*/
 
 /*
  * Copyright (c) 2007 Dale Rahn
@@ -39,9 +39,9 @@ ENTRY(mtx_enter)
 .L_retry:
 	GET_CPUINFO(%r4)
 	lwz	%r5,MTX_WANTIPL(%r3)		# load new ipl
-	lis	%r6,_C_LABEL(imask)@ha		# convert into cpl
+	lis	%r6,_C_LABEL(cpu_imask)@ha	# convert into cpl
 	slwi	%r5,%r5,2
-	addi	%r5,%r5,_C_LABEL(imask)@l
+	addi	%r5,%r5,_C_LABEL(cpu_imask)@l
 	lwzx	%r5,%r5,%r6
 	lwz	%r7,CI_CPL(%r4)			# load current cpl
 	or	%r6,%r5,%r7			# raise	cpl
@@ -66,6 +66,11 @@ ENTRY(mtx_enter)
 .L_mutex_free:
 	stwcx.	%r4,%r5,%r3			# old owner was 0 cond store
 	bne-	.L_mutex_locked			# branch if reserve cancelled
+#ifdef DIAGNOSTIC
+	lwz	%r6,CI_MUTEX_LEVEL(%r4)
+	addi	%r6,%r6,1			# curpcu->ci_mutex_level++
+	stw	%r6,CI_MUTEX_LEVEL(%r4)
+#endif
 	stw	%r7,MTX_OLDCPL(%r3)		# save old ipl
 	lwz	%r0,36(%r1)			# load return address
 	mtlr	%r0
@@ -89,9 +94,9 @@ ENTRY(mtx_enter_try)
 	stw	%r0,36(%r1)			# save return address
 	GET_CPUINFO(%r4)
 	lwz	%r5,MTX_WANTIPL(%r3)		# load new ipl
-	lis	%r6,_C_LABEL(imask)@ha		# convert into cpl
+	lis	%r6,_C_LABEL(cpu_imask)@ha	# convert into cpl
 	slwi	%r5,%r5,2
-	addi	%r5,%r5,_C_LABEL(imask)@l
+	addi	%r5,%r5,_C_LABEL(cpu_imask)@l
 	lwzx	%r5,%r5,%r6
 	lwz	%r7,CI_CPL(%r4)			# load current cpl
 	or	%r6,%r5,%r7			# raise	cpl
@@ -120,6 +125,11 @@ ENTRY(mtx_enter_try)
 .L_mutex_try_free:
 	stwcx.	%r4,%r5,%r3			# old owner was 0 cond store
 	bne-	.L_mutex_try_locked		# branch if reserve cancelled
+#ifdef DIAGNOSTIC
+	lwz	%r6,CI_MUTEX_LEVEL(%r4)
+	addi	%r6,%r6,1			# curpcu->ci_mutex_level++
+	stw	%r6,CI_MUTEX_LEVEL(%r4)
+#endif
 	stw	%r7,MTX_OLDCPL(%r3)		# save old ipl
 	lwz	%r0,36(%r1)			# load return address
 	mtlr	%r0
@@ -150,6 +160,11 @@ ENTRY(mtx_leave)
 	stw	%r4,MTX_OLDCPL(%r3)
 	stw	%r4,MTX_OWNER(%r3)
 	GET_CPUINFO(%r4)
+#ifdef DIAGNOSTIC
+	lwz	%r6,CI_MUTEX_LEVEL(%r4)
+	addi	%r6,%r6,-1			# curpcu->ci_mutex_level--
+	stw	%r6,CI_MUTEX_LEVEL(%r4)
+#endif
 	mr	%r3,%r5
 	lwz	%r5,CI_CPL(%r4)
 	cmpl	0,%r3,%r5

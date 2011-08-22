@@ -1,8 +1,9 @@
-#	$OpenBSD: Makefile,v 1.54 2010/06/27 19:19:56 phessler Exp $
+#	$OpenBSD: Makefile,v 1.58 2011/01/06 22:46:21 djm Exp $
 
-REGRESS_TARGETS=	t1 t2 t3 t4 t5 t6 t7
+REGRESS_TARGETS=	t1 t2 t3 t4 t5 t6 t7 t8 t9
 
-CLEANFILES+=	t2.out t6.out1 t6.out2 t7.out t7.out.pub copy.1 copy.2
+CLEANFILES+=	t2.out t6.out1 t6.out2 t7.out t7.out.pub copy.1 copy.2 \
+		t8.out t8.out.pub t9.out t9.out.pub
 
 LTESTS= 	connect \
 		proxy-connect \
@@ -45,12 +46,16 @@ LTESTS= 	connect \
 		localcommand \
 		forcecommand \
 		portnum \
+		keytype \
+		kextype \
 		cert-hostkey \
-		cert-userkey
+		cert-userkey \
+		host-expand
 
 INTEROP_TESTS=	putty-transfer putty-ciphers putty-kex conch-ciphers
 #INTEROP_TESTS+=ssh-com ssh-com-client ssh-com-keygen ssh-com-sftp
 
+#LTESTS= 	cipher-speed
 
 USER!=		id -un
 CLEANFILES+=	authorized_keys_${USER} known_hosts pidfile \
@@ -61,7 +66,7 @@ CLEANFILES+=	authorized_keys_${USER} known_hosts pidfile \
 		scp-ssh-wrapper.exe ssh_proxy_envpass remote_pid \
 		sshd_proxy_bak rsa_ssh2_cr.prv rsa_ssh2_crnl.prv \
 		known_hosts-cert host_ca_key* cert_host_key* \
-		authorized_principals_${USER}
+		authorized_principals_${USER} expect actual
 
 # Enable all malloc(3) randomisations and checks
 TEST_ENV=      "MALLOC_OPTIONS=AFGJPRX"
@@ -103,6 +108,20 @@ t7.out:
 t7: t7.out
 	ssh-keygen -lf t7.out > /dev/null
 	ssh-keygen -Bf t7.out > /dev/null
+
+t8.out:
+	ssh-keygen -q -t dsa -N '' -f $@
+
+t8: t8.out
+	ssh-keygen -lf t8.out > /dev/null
+	ssh-keygen -Bf t8.out > /dev/null
+
+t9.out:
+	ssh-keygen -q -t ecdsa -N '' -f $@
+
+t9: t9.out
+	ssh-keygen -lf t9.out > /dev/null
+	ssh-keygen -Bf t9.out > /dev/null
 
 .for t in ${LTESTS} ${INTEROP_TESTS}
 t-${t}:

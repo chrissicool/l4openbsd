@@ -1,4 +1,4 @@
-/*	$OpenBSD: uipc_mbuf.c,v 1.143 2010/07/15 09:45:09 claudio Exp $	*/
+/*	$OpenBSD: uipc_mbuf.c,v 1.149 2011/01/29 13:15:39 bluhm Exp $	*/
 /*	$NetBSD: uipc_mbuf.c,v 1.15.4.1 1996/06/13 17:11:44 cgd Exp $	*/
 
 /*
@@ -166,6 +166,14 @@ nmbclust_update(void)
 	for (i = 0; i < nitems(mclsizes); i++) {
 		(void)pool_sethardlimit(&mclpools[i], nmbclust,
 		    mclpool_warnmsg, 60);
+		/*
+		 * XXX this needs to be reconsidered.
+		 * Setting the high water mark to nmbclust is too high
+		 * but we need to have enough spare buffers around so that
+		 * allocations in interrupt context don't fail or mclgeti()
+		 * drivers may end up with empty rings.
+		 */
+		pool_sethiwat(&mclpools[i], nmbclust);
 	}
 	pool_sethiwat(&mbpool, nmbclust);
 }
@@ -322,6 +330,7 @@ m_cltick(void *arg)
 }
 
 int m_livelock;
+u_int mcllivelocks;
 
 int
 m_cldrop(struct ifnet *ifp, int pi)
@@ -331,7 +340,7 @@ m_cldrop(struct ifnet *ifp, int pi)
 	extern int ticks;
 	int i;
 
-	if (m_livelock == 0 && ticks - m_clticks > 2) {
+	if (ticks - m_clticks > 1) {
 		struct ifnet *aifp;
 
 		/*
@@ -341,23 +350,26 @@ m_cldrop(struct ifnet *ifp, int pi)
 		 * future.
 		 */
 		m_livelock = 1;
-		ifp->if_data.ifi_livelocks++;
-		liveticks = ticks;
+		mcllivelocks++;
+		m_clticks = liveticks = ticks;
 		TAILQ_FOREACH(aifp, &ifnet, if_list) {
 			mclp = aifp->if_data.ifi_mclpool;
 			for (i = 0; i < MCLPOOLS; i++) {
-				mclp[i].mcl_cwm =
-				    max(mclp[i].mcl_cwm / 2, mclp[i].mcl_lwm);
+				int diff = max(mclp[i].mcl_cwm / 8, 2);
+				mclp[i].mcl_cwm = max(mclp[i].mcl_lwm,
+				    mclp[i].mcl_cwm - diff);
 			}
 		}
-	} else if (m_livelock && ticks - liveticks > 5)
+	} else if (m_livelock && (ticks - liveticks) > 4)
 		m_livelock = 0;	/* Let the high water marks grow again */
 
 	mclp = &ifp->if_data.ifi_mclpool[pi];
 	if (m_livelock == 0 && ISSET(ifp->if_flags, IFF_RUNNING) &&
-	    mclp->mcl_alive <= 2 && mclp->mcl_cwm < mclp->mcl_hwm) {
+	    mclp->mcl_alive <= 4 && mclp->mcl_cwm < mclp->mcl_hwm &&
+	    mclp->mcl_grown < ticks) {
 		/* About to run out, so increase the current watermark */
 		mclp->mcl_cwm++;
+		mclp->mcl_grown = ticks;
 	} else if (mclp->mcl_alive >= mclp->mcl_cwm)
 		return (1);		/* No more packets given */
 
@@ -399,10 +411,13 @@ m_clget(struct mbuf *m, int how, struct ifnet *ifp, u_int pktlen)
 		panic("m_clget: request for %u byte cluster", pktlen);
 #endif
 
-	if (ifp != NULL && m_cldrop(ifp, pi))
-		return (NULL);
-
 	s = splnet();
+
+	if (ifp != NULL && m_cldrop(ifp, pi)) {
+		splx(s);
+		return (NULL);
+	}
+
 	if (m == NULL) {
 		MGETHDR(m0, M_DONTWAIT, MT_DATA);
 		if (m0 == NULL) {
@@ -1347,6 +1362,8 @@ m_trailingspace(struct mbuf *m)
 int
 m_dup_pkthdr(struct mbuf *to, struct mbuf *from)
 {
+	int error;
+
 	KASSERT(from->m_flags & M_PKTHDR);
 
 	to->m_flags = (to->m_flags & (M_EXT | M_CLUSTER));
@@ -1355,11 +1372,60 @@ m_dup_pkthdr(struct mbuf *to, struct mbuf *from)
 
 	SLIST_INIT(&to->m_pkthdr.tags);
 
-	if (m_tag_copy_chain(to, from))
-		return (ENOMEM);
+	if ((error = m_tag_copy_chain(to, from)) != 0)
+		return (error);
 
 	if ((to->m_flags & M_EXT) == 0)
 		to->m_data = to->m_pktdat;
 
 	return (0);
 }
+
+#ifdef DDB
+#include <machine/db_machdep.h>
+#include <ddb/db_interface.h>
+
+void
+m_print(void *v, int (*pr)(const char *, ...))
+{
+	struct mbuf *m = v;
+
+	(*pr)("mbuf %p\n", m);
+	(*pr)("m_type: %hi\tm_flags: %b\n", m->m_type, m->m_flags,
+	    "\20\1M_EXT\2M_PKTHDR\3M_EOR\4M_CLUSTER\5M_PROTO1\6M_VLANTAG"
+	    "\7M_LOOP\10M_FILDROP\11M_BCAST\12M_MCAST\13M_CONF\14M_AUTH"
+	    "\15M_TUNNEL\16M_AUTH_AH\17M_LINK0");
+	(*pr)("m_next: %p\tm_nextpkt: %p\n", m->m_next, m->m_nextpkt);
+	(*pr)("m_data: %p\tm_len: %u\n", m->m_data, m->m_len);
+	(*pr)("m_dat: %p m_pktdat: %p\n", m->m_dat, m->m_pktdat);
+	if (m->m_flags & M_PKTHDR) {
+		(*pr)("m_pkthdr.len: %i\tm_ptkhdr.rcvif: %p\t"
+		    "m_ptkhdr.rdomain: %u\n", m->m_pkthdr.len, 
+		    m->m_pkthdr.rcvif, m->m_pkthdr.rdomain);
+		(*pr)("m_ptkhdr.tags: %p\tm_pkthdr.tagsset: %hx\n",
+		    SLIST_FIRST(&m->m_pkthdr.tags), m->m_pkthdr.tagsset);
+		(*pr)("m_pkthdr.csum_flags: %hx\tm_pkthdr.ether_vtag: %hu\n",
+		    m->m_pkthdr.csum_flags, m->m_pkthdr.ether_vtag);
+		(*pr)("m_pkthdr.pf.flags: %b\n",
+		    m->m_pkthdr.pf.flags, "\20\1GENERATED\2FRAGCACHE"
+		    "\3TRANSLATE_LOCALHOST\4DIVERTED\5DIVERTED_PACKET"
+		    "\6PF_TAG_REROUTE");
+		(*pr)("m_pkthdr.pf.hdr: %p\tm_pkthdr.pf.statekey: %p\n",
+		    m->m_pkthdr.pf.hdr, m->m_pkthdr.pf.statekey);
+		(*pr)("m_pkthdr.pf.qid:\t%u m_pkthdr.pf.tag: %hu\n",
+		    m->m_pkthdr.pf.qid, m->m_pkthdr.pf.tag);
+		(*pr)("m_pkthdr.pf.routed: %hhx\n", m->m_pkthdr.pf.routed);
+	}
+	if (m->m_flags & M_EXT) {
+		(*pr)("m_ext.ext_buf: %p\tm_ext.ext_size: %u\n",
+		    m->m_ext.ext_buf, m->m_ext.ext_size);
+		(*pr)("m_ext.ext_type: %x\tm_ext.ext_backend: %i\n",
+		    m->m_ext.ext_type, m->m_ext.ext_backend);
+		(*pr)("m_ext.ext_ifp: %p\n", m->m_ext.ext_ifp);
+		(*pr)("m_ext.ext_free: %p\tm_ext.ext_arg: %p\n",
+		    m->m_ext.ext_free, m->m_ext.ext_arg);
+		(*pr)("m_ext.ext_nextref: %p\tm_ext.ext_prevref: %p\n",
+		    m->m_ext.ext_nextref, m->m_ext.ext_prevref);
+	}
+}
+#endif

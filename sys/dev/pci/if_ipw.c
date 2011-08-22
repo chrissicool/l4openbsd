@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_ipw.c,v 1.88 2010/08/03 18:26:25 kettenis Exp $	*/
+/*	$OpenBSD: if_ipw.c,v 1.94 2010/11/15 19:11:57 damien Exp $	*/
 
 /*-
  * Copyright (c) 2004-2008
@@ -66,7 +66,6 @@ int		ipw_match(struct device *, void *, void *);
 void		ipw_attach(struct device *, struct device *, void *);
 int		ipw_activate(struct device *, int);
 void		ipw_resume(void *, void *);
-void		ipw_power(int, void *);
 int		ipw_dma_alloc(struct ipw_softc *);
 void		ipw_release(struct ipw_softc *);
 int		ipw_media_change(struct ifnet *);
@@ -263,7 +262,6 @@ ipw_attach(struct device *parent, struct device *self, void *aux)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = ipw_init;
 	ifp->if_ioctl = ipw_ioctl;
 	ifp->if_start = ipw_start;
 	ifp->if_watchdog = ipw_watchdog;
@@ -277,8 +275,6 @@ ipw_attach(struct device *parent, struct device *self, void *aux)
 	ic->ic_newstate = ipw_newstate;
 	ic->ic_send_mgmt = ipw_send_mgmt;
 	ieee80211_media_init(ifp, ipw_media_change, ipw_media_status);
-
-	sc->powerhook = powerhook_establish(ipw_power, sc);
 
 #if NBPFILTER > 0
 	bpfattach(&sc->sc_drvbpf, ifp, DLT_IEEE802_11_RADIO,
@@ -311,27 +307,16 @@ ipw_activate(struct device *self, int act)
 		break;
 	}
 
-	return (0);
+	return 0;
 }
 
 void
 ipw_resume(void *arg1, void *arg2)
 {
-	ipw_power(PWR_RESUME, arg1);
-}
-
-void
-ipw_power(int why, void *arg)
-{
-	struct ipw_softc *sc = arg;
+	struct ipw_softc *sc = arg1;
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
 	pcireg_t data;
 	int s;
-
-	if (why != PWR_RESUME) {
-		ipw_stop(ifp, 0);
-		return;
-	}
 
 	/* clear device specific PCI configuration register 0x41 */
 	data = pci_conf_read(sc->sc_pct, sc->sc_pcitag, 0x40);
@@ -339,12 +324,15 @@ ipw_power(int why, void *arg)
 	pci_conf_write(sc->sc_pct, sc->sc_pcitag, 0x40, data);
 
 	s = splnet();
+	while (sc->sc_flags & IPW_FLAG_BUSY)
+		tsleep(&sc->sc_flags, PZERO, "ipwpwr", 0);
 	sc->sc_flags |= IPW_FLAG_BUSY;
 
 	if (ifp->if_flags & IFF_UP)
 		ipw_init(ifp);
 
 	sc->sc_flags &= ~IPW_FLAG_BUSY;
+	wakeup(&sc->sc_flags);
 	splx(s);
 }
 
@@ -1399,9 +1387,11 @@ ipw_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	 * Prevent processes from entering this function while another
 	 * process is tsleep'ing in it.
 	 */
-	if (sc->sc_flags & IPW_FLAG_BUSY) {
+	while ((sc->sc_flags & IPW_FLAG_BUSY) && error == 0)
+		error = tsleep(&sc->sc_flags, PCATCH, "ipwioc", 0);
+	if (error != 0) {
 		splx(s);
-		return EBUSY;
+		return error;
 	}
 	sc->sc_flags |= IPW_FLAG_BUSY;
 
@@ -1458,6 +1448,7 @@ ipw_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	}
 
 	sc->sc_flags &= ~IPW_FLAG_BUSY;
+	wakeup(&sc->sc_flags);
 	splx(s);
 	return error;
 }
@@ -2090,6 +2081,9 @@ ipw_stop(struct ifnet *ifp, int disable)
 	 */
 	for (i = 0; i < IPW_NTBD; i++)
 		ipw_release_sbd(sc, &sc->stbd_list[i]);
+
+	/* in case we were scanning, release the scan "lock" */
+	ic->ic_scan_lock = IEEE80211_SCAN_UNLOCKED;
 
 	ieee80211_new_state(ic, IEEE80211_S_INIT, -1);
 }

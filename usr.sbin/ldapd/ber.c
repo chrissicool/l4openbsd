@@ -1,4 +1,4 @@
-/*	$OpenBSD: ber.c,v 1.4 2010/07/01 04:21:41 martinh Exp $ */
+/*	$OpenBSD: ber.c,v 1.6 2011/01/08 19:42:45 martinh Exp $ */
 
 /*
  * Copyright (c) 2007 Reyk Floeter <reyk@vantronix.net>
@@ -1016,6 +1016,12 @@ get_len(struct ber *b, ssize_t *len)
 		return 1;
 	}
 
+	if (u == 0x80) {
+		/* Indefinite length not supported. */
+		errno = EINVAL;
+		return -1;
+	}
+
 	n = u & ~BER_TAG_MORE;
 	if (sizeof(ssize_t) < n) {
 		errno = ERANGE;
@@ -1032,12 +1038,6 @@ get_len(struct ber *b, ssize_t *len)
 	if (s < 0) {
 		/* overflow */
 		errno = ERANGE;
-		return -1;
-	}
-
-	if (s == 0) {
-		/* invalid encoding */
-		errno = EINVAL;
 		return -1;
 	}
 
@@ -1067,7 +1067,7 @@ ber_read_element(struct ber *ber, struct ber_element *elm)
 
 	/* If using an external buffer and the total size of the element
 	 * is larger then the external buffer don't bother to continue. */
-	if (ber->fd == -1 && totlen > ber->br_rend - ber->br_rbuf) {
+	if (ber->fd == -1 && len > ber->br_rend - ber->br_rptr) {
 		errno = ECANCELED;
 		return -1;
 	}

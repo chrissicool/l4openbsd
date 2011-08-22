@@ -1,4 +1,4 @@
-/*	$OpenBSD: urio.c,v 1.35 2009/10/13 19:33:19 pirofti Exp $	*/
+/*	$OpenBSD: urio.c,v 1.38 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*	$NetBSD: urio.c,v 1.15 2002/10/23 09:14:02 jdolecek Exp $	*/
 
 /*
@@ -94,7 +94,6 @@ static const struct usb_devno urio_devs[] = {
 	{ USB_VENDOR_DIAMOND2, USB_PRODUCT_DIAMOND2_RIO800USB},
 	{ USB_VENDOR_DIAMOND2, USB_PRODUCT_DIAMOND2_PSAPLAY120},
 };
-#define urio_lookup(v, p) usb_lookup(urio_devs, v, p)
 
 int urio_match(struct device *, void *, void *); 
 void urio_attach(struct device *, struct device *, void *); 
@@ -123,8 +122,8 @@ urio_match(struct device *parent, void *match, void *aux)
 	if (uaa->iface != NULL)
 		return (UMATCH_NONE);
 
-	return (urio_lookup(uaa->vendor, uaa->product) != NULL ?
-		UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
+	return (usb_lookup(urio_devs, uaa->vendor, uaa->product) != NULL ?
+	    UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
 }
 
 void
@@ -184,9 +183,6 @@ urio_attach(struct device *parent, struct device *self, void *aux)
 	}
 
 	DPRINTFN(10, ("urio_attach: %p\n", sc->sc_udev));
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_dev);
 }
 
 int
@@ -198,7 +194,6 @@ urio_detach(struct device *self, int flags)
 
 	DPRINTF(("urio_detach: sc=%p flags=%d\n", sc, flags));
 
-	sc->sc_dying = 1;
 	/* Abort all pipes.  Causes processes waiting for transfer to wake. */
 	if (sc->sc_in_pipe != NULL) {
 		usbd_abort_pipe(sc->sc_in_pipe);
@@ -226,9 +221,6 @@ urio_detach(struct device *self, int flags)
 	/* Nuke the vnodes for any open instances (calls close). */
 	mn = self->dv_unit;
 	vdevgone(maj, mn, mn, VCHR);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-			   &sc->sc_dev);
 
 	return (0);
 }

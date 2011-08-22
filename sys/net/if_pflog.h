@@ -1,4 +1,4 @@
-/* $OpenBSD: if_pflog.h,v 1.15 2010/06/26 16:49:01 henning Exp $ */
+/* $OpenBSD: if_pflog.h,v 1.17 2010/09/21 11:05:10 henning Exp $ */
 /*
  * Copyright 2001 Niels Provos <provos@citi.umich.edu>
  * All rights reserved.
@@ -27,6 +27,8 @@
 #ifndef _NET_IF_PFLOG_H_
 #define _NET_IF_PFLOG_H_
 
+#include <net/pfvar.h>
+
 #define	PFLOGIFS_MAX	16
 
 struct pflog_softc {
@@ -51,14 +53,21 @@ struct pfloghdr {
 	uid_t		rule_uid;
 	pid_t		rule_pid;
 	u_int8_t	dir;
-	u_int8_t	pad[3];
+	u_int8_t	rewritten;
+	u_int8_t	pad[2];
+	struct pf_addr	saddr;
+	struct pf_addr	daddr;
+	u_int16_t	sport;
+	u_int16_t	dport;
 };
 
 #define PFLOG_HDRLEN		sizeof(struct pfloghdr)
-/* minus pad, also used as a signature */
-#define PFLOG_REAL_HDRLEN	offsetof(struct pfloghdr, pad)
+/* used to be minus pad, also used as a signature */
+#define PFLOG_REAL_HDRLEN	PFLOG_HDRLEN
+#define PFLOG_OLD_HDRLEN	offsetof(struct pfloghdr, pad)
 
 #ifdef _KERNEL
+void	pflog_bpfcopy(const void *, void *, size_t);
 
 #if NPFLOG > 0
 #define	PFLOG_PACKET(i,x,a,b,c,d,e,f,g,h) pflog_packet(i,a,b,c,d,e,f,g,h)

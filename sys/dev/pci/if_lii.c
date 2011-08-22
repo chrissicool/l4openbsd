@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_lii.c,v 1.27 2010/07/26 22:21:59 deraadt Exp $	*/
+/*	$OpenBSD: if_lii.c,v 1.30 2010/09/19 00:15:41 sthen Exp $	*/
 
 /*
  *  Copyright (c) 2007 The NetBSD Foundation.
@@ -271,7 +271,6 @@ lii_attach(struct device *parent, struct device *self, void *aux)
 	ifp->if_ioctl = lii_ioctl;
 	ifp->if_start = lii_start;
 	ifp->if_watchdog = lii_watchdog;
-	ifp->if_init = lii_init;
 	IFQ_SET_READY(&ifp->if_snd);
 
 	if_attach(ifp);
@@ -294,6 +293,9 @@ lii_activate(struct device *self, int act)
 	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
 		if (ifp->if_flags & IFF_RUNNING)
 			lii_stop(ifp);
@@ -305,7 +307,7 @@ lii_activate(struct device *self, int act)
 			lii_init(ifp);
 		break;
 	}
-	return rv;
+	return (rv);
 }
 
 int
@@ -708,8 +710,8 @@ lii_init(struct ifnet *ifp)
 	val = LII_READ_4(sc, LII_MACC) & MACC_FDX;
 
 	val |= MACC_RX_EN | MACC_TX_EN | MACC_MACLP_CLK_PHY |
-	    MACC_TX_FLOW_EN | MACC_RX_FLOW_EN |
-	    MACC_ADD_CRC | MACC_PAD | MACC_BCAST_EN;
+	    MACC_TX_FLOW_EN | MACC_RX_FLOW_EN | MACC_ADD_CRC |
+	    MACC_PAD;
 
 	val |= 7 << MACC_PREAMBLE_LEN_SHIFT;
 	val |= 2 << MACC_HDX_LEFT_BUF_SHIFT;
@@ -1133,8 +1135,13 @@ lii_iff(struct lii_softc *sc)
 	uint32_t crc, val;
 
 	val = LII_READ_4(sc, LII_MACC);
-	val &= ~(MACC_ALLMULTI_EN | MACC_PROMISC_EN);
+	val &= ~(MACC_ALLMULTI_EN | MACC_BCAST_EN | MACC_PROMISC_EN);
 	ifp->if_flags &= ~IFF_ALLMULTI;
+
+	/*
+	 * Always accept broadcast frames.
+	 */
+	val |= MACC_BCAST_EN;
 
 	if (ifp->if_flags & IFF_PROMISC || ac->ac_multirangecnt > 0) {
 		ifp->if_flags |= IFF_ALLMULTI;

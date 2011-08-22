@@ -1,4 +1,4 @@
-/*	$OpenBSD: ip_ipsp.h,v 1.144 2010/07/09 16:58:06 reyk Exp $	*/
+/*	$OpenBSD: ip_ipsp.h,v 1.146 2010/10/06 22:19:20 mikeb Exp $	*/
 /*
  * The authors of this code are John Ioannidis (ji@tla.org),
  * Angelos D. Keromytis (kermit@csd.uch.gr),
@@ -475,7 +475,6 @@ extern struct enc_xform enc_xform_des;
 extern struct enc_xform enc_xform_3des;
 extern struct enc_xform enc_xform_blf;
 extern struct enc_xform enc_xform_cast5;
-extern struct enc_xform enc_xform_skipjack;
 
 extern struct auth_hash auth_hash_hmac_md5_96;
 extern struct auth_hash auth_hash_hmac_sha1_96;
@@ -623,9 +622,6 @@ extern int tcp_signature_tdb_input(struct mbuf *, struct tdb *, int,
     int);
 extern int tcp_signature_tdb_output(struct mbuf *, struct tdb *,
     struct mbuf **, int, int);
-
-/* Padding */
-extern caddr_t m_pad(struct mbuf *, int);
 
 /* Replay window */
 extern int checkreplaywindow32(u_int32_t, u_int32_t, u_int32_t *, u_int32_t,

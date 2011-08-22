@@ -1,5 +1,5 @@
 # ex:ts=8 sw=4:
-# $OpenBSD: Term.pm,v 1.14 2010/08/03 17:31:52 espie Exp $
+# $OpenBSD: Term.pm,v 1.17 2011/01/09 13:32:18 espie Exp $
 #
 # Copyright (c) 2004-2007 Marc Espie <espie@openbsd.org>
 #
@@ -50,8 +50,61 @@ sub count_and
 	$self->$method(@r);
 }
 
-package OpenBSD::ProgressMeter::Term;
+package OpenBSD::ProgressMeter::Real;
 our @ISA = qw(OpenBSD::ProgressMeter);
+
+sub ntogo
+{
+	my ($self, $state, $offset) = @_;
+	return $state->ntogo_string($offset);
+}
+
+sub compute_size
+{
+	my $plist = shift;
+	my $totsize = 0;
+	$plist->compute_size(\$totsize);
+	$totsize = 1 if $totsize == 0;
+	return $totsize;
+}
+
+sub compute_count
+{
+	my $plist = shift;
+	my $total = 0;
+	$plist->compute_count(\$total);
+	$total = 1 if $total == 0;
+	return $total;
+}
+
+sub visit_with_size
+{
+	my ($progress, $plist, $method, $state, @r) = @_;
+	$plist->{totsize} //= compute_size($plist);
+	my $donesize = 0;
+	$progress->show($donesize, $plist->{totsize});
+	if (defined $state->{archive}) {
+		$state->{archive}{callback} = sub {
+		    my $done = shift;
+		    $progress->show($donesize + $done, $plist->{totsize});
+		};
+	}
+	$plist->size_and($progress, \$donesize, $plist->{totsize},
+	    $method, $state, @r);
+}
+
+sub visit_with_count
+{
+	my ($progress, $plist, $method, $state, @r) = @_;
+	$plist->{total} //= compute_count($plist);
+	my $count = 0;
+	$progress->show($count, $plist->{total});
+	$plist->count_and($progress, \$count, $plist->{total},
+	    $method, $state, @r);
+}
+
+package OpenBSD::ProgressMeter::Term;
+our @ISA = qw(OpenBSD::ProgressMeter::Real);
 use POSIX;
 use Term::Cap;
 
@@ -108,7 +161,7 @@ sub compute_playfield
 	my $self = shift;
 	$self->{playfield} = $self->{width} - length($self->{header}) - 7;
 	# we can print to 80 columns
-	if ($self->{glitch}) {
+	if ($self->{glitch} && $self->{state}->config->istrue("fullwidth")) {
 		$self->{playfield} += 1;
 	}
 	if ($self->{playfield} < 5) {
@@ -140,7 +193,7 @@ sub hmove
 	s/\%B// and $v = 16 * ($v/10) + $v%10;
 	s/\%D// and $v = $v - 2*($v%16);
 	s/\%\./sprintf('%c', $v)/e;
-	s/\%d/sprintf($&, $v)/e;
+	s/\%d/sprintf('%d', $v)/e;
 	s/\%2/sprintf('%2d', $v)/e;
 	s/\%3/sprintf('%3d', $v)/e;
 	s/\%\+(.)/sprintf('%c', $v+ord($1))/e;
@@ -252,53 +305,4 @@ sub next
 	print "\r$self->{header}: $todo\n";
 }
 
-sub ntogo
-{
-	my ($self, $state, $offset) = @_;
-	return $state->ntogo_string($offset);
-}
-
-sub compute_size
-{
-	my $plist = shift;
-	my $totsize = 0;
-	$plist->compute_size(\$totsize);
-	$totsize = 1 if $totsize == 0;
-	return $totsize;
-}
-
-sub compute_count
-{
-	my $plist = shift;
-	my $total = 0;
-	$plist->compute_count(\$total);
-	$total = 1 if $total == 0;
-	return $total;
-}
-
-sub visit_with_size
-{
-	my ($progress, $plist, $method, $state, @r) = @_;
-	$plist->{totsize} //= compute_size($plist);
-	my $donesize = 0;
-	$progress->show($donesize, $plist->{totsize});
-	if (defined $state->{archive}) {
-		$state->{archive}{callback} = sub {
-		    my $done = shift;
-		    $progress->show($donesize + $done, $plist->{totsize});
-		};
-	}
-	$plist->size_and($progress, \$donesize, $plist->{totsize},
-	    $method, $state, @r);
-}
-
-sub visit_with_count
-{
-	my ($progress, $plist, $method, $state, @r) = @_;
-	$plist->{total} //= compute_count($plist);
-	my $count = 0;
-	$progress->show($count, $plist->{total});
-	$plist->count_and($progress, \$count, $plist->{total},
-	    $method, $state, @r);
-}
 1;

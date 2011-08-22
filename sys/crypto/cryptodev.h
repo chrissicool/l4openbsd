@@ -1,4 +1,4 @@
-/*	$OpenBSD: cryptodev.h,v 1.51 2010/06/23 09:26:32 thib Exp $	*/
+/*	$OpenBSD: cryptodev.h,v 1.55 2010/12/16 16:56:08 jsg Exp $	*/
 
 /*
  * The author of this code is Angelos D. Keromytis (angelos@cis.upenn.edu)
@@ -74,7 +74,6 @@
 #define DES_BLOCK_LEN		8
 #define DES3_BLOCK_LEN		8
 #define BLOWFISH_BLOCK_LEN	8
-#define SKIPJACK_BLOCK_LEN	8
 #define CAST128_BLOCK_LEN	8
 #define RIJNDAEL128_BLOCK_LEN	16
 #define EALG_MAX_BLOCK_LEN	16 /* Keep this updated */
@@ -86,7 +85,6 @@
 #define CRYPTO_3DES_CBC		2
 #define CRYPTO_BLF_CBC		3
 #define CRYPTO_CAST_CBC		4
-#define CRYPTO_SKIPJACK_CBC	5
 #define CRYPTO_MD5_HMAC		6
 #define CRYPTO_SHA1_HMAC	7
 #define CRYPTO_RIPEMD160_HMAC	8
@@ -105,7 +103,12 @@
 #define CRYPTO_SHA2_512_HMAC	20
 #define CRYPTO_AES_CTR		21
 #define CRYPTO_AES_XTS		22
-#define CRYPTO_ALGORITHM_MAX	22 /* Keep updated */
+#define CRYPTO_AES_GCM_16	23
+#define CRYPTO_AES_128_GMAC	24
+#define CRYPTO_AES_192_GMAC	25
+#define CRYPTO_AES_256_GMAC	26
+#define CRYPTO_AES_GMAC		27
+#define CRYPTO_ALGORITHM_MAX	27 /* Keep updated */
 
 /* Algorithm flags */
 #define	CRYPTO_ALG_FLAG_SUPPORTED	0x01 /* Algorithm is supported */

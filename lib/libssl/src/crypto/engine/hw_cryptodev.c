@@ -56,13 +56,13 @@ ENGINE_load_cryptodev(void)
 #include <sys/ioctl.h>
 
 #include <errno.h>
-#include <stdio.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdarg.h>
-#include <syslog.h>
-#include <errno.h>
+#include <stdio.h>
 #include <string.h>
+#include <syslog.h>
+#include <unistd.h>
 
 #if defined(__i386__) || defined(__amd64__)
 #include <sys/sysctl.h>
@@ -73,6 +73,8 @@ ENGINE_load_cryptodev(void)
 
 static int check_viac3aes(void);
 #endif
+
+#define CRYPTO_VIAC3_MAX	3
 
 struct dev_crypto_state {
 	struct session_op d_sess;
@@ -97,7 +99,7 @@ static int get_cryptodev_ciphers(const int **cnids);
 static int cryptodev_usable_ciphers(const int **nids);
 static int cryptodev_usable_digests(const int **nids);
 static int cryptodev_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
-    const unsigned char *in, unsigned int inl);
+    const unsigned char *in, size_t inl);
 static int cryptodev_init_key(EVP_CIPHER_CTX *ctx, const unsigned char *key,
     const unsigned char *iv, int enc);
 static int cryptodev_cleanup(EVP_CIPHER_CTX *ctx);
@@ -147,7 +149,6 @@ static struct dev_crypto_cipher ciphers[] = {
 	{ CRYPTO_AES_CBC,		NID_aes_256_cbc,	16,	32, },
 	{ CRYPTO_BLF_CBC,		NID_bf_cbc,		8,	16, },
 	{ CRYPTO_CAST_CBC,		NID_cast5_cbc,		8,	16, },
-	{ CRYPTO_SKIPJACK_CBC,		NID_undef,		0,	 0, },
 	{ 0,				NID_undef,		0,	 0, },
 };
 
@@ -239,7 +240,7 @@ cipher_nid_to_cryptodev(int nid)
 static int
 get_cryptodev_ciphers(const int **cnids)
 {
-	static int nids[CRYPTO_ALGORITHM_MAX];
+	static int nids[CRYPTO_ALGORITHM_MAX + CRYPTO_VIAC3_MAX + 1];
 	struct session_op sess;
 	int fd, i, count = 0;
 
@@ -250,7 +251,7 @@ get_cryptodev_ciphers(const int **cnids)
 	memset(&sess, 0, sizeof(sess));
 	sess.key = (caddr_t)"123456781234567812345678";
 
-	for (i = 0; ciphers[i].c_id && count < CRYPTO_ALGORITHM_MAX; i++) {
+	for (i = 0; ciphers[i].c_id && count <= CRYPTO_ALGORITHM_MAX; i++) {
 		if (ciphers[i].c_nid == NID_undef)
 			continue;
 		sess.cipher = ciphers[i].c_id;
@@ -382,7 +383,7 @@ cryptodev_usable_digests(const int **nids)
 
 static int
 cryptodev_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
-    const unsigned char *in, unsigned int inl)
+    const unsigned char *in, size_t inl)
 {
 	struct crypt_op cryp;
 	struct dev_crypto_state *state = ctx->cipher_data;
@@ -645,7 +646,7 @@ viac3_xcrypt_cbc(int *cw, const void *src, void *dst, void *key, int rep,
 
 static int
 xcrypt_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
-    const unsigned char *in, unsigned int inl)
+    const unsigned char *in, size_t inl)
 {
 	unsigned char *save_iv_store[EVP_MAX_IV_LENGTH + 15];
 	unsigned char *save_iv = DOALIGN(save_iv_store);
@@ -659,6 +660,8 @@ xcrypt_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out,
 	if (!inl)
 		return (1);
 	if ((inl % ctx->cipher->block_size) != 0)
+		return (0);
+	if (inl > UINT_MAX)
 		return (0);
 
 	if (ISUNALIGNED(in) || ISUNALIGNED(out)) {

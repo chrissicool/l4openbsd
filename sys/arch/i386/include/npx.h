@@ -1,4 +1,4 @@
-/*	$OpenBSD: npx.h,v 1.13 2010/07/01 17:30:27 tedu Exp $	*/
+/*	$OpenBSD: npx.h,v 1.15 2010/09/29 15:11:31 joshe Exp $	*/
 /*	$NetBSD: npx.h,v 1.11 1994/10/27 04:16:11 cgd Exp $	*/
 
 /*-

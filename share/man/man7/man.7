@@ -1,4 +1,4 @@
-.\"	$OpenBSD: man.7,v 1.6 2010/08/01 20:47:52 schwarze Exp $
+.\"	$OpenBSD: man.7,v 1.16 2011/01/25 00:37:39 schwarze Exp $
 .\"
 .\" Copyright (c) 2009, 2010 Kristaps Dzonsons <kristaps@bsd.lv>
 .\"
@@ -14,7 +14,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: August 1 2010 $
+.Dd $Mdocdate: January 25 2011 $
 .Dt MAN 7
 .Os
 .Sh NAME
@@ -53,12 +53,12 @@ Other lines are interpreted within the current state.
 .Nm
 documents may contain only graphable 7-bit ASCII characters, the
 space character, and the tab character.
-All manuals must have
-.Ux
-line termination.
 .Pp
 Blank lines are acceptable; where found, the output will assert a
 vertical space.
+.Pp
+If the first character of a line is a space, that line is printed
+with a leading newline.
 .Ss Comments
 Text following a
 .Sq \e\*q ,
@@ -219,25 +219,27 @@ Documents are generally structured as follows:
 \&.TH FOO 1 2009-10-10
 \&.SH NAME
 \efBfoo\efR \e(en a description goes here
-\&.\e\*q The next is for sections 2 & 3 only.
 \&.\e\*q .SH LIBRARY
+\&.\e\*q For sections 2 & 3 only.
+\&.\e\*q Not used in OpenBSD.
 \&.SH SYNOPSIS
 \efBfoo\efR [\efB\e-options\efR] arguments...
 \&.SH DESCRIPTION
 The \efBfoo\efR utility processes files...
 \&.\e\*q .SH IMPLEMENTATION NOTES
-\&.\e\*q The next is for sections 2, 3, & 9 only.
+\&.\e\*q Not used in OpenBSD.
 \&.\e\*q .SH RETURN VALUES
-\&.\e\*q The next is for sections 1, 6, 7, & 8 only.
+\&.\e\*q For sections 2, 3, & 9 only.
 \&.\e\*q .SH ENVIRONMENT
+\&.\e\*q For sections 1, 6, 7, & 8 only.
 \&.\e\*q .SH FILES
-\&.\e\*q The next is for sections 1 & 8 only.
 \&.\e\*q .SH EXIT STATUS
+\&.\e\*q For sections 1, 6, & 8 only.
 \&.\e\*q .SH EXAMPLES
-\&.\e\*q The next is for sections 1, 4, 6, 7, & 8 only.
 \&.\e\*q .SH DIAGNOSTICS
-\&.\e\*q The next is for sections 2, 3, & 9 only.
+\&.\e\*q For sections 1, 4, 6, 7, & 8 only.
 \&.\e\*q .SH ERRORS
+\&.\e\*q For sections 2, 3, & 9 only.
 \&.\e\*q .SH SEE ALSO
 \&.\e\*q .BR foo ( 1 )
 \&.\e\*q .SH STANDARDS
@@ -246,6 +248,7 @@ The \efBfoo\efR utility processes files...
 \&.\e\*q .SH CAVEATS
 \&.\e\*q .SH BUGS
 \&.\e\*q .SH SECURITY CONSIDERATIONS
+\&.\e\*q Not used in OpenBSD.
 .Ed
 .Pp
 The sections in a
@@ -367,6 +370,13 @@ Thus, the following are equivalent:
 \&.\ \ \ PP
 .Ed
 .Pp
+To include space characters in macro arguments, arguments may be quoted;
+see the
+.Sq MACRO SYNTAX
+section in the
+.Xr roff 7
+manual for details.
+.Pp
 The
 .Nm
 macros are classified by scope: line scope or block scope.
@@ -411,7 +421,6 @@ The syntax is as follows:
 .It Sx \&I   Ta    n         Ta    next-line Ta    \&
 .It Sx \&IB  Ta    n         Ta    current   Ta    \&
 .It Sx \&IR  Ta    n         Ta    current   Ta    \&
-.\" .It Sx \&PD  Ta    n         Ta    current   Ta    compat
 .It Sx \&R   Ta    n         Ta    next-line Ta    \&
 .It Sx \&RB  Ta    n         Ta    current   Ta    \&
 .It Sx \&RI  Ta    n         Ta    current   Ta    \&
@@ -421,15 +430,10 @@ The syntax is as follows:
 .It Sx \&UC  Ta    <=1       Ta    current   Ta    \&
 .It Sx \&br  Ta    0         Ta    current   Ta    compat
 .It Sx \&fi  Ta    0         Ta    current   Ta    compat
-.It Sx \&i   Ta    n         Ta    current   Ta    compat
 .It Sx \&in  Ta    1         Ta    current   Ta    compat
 .It Sx \&na  Ta    0         Ta    current   Ta    compat
 .It Sx \&nf  Ta    0         Ta    current   Ta    compat
-.It Sx \&r   Ta    0         Ta    current   Ta    compat
 .It Sx \&sp  Ta    1         Ta    current   Ta    compat
-.\" .It Sx \&Sp  Ta    <1        Ta    current   Ta    compat
-.\" .It Sx \&Vb  Ta    <1        Ta    current   Ta    compat
-.\" .It Sx \&Ve  Ta    0         Ta    current   Ta    compat
 .El
 .Pp
 Macros marked as
@@ -509,12 +513,9 @@ The optional arguments specify which release it is from.
 Text is rendered in bold face.
 .Pp
 See also
-.Sx \&I ,
-.Sx \&R ,
-.Sx \&b ,
-.Sx \&i ,
+.Sx \&I
 and
-.Sx \&r .
+.Sx \&R .
 .Ss \&BI
 Text is rendered alternately in bold face and italic.
 Thus,
@@ -532,7 +533,7 @@ Whitespace between arguments is omitted in output.
 .Pp
 Examples:
 .Pp
-.D1 \&.BI bold italic bold italic
+.Dl \&.BI bold italic bold italic
 .Pp
 The output of this example will be emboldened
 .Dq bold
@@ -591,12 +592,9 @@ and
 Text is rendered in italics.
 .Pp
 See also
-.Sx \&B ,
-.Sx \&R ,
-.Sx \&b ,
-.Sx \&i ,
+.Sx \&B
 and
-.Sx \&r .
+.Sx \&R .
 .Ss \&IB
 Text is rendered alternately in italics and bold face.
 Whitespace between arguments is omitted in output.
@@ -692,12 +690,9 @@ and
 Text is rendered in roman (the default font).
 .Pp
 See also
-.Sx \&I ,
-.Sx \&B ,
-.Sx \&b ,
-.Sx \&i ,
+.Sx \&I
 and
-.Sx \&r .
+.Sx \&B .
 .Ss \&RB
 Text is rendered alternately in roman (the default font) and bold face.
 Whitespace between arguments is omitted in output.
@@ -792,7 +787,7 @@ manual section.
 .Pp
 Examples:
 .Pp
-.D1 \&.TH CVS 5 "1992-02-12" GNU
+.Dl \&.TH CVS 5 "1992-02-12" GNU
 .Ss \&TP
 Begin a paragraph where the head, if exceeding the indentation width, is
 followed by a newline; if not, the body follows on the same line after a
@@ -818,12 +813,6 @@ See also
 .Sx \&P ,
 and
 .Sx \&PP .
-.\" .
-.\" .
-.\" .Ss \&PD
-.\" Has no effect.  Included for compatibility.
-.\" .
-.\" .
 .Ss \&UC
 Sets the volume for the footer for compatibility with man pages from
 BSD releases.
@@ -837,18 +826,6 @@ See also
 .Ss \&fi
 End literal mode begun by
 .Sx \&nf .
-.Ss \&i
-Italicise arguments.
-Synonym for
-.Sx \&I .
-.Pp
-See also
-.Sx \&B ,
-.Sx \&I ,
-.Sx \&R .
-.Sx \&b ,
-and
-.Sx \&r .
 .Ss \&in
 Indent relative to the current indentation:
 .Pp
@@ -866,16 +843,6 @@ Begin literal mode: all subsequent free-form lines have their end of
 line boundaries preserved.
 May be ended by
 .Sx \&fi .
-.Ss \&r
-Fonts and styles (bold face, italics) reset to roman (default font).
-.Pp
-See also
-.Sx \&B ,
-.Sx \&I ,
-.Sx \&R ,
-.Sx \&b ,
-and
-.Sx \&i .
 .Ss \&sp
 Insert vertical spaces into output with the following syntax:
 .Bd -filled -offset indent
@@ -894,21 +861,6 @@ Defaults to 1, if unspecified.
 .Pp
 See also
 .Sx \&br .
-.\" .Ss \&Sp
-.\" A synonym for
-.\" .Sx \&sp
-.\" .Cm 0.5v .
-.\" .
-.\" .Ss \&Vb
-.\" A synonym for
-.\" .Sx \&nf .
-.\" Accepts an argument (the height of the formatted space) which is
-.\" disregarded.
-.\" .
-.\" .Ss \&Ve
-.\" A synonym for
-.\" .Sx \&fi .
-.\" .
 .Sh COMPATIBILITY
 This section documents areas of questionable portability between
 implementations of the
@@ -917,30 +869,54 @@ language.
 .Pp
 .Bl -dash -compact
 .It
-The \es (font size), \em (font colour), and \eM (font filling colour)
-font decoration escapes are all discarded in mandoc.
-.It
 In quoted literals, GNU troff allowed pair-wise double-quotes to produce
 a standalone double-quote in formatted output.
 It is not known whether this behaviour is exhibited by other formatters.
+.It
+troff suppresses a newline before
+.Sq \(aq
+macro output; in mandoc, it is an alias for the standard
+.Sq \&.
+control character.
+.It
+The
+.Sq \eh
+.Pq horizontal position ,
+.Sq \ev
+.Pq vertical position ,
+.Sq \em
+.Pq text colour ,
+.Sq \eM
+.Pq text filling colour ,
+.Sq \ez
+.Pq zero-length character ,
+.Sq \ew
+.Pq string length ,
+.Sq \ek
+.Pq horizontal position marker ,
+.Sq \eo
+.Pq text overstrike ,
+and
+.Sq \es
+.Pq text size
+escape sequences are all discarded in mandoc.
+.It
+The
+.Sq \ef
+scaling unit is accepted by mandoc, but rendered as the default unit.
 .It
 The
 .Sx \&sp
 macro does not accept negative values in mandoc.
 In GNU troff, this would result in strange behaviour.
-.It
-The
-.Sq \(aq
-macro control character, in GNU troff (and prior troffs) suppresses a
-newline before macro output; in mandoc, it is an alias for the standard
-.Sq \&.
-control character.
 .El
 .Sh SEE ALSO
 .Xr man 1 ,
 .Xr mandoc 1 ,
 .Xr mandoc_char 7 ,
-.Xr mdoc 7
+.Xr mdoc 7 ,
+.Xr roff 7 ,
+.Xr tbl 7
 .Sh HISTORY
 The
 .Nm

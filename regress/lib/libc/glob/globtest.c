@@ -1,4 +1,4 @@
-/*	$OpenBSD: globtest.c,v 1.1 2008/10/01 23:04:36 millert Exp $	*/
+/*	$OpenBSD: globtest.c,v 1.3 2011/01/07 19:45:44 millert Exp $	*/
 
 /*
  * Public domain, 2008, Todd C. Miller <Todd.Miller@courtesan.com>
@@ -17,6 +17,7 @@ struct gl_entry {
 	int nresults;
 	char pattern[1024];
 	char *results[MAX_RESULTS];
+	mode_t modes[MAX_RESULTS];
 };
 
 int test_glob(struct gl_entry *);
@@ -25,9 +26,8 @@ int
 main(int argc, char **argv)
 {
 	FILE *fp = stdin;
-	char *buf, *cp, *want, *got, *last;
-	const char *errstr;
-	int errors = 0, i, lineno;
+	char *buf, *cp;
+	int errors = 0, lineno, mode;
 	struct gl_entry entry;
 	size_t len;
 
@@ -40,9 +40,9 @@ main(int argc, char **argv)
 	 * Read in test file, which is formatted thusly:
 	 *
 	 * [pattern] <flags>
-	 * result1
-	 * result2
-	 * result3
+	 * result1 [mode]
+	 * result2 [mode]
+	 * result3 [mode]
 	 * ...
 	 *
 	 */
@@ -76,7 +76,7 @@ main(int argc, char **argv)
 			if ((cp = strchr(buf, '>')) == NULL)
 				errx(1, "invalid entry on line %d", lineno);
 			entry.flags = (int)strtol(buf, &cp, 0);
-			if (*cp != '>' || entry.flags < 0 || entry.flags > 0x2000)
+			if (*cp != '>' || entry.flags < 0 || entry.flags > 0x4000)
 				errx(1, "invalid flags: %s", buf);
 			entry.nresults = 0;
 			continue;
@@ -88,6 +88,12 @@ main(int argc, char **argv)
 			errx(1, "too many results for %s, max %d",
 			    entry.pattern, MAX_RESULTS);
 		}
+		if ((cp = strchr(buf, ' ')) != NULL) {
+			*cp++ = '\0';
+			mode = strtol(cp, NULL, 8);
+		} else
+			mode = -1;
+		entry.modes[entry.nresults] = (mode_t)mode;
 		entry.results[entry.nresults++] = strdup(buf);
 	}
 	if (entry.pattern[0])
@@ -98,7 +104,7 @@ main(int argc, char **argv)
 int test_glob(struct gl_entry *entry)
 {
 	glob_t gl;
-	int i;
+	int i = 0;
 
 	if (glob(entry->pattern, entry->flags, NULL, &gl) != 0)
 		errx(1, "glob failed: %s", entry->pattern);
@@ -109,15 +115,28 @@ int test_glob(struct gl_entry *entry)
 	for (i = 0; i < gl.gl_matchc; i++) {
 		if (strcmp(gl.gl_pathv[i], entry->results[i]) != 0)
 			goto mismatch;
+		if ((entry->flags & GLOB_KEEPSTAT) != 0) {
+			if (entry->modes[i] == -1 ||
+			    gl.gl_statv[i] == NULL ||
+			    entry->modes[i] != gl.gl_statv[i]->st_mode)
+			goto badmode;
+		}
 		free(entry->results[i]);
 	}
 	return (0);
-mismatch:
-	warnx("mismatch for pattern %s, flags 0x%x", entry->pattern,
-	    entry->flags);
+ badmode:
+	warnx("mismatch mode for pattern %s, flags 0x%x, file \"%s\" "
+	    "(found %07o, expected %07o)", entry->pattern, entry->flags,
+	    gl.gl_pathv[i], gl.gl_statv[i] ? gl.gl_statv[i]->st_mode : 0,
+	    entry->modes[i]);
+	goto cleanup;
+ mismatch:
+	warnx("mismatch for pattern %s, flags 0x%x "
+	    "(found \"%s\", expected \"%s\")", entry->pattern, entry->flags,
+	    gl.gl_pathv[i], entry->results[i]);
+ cleanup:
 	while (i < gl.gl_matchc) {
 		free(entry->results[i++]);
 	}
-	return (0);
 	return (1);
 }

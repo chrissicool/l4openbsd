@@ -1,4 +1,4 @@
-/*	$OpenBSD: config.c,v 1.54 2010/06/27 19:53:34 claudio Exp $ */
+/*	$OpenBSD: config.c,v 1.56 2010/10/24 17:20:08 deraadt Exp $ */
 
 /*
  * Copyright (c) 2003, 2004, 2005 Henning Brauer <henning@openbsd.org>
@@ -78,7 +78,7 @@ merge_config(struct bgpd_config *xconf, struct bgpd_config *conf,
 			nla->reconf = RECONF_REINIT;
 
 	} else {
-		/* 
+		/*
 		 * merge new listeners:
 		 * -flag all existing ones as to be deleted
 		 * -those that are in both new and old: flag to keep
@@ -332,7 +332,7 @@ get_mpe_label(struct rdomain *r)
 	strlcpy(ifr.ifr_name, r->ifmpe, sizeof(ifr.ifr_name));
 	ifr.ifr_data = (caddr_t)&shim;
 
-	if (ioctl(s, SIOCGETLABEL , (caddr_t)&ifr) == -1) {
+	if (ioctl(s, SIOCGETLABEL, (caddr_t)&ifr) == -1) {
 		close(s);
 		return (-1);
 	}

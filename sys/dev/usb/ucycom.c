@@ -1,4 +1,4 @@
-/*	$OpenBSD: ucycom.c,v 1.16 2010/04/20 22:05:43 tedu Exp $	*/
+/*	$OpenBSD: ucycom.c,v 1.19 2011/01/25 20:03:36 jakemsr Exp $	*/
 /*	$NetBSD: ucycom.c,v 1.3 2005/08/05 07:27:47 skrll Exp $	*/
 
 /*
@@ -155,7 +155,6 @@ const struct usb_devno ucycom_devs[] = {
 	{ USB_VENDOR_DELORME, USB_PRODUCT_DELORME_EMUSB },
 	{ USB_VENDOR_DELORME, USB_PRODUCT_DELORME_EMLT20 },
 };
-#define ucycom_lookup(v, p) usb_lookup(ucycom_devs, v, p)
 
 int ucycom_match(struct device *, void *, void *); 
 void ucycom_attach(struct device *, struct device *, void *); 
@@ -180,7 +179,7 @@ ucycom_match(struct device *parent, void *match, void *aux)
 	struct uhidev_attach_arg *uha = aux;
 
 	DPRINTF(("ucycom match\n"));
-	return (ucycom_lookup(uha->uaa->vendor, uha->uaa->product) != NULL ?
+	return (usb_lookup(ucycom_devs, uha->uaa->vendor, uha->uaa->product) != NULL ?
 	    UMATCH_VENDOR_PRODUCT : UMATCH_NONE);
 }
 
@@ -237,9 +236,6 @@ ucycom_attach(struct device *parent, struct device *self, void *aux)
 	uca.methods = &ucycom_methods;
 	uca.arg = sc;
 	uca.info = NULL;
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-			   &sc->sc_hdev.sc_dev);
 
 	sc->sc_subdev = config_found_sm(self, &uca, ucomprint, ucomsubmatch);
 	DPRINTF(("ucycom_attach: complete %p\n", sc->sc_subdev));
@@ -584,7 +580,6 @@ ucycom_detach(struct device *self, int flags)
 	struct ucycom_softc *sc = (struct ucycom_softc *)self;
 
 	DPRINTF(("ucycom_detach: sc=%p flags=%d\n", sc, flags));
-	sc->sc_dying = 1;
 	if (sc->sc_subdev != NULL) {
 		config_detach(sc->sc_subdev, flags);
 		sc->sc_subdev = NULL;

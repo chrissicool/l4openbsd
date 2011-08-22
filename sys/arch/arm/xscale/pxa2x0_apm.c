@@ -1,4 +1,4 @@
-/*	$OpenBSD: pxa2x0_apm.c,v 1.32 2010/03/30 17:40:55 oga Exp $	*/
+/*	$OpenBSD: pxa2x0_apm.c,v 1.36 2010/09/08 21:18:14 deraadt Exp $	*/
 
 /*-
  * Copyright (c) 2001 Alexander Guy.  All rights reserved.
@@ -40,8 +40,8 @@
 #include <sys/kernel.h>
 #include <sys/kthread.h>
 #include <sys/rwlock.h>
-#include <sys/mount.h>		/* for vfs_syncwait() */
 #include <sys/proc.h>
+#include <sys/buf.h>
 #include <sys/device.h>
 #include <sys/fcntl.h>
 #include <sys/ioctl.h>
@@ -305,21 +305,22 @@ apm_power_info(struct pxa2x0_apm_softc *sc,
 void
 apm_suspend(struct pxa2x0_apm_softc *sc)
 {
+	int s;
+
 #if NWSDISPLAY > 0
 	wsdisplay_suspend();
 #endif /* NWSDISPLAY > 0 */
 
 	resettodr();
 
-	dopowerhooks(PWR_SUSPEND);
-
-	if (cold)
-		vfs_syncwait(0);
-
 	if (sc->sc_suspend == NULL)
 		pxa2x0_wakeup_config(PXA2X0_WAKEUP_ALL, 1);
 	else
 		sc->sc_suspend(sc);
+
+	s = splhigh();
+	config_suspend(TAILQ_FIRST(&alldevs), DVACT_SUSPEND);
+	splx(s);
 
 	pxa2x0_apm_sleep(sc);
 }
@@ -327,17 +328,22 @@ apm_suspend(struct pxa2x0_apm_softc *sc)
 void
 apm_resume(struct pxa2x0_apm_softc *sc)
 {
+	int s;
 
-	dopowerhooks(PWR_RESUME);
+	s = splhigh();
+	config_suspend(TAILQ_FIRST(&alldevs), DVACT_RESUME);
+	splx(s);
 
 	inittodr(0);
 
 	/*
 	 * Clear the OTG Peripheral hold after running the pxaudc and pxaohci
-	 * powerhooks to re-enable their operation. See 3.8.1.2
+	 * ca_activate to re-enable their operation. See 3.8.1.2
 	 */
 	/* XXX ifdef NPXAUDC > 0 */
 	bus_space_write_4(sc->sc_iot, sc->sc_pm_ioh, POWMAN_PSSR, PSSR_OTGPH);
+
+	bufq_restart();
 #if NWSDISPLAY > 0
 	wsdisplay_resume();
 #endif /* NWSDISPLAY > 0 */

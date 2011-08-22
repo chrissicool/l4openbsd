@@ -1,4 +1,4 @@
-/*	$OpenBSD: aes_intel.S,v 1.2 2010/07/22 12:47:40 thib Exp $	*/
+/*	$OpenBSD: aes_intel.S,v 1.4 2010/11/15 14:48:17 mikeb Exp $	*/
 
 /*
  * Implement AES algorithm in Intel AES-NI instructions.
@@ -66,13 +66,13 @@
 #define BSWAP_MASK	%xmm10
 #define CTR		%xmm11
 #define INC		%xmm12
-#define NONCE		%xmm13
 
 #define KEYP		%rdi
 #define OUTP		%rsi
 #define INP		%rdx
 #define LEN		%rcx
 #define IVP		%r8
+#define ICBP		%r8
 #define KLEN		%r9d
 #define T1		%r10
 #define TKEYP		T1
@@ -151,7 +151,7 @@ _key_expansion_256b:
 	ret
 
 /*
- * void aesni_set_key(struct aesni_sess *ses, uint8_t *key, size_t len)
+ * void aesni_set_key(struct aesni_session *ses, uint8_t *key, size_t len)
  */
 ENTRY(aesni_set_key)
 	movups (%rsi), %xmm0		# user key (first 16 bytes)
@@ -252,7 +252,7 @@ ENTRY(aesni_set_key)
 	ret
 
 /*
- * void aesni_enc(struct aesni_sess *ses, uint8_t *dst, uint8_t *src)
+ * void aesni_enc(struct aesni_session *ses, uint8_t *dst, uint8_t *src)
  */
 ENTRY(aesni_enc)
 	movl 480(KEYP), KLEN		# key length
@@ -425,7 +425,7 @@ _aesni_enc4:
 	ret
 
 /*
- * void aesni_dec(struct aesni_sess *ses, uint8_t *dst, uint8_t *src)
+ * void aesni_dec(struct aesni_session *ses, uint8_t *dst, uint8_t *src)
  */
 ENTRY(aesni_dec)
 	mov 480(KEYP), KLEN		# key length
@@ -600,7 +600,7 @@ _aesni_dec4:
 
 #if 0
 /*
- * void aesni_ecb_enc(struct aesni_sess *ses, uint8_t *dst, uint8_t *src,
+ * void aesni_ecb_enc(struct aesni_session *ses, uint8_t *dst, uint8_t *src,
  *     size_t len)
  */
 ENTRY(aesni_ecb_enc)
@@ -643,7 +643,7 @@ ENTRY(aesni_ecb_enc)
 	ret
 
 /*
- * void aesni_ecb_dec(struct aesni_sess *ses, uint8_t *dst, uint8_t *src,
+ * void aesni_ecb_dec(struct aesni_session *ses, uint8_t *dst, uint8_t *src,
  *     size_t len);
  */
 ENTRY(aesni_ecb_dec)
@@ -688,7 +688,7 @@ ENTRY(aesni_ecb_dec)
 #endif
 
 /*
- * void aesni_cbc_enc(struct aesni_sess *ses, uint8_t *dst, uint8_t *src,
+ * void aesni_cbc_enc(struct aesni_session *ses, uint8_t *dst, uint8_t *src,
  *     size_t len, uint8_t *iv)
  */
 ENTRY(aesni_cbc_enc)
@@ -712,7 +712,7 @@ ENTRY(aesni_cbc_enc)
 	ret
 
 /*
- * void aesni_cbc_dec(struct aesni_sess *ses, uint8_t *dst, uint8_t *src,
+ * void aesni_cbc_dec(struct aesni_session *ses, uint8_t *dst, uint8_t *src,
  *     size_t len, uint8_t *iv)
  */
 ENTRY(aesni_cbc_dec)
@@ -772,22 +772,22 @@ ENTRY(aesni_cbc_dec)
  * _aesni_inc_init:	internal ABI
  *	setup registers used by _aesni_inc
  * input:
- *	IV
+ *	ICB
  * output:
- *	CTR:		== IV, in little endian
+ *	CTR:		== CTR, in little endian
+ *	IV:		== IV, in big endian
  *	TCTR_LOW:	== lower dword of CTR
  *	INC:		== 1, in little endian
  *	BSWAP_MASK	== endian swapping mask
  */
 _aesni_inc_init:
-	movaps .Lbswap_mask, BSWAP_MASK
-	movaps IV, CTR
-	pslldq $4, CTR
-	por NONCE, CTR
-	pshufb BSWAP_MASK, CTR
-	mov $1, TCTR_LOW
-	movd TCTR_LOW, INC
-	movd CTR, TCTR_LOW
+	movdqa	CTR, IV
+	pslldq	$8, IV
+	movdqu	.Lbswap_mask, BSWAP_MASK
+	pshufb	BSWAP_MASK, CTR
+	mov	$1, TCTR_LOW
+	movd	TCTR_LOW, INC
+	movd	CTR, TCTR_LOW
 	ret
 
 /*
@@ -818,15 +818,14 @@ _aesni_inc:
 	ret
 
 /*
- * void aesni_ctr_enc(struct aesni_sess *ses, uint8_t *dst, uint8_t *src,
- *     size_t len, uint8_t *iv)
+ * void aesni_ctr_enc(struct aesni_session *ses, uint8_t *dst, uint8_t *src,
+ *     size_t len, uint8_t *icb)
  */
 ENTRY(aesni_ctr_enc)
 	cmp $16, LEN
 	jb .Lctr_enc_just_ret
 	mov 480(KEYP), KLEN
-	movd 484(KEYP), NONCE
-	movq (IVP), IV
+	movdqu (ICBP), CTR
 	call _aesni_inc_init
 	cmp $64, LEN
 	jb .Lctr_enc_loop1

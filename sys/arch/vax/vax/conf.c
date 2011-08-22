@@ -1,4 +1,4 @@
-/*	$OpenBSD: conf.c,v 1.60 2010/07/03 03:59:17 krw Exp $ */
+/*	$OpenBSD: conf.c,v 1.62 2011/01/14 19:04:08 jasper Exp $ */
 /*	$NetBSD: conf.c,v 1.44 1999/10/27 16:38:54 ragge Exp $	*/
 
 /*-
@@ -135,7 +135,7 @@ struct bdevsw	bdevsw[] =
 	bdev_disk_init(NRY,ry),		/* 24: VS3100 floppy */
 	bdev_disk_init(NRAID,raid),	/* 25: RAIDframe disk driver */
 };
-int	nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
+int	nblkdev = nitems(bdevsw);
 
 /*
  * Console routines for VAX console.
@@ -355,6 +355,7 @@ cdev_decl(nnpfs_dev);
 #include "systrace.h"
 
 #include "vscsi.h"
+#include "pppx.h"
 
 struct cdevsw	cdevsw[] =
 {
@@ -440,8 +441,9 @@ struct cdevsw	cdevsw[] =
 	cdev_ptm_init(NPTY,ptm),	/* 75: pseudo-tty ptm device */
 	cdev_vscsi_init(NVSCSI,vscsi),	/* 78: vscsi */
 	cdev_disk_init(1,diskmap),	/* 79: disk mapper */
+	cdev_pppx_init(NPPPX,pppx),	/* 80: pppx */
 };
-int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+int	nchrdev = nitems(cdevsw);
 
 int	mem_no = 3;	/* major device number of memory special file */
 
@@ -533,7 +535,7 @@ int	chrtoblktbl[] = {
 	25,	/* 73 */
 	NODEV,	/* 74 */
 };
-int nchrtoblktbl = sizeof(chrtoblktbl) / sizeof(chrtoblktbl[0]);
+int nchrtoblktbl = nitems(chrtoblktbl);
 
 /*
  * Returns true if dev is /dev/mem or /dev/kmem.

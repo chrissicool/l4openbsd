@@ -1,4 +1,4 @@
-/*	$OpenBSD: intr.h,v 1.39 2009/08/13 13:24:48 kettenis Exp $	*/
+/*	$OpenBSD: intr.h,v 1.41 2010/12/27 19:51:27 guenther Exp $	*/
 /*	$NetBSD: intr.h,v 1.5 1996/05/13 06:11:28 mycroft Exp $	*/
 
 /*
@@ -134,9 +134,6 @@ void splassert_check(int, const char *);
 #define spllock() 	splhigh()
 #define	spl0()		spllower(IPL_NONE)
 
-#define	setsoftnet()	softintr(SIR_NET)
-#define	setsofttty()	softintr(SIR_TTY)
-
 #include <machine/pic.h>
 
 struct cpu_info;
@@ -145,7 +142,6 @@ struct cpu_info;
 int i386_send_ipi(struct cpu_info *, int);
 int i386_fast_ipi(struct cpu_info *, int);
 void i386_broadcast_ipi(int);
-void i386_multicast_ipi(int, int);
 void i386_ipi_handler(void);
 void i386_intlock(int);
 void i386_intunlock(int);

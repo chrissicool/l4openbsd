@@ -1,4 +1,4 @@
-#	$OpenBSD: GENERIC,v 1.162 2010/08/08 17:18:11 deraadt Exp $
+#	$OpenBSD: GENERIC,v 1.171 2011/02/15 07:14:45 deraadt Exp $
 #
 #	Machine-independent option; used by all architectures for their
 #	GENERIC kernel
@@ -29,6 +29,7 @@ option		SYSVSHM		# System V-like memory sharing
 option		UVM_SWAP_ENCRYPT# support encryption of pages going to swap
 
 option		COMPAT_43	# Kernel compatibility with 4.3BSD
+option		COMPAT_O47	# Compatibility with OpenBSD 4.7
 
 option		LKM		# loadable kernel modules
 
@@ -40,20 +41,19 @@ option		QUOTA		# UFS quotas
 option		EXT2FS		# Second Extended Filesystem
 option		MFS		# memory file system
 option		NNPFS		# NNPFS filesystem
-
-option		TCP_SACK	# Selective Acknowledgements for TCP
-option		TCP_ECN		# Explicit Congestion Notification for TCP
-option		TCP_SIGNATURE	# TCP MD5 Signatures, for BGP routing sessions
-#option		TCP_FACK	# Forward Acknowledgements for TCP
-
 option		NFSCLIENT	# Network File System client
 option		NFSSERVER	# Network File System server
-
 option		CD9660		# ISO 9660 + Rock Ridge file system
 option		UDF		# UDF (DVD) file system
 option		MSDOSFS		# MS-DOS file system
 option		FIFO		# FIFOs; RECOMMENDED
 #option		PORTAL		# dynamically created filesystem objects
+
+option		SOCKET_SPLICE	# Socket Splicing for TCP
+option		TCP_SACK	# Selective Acknowledgements for TCP
+option		TCP_ECN		# Explicit Congestion Notification for TCP
+option		TCP_SIGNATURE	# TCP MD5 Signatures, for BGP routing sessions
+#option		TCP_FACK	# Forward Acknowledgements for TCP
 
 option		INET		# IP + ICMP + TCP + UDP
 option		ALTQ		# ALTQ base
@@ -66,7 +66,7 @@ option		PPP_DEFLATE
 #option		PIPEX		# Pppac IP EXtension, for npppd
 option		MROUTING	# Multicast router
 #option		PIM		# Protocol Independent Multicast
-#option		MPLS		# Multi-Protocol Label Switching
+option		MPLS		# Multi-Protocol Label Switching
 
 #mpath0		at root		# SCSI Multipathing
 #scsibus*	at mpath?
@@ -74,8 +74,8 @@ option		MROUTING	# Multicast router
 softraid0	at root		# Software RAID
 scsibus*	at softraid?
 
-#vscsi0		at root		# Userland backed Virtual SCSI
-#scsibus*	at vscsi?
+vscsi0		at root		# Userland backed Virtual SCSI
+scsibus*	at vscsi?
 
 pseudo-device	pf		# packet filter
 pseudo-device	pflog		# pf log if
@@ -87,7 +87,7 @@ pseudo-device	pty	16	# initial number of pseudo-terminals
 pseudo-device	nmea	1	# NMEA 0183 line discipline
 pseudo-device	msts	1	# MSTS line discipline
 pseudo-device	endrun	1	# EndRun line discipline
-pseudo-device	vnd	4	# paging to files
+pseudo-device	vnd	4	# vnode disk devices
 pseudo-device	ccd	4	# concatenated disk devices
 pseudo-device	ksyms	1	# kernel symbols device
 pseudo-device	systrace 1	# system call tracing device
@@ -99,9 +99,10 @@ pseudo-device	carp		# CARP protocol support
 pseudo-device	gif		# IPv[46] over IPv[46] tunnel (RFC1933)
 pseudo-device	gre		# GRE encapsulation interface
 pseudo-device	loop		# network loopback
-#pseudo-device	mpe		# MPLS PE interface
+pseudo-device	mpe		# MPLS PE interface
 pseudo-device	ppp		# PPP
 pseudo-device	pppoe		# PPP over Ethernet (RFC 2516)
+#pseudo-device	pppx 		# PPP multiplexer
 pseudo-device	sl		# CSLIP
 pseudo-device	sppp	1	# Sync PPP/HDLC
 pseudo-device	trunk		# Trunking support

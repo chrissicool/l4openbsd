@@ -1,4 +1,4 @@
-/*	$OpenBSD: azalia_codec.c,v 1.149 2010/08/08 05:25:30 jakemsr Exp $	*/
+/*	$OpenBSD: azalia_codec.c,v 1.151 2010/09/10 15:11:23 jakemsr Exp $	*/
 /*	$NetBSD: azalia_codec.c,v 1.8 2006/05/10 11:17:27 kent Exp $	*/
 
 /*-
@@ -530,7 +530,7 @@ azalia_unsol_event(codec_t *this, int tag)
 	case AZ_TAG_SPKR:
 		mc.type = AUDIO_MIXER_ENUM;
 		vol = 0;
-		for (i = 0; err == 0 && i < this->nsense_pins; i++) {
+		for (i = 0; !vol && !err && i < this->nsense_pins; i++) {
 			if (!(this->spkr_muters & (1 << i)))
 				continue;
 			err = azalia_comresp(this, this->sense_pins[i],
@@ -544,6 +544,7 @@ azalia_unsol_event(codec_t *this, int tag)
 		}
 		if (err)
 			break;
+		this->spkr_muted = vol;
 		switch(this->spkr_mute_method) {
 		case AZ_SPKR_MUTE_SPKR_MUTE:
 			mc.un.ord = vol;
@@ -1421,8 +1422,10 @@ azalia_codec_enable_unsol(codec_t *this)
 		w = &this->w[this->playvols.master];
 		err = azalia_comresp(this, w->nid, CORB_GET_VOLUME_KNOB,
 		    0, &result);
-		if (err)
+		if (err) {
+			DPRINTF(("%s: get volume knob error\n", __func__));
 			return err;
+		}
 
 		/* current level */
 		this->playvols.hw_step = CORB_VKNOB_VOLUME(result);
@@ -1432,15 +1435,25 @@ azalia_codec_enable_unsol(codec_t *this)
 		result &= ~(CORB_VKNOB_DIRECT);
 		err = azalia_comresp(this, w->nid, CORB_SET_VOLUME_KNOB,
 		    result, NULL);
-		if (err)
-			return err;
+		if (err) {
+			DPRINTF(("%s: set volume knob error\n", __func__));
+			/* XXX If there was an error setting indirect
+			 * mode, do not return an error.  However, do not
+			 * enable unsolicited responses either.  Most
+			 * likely the volume knob doesn't work right.
+			 * Perhaps it's simply not wired/enabled.
+			 */
+			return 0;
+		}
 
 		/* enable unsolicited responses */
 		result = CORB_UNSOL_ENABLE | AZ_TAG_PLAYVOL;
 		err = azalia_comresp(this, w->nid,
 		    CORB_SET_UNSOLICITED_RESPONSE, result, NULL);
-		if (err)
+		if (err) {
+			DPRINTF(("%s: set vknob unsol resp error\n", __func__));
 			return err;
+		}
 	}
 
 	return 0;
@@ -2149,6 +2162,16 @@ azalia_mixer_set(codec_t *this, nid_t nid, int target, const mixer_ctrl_t *mc)
 				w = &this->w[this->playvols.slaves[i]];
 				if (!(w->outamp_cap & COP_AMPCAP_MUTE))
 					continue;
+				if (this->spkr_muted == 1 &&
+				    ((this->spkr_mute_method ==
+				    AZ_SPKR_MUTE_SPKR_MUTE &&
+				    (w->nid == this->speaker ||
+				    w->nid == this->speaker2)) ||
+				    (this->spkr_mute_method ==
+				    AZ_SPKR_MUTE_DAC_MUTE &&
+				    w->nid == this->spkr_dac))) {
+					continue;
+				}
 				mc2.type = AUDIO_MIXER_ENUM;
 				mc2.un.ord = this->playvols.mute;
 				err = azalia_mixer_set(this, w->nid,

@@ -1,4 +1,4 @@
-/*	$OpenBSD: ccdconfig.c,v 1.34 2008/06/26 05:42:06 ray Exp $	*/
+/*	$OpenBSD: ccdconfig.c,v 1.36 2010/08/24 07:43:33 jasper Exp $	*/
 /*	$NetBSD: ccdconfig.c,v 1.6 1996/05/16 07:11:18 thorpej Exp $	*/
 
 /*-
@@ -307,7 +307,7 @@ do_single(int argc, char *argv[], int action)
 			    i == 0 ? '(' : ' ', cp2,
 			    i == ccio.ccio_ndisks - 1 ? ')' : ',');
 		}
-		printf(", %d blocks ", ccio.ccio_size);
+		printf(", %ld blocks ", ccio.ccio_size);
 		if (ccio.ccio_ileave != 0)
 			printf("interleaved at %d blocks\n", ccio.ccio_ileave);
 		else
@@ -477,9 +477,11 @@ do_io(char *path, u_long cmd, struct ccd_ioctl *cciop)
 			cp = "unknown";
 		}
 		warn("ioctl (%s): %s", cp, path);
+		close(fd);
 		return (1);
 	}
 
+	close(fd);
 	return (0);
 }
 

@@ -1,4 +1,4 @@
-/* $OpenBSD: ldapclient.c,v 1.18 2010/07/09 12:17:34 zinovik Exp $ */
+/* $OpenBSD: ldapclient.c,v 1.21 2011/01/17 14:34:15 martinh Exp $ */
 
 /*
  * Copyright (c) 2008 Alexander Schrijver <aschrijver@openbsd.org>
@@ -47,9 +47,11 @@ void    client_shutdown(void);
 void    client_connect(int, short, void *);
 void    client_configure(struct env *);
 void    client_periodic_update(int, short, void *);
+int	client_build_req(struct idm *, struct idm_req *, struct aldap_message *,
+	    int, int);
+int	client_search_idm(struct env *, struct idm *, struct aldap *,
+	    char **, char *, int, int, enum imsg_type);
 int	client_try_idm(struct env *, struct idm *);
-void	client_try_idm_wrapper(int, short, void *);
-void	client_try_server_wrapper(int, short, void *);
 int	client_addr_init(struct idm *);
 int	client_addr_free(struct idm *);
 
@@ -433,13 +435,125 @@ ldapclient(int pipe_main2client[2])
 }
 
 int
+client_build_req(struct idm *idm, struct idm_req *ir, struct aldap_message *m,
+    int min_attr, int max_attr)
+{
+	char	**ldap_attrs;
+	int	 i, k;
+
+	bzero(ir, sizeof(*ir));
+	for (i = min_attr; i < max_attr; i++) {
+		if (idm->idm_flags & F_FIXED_ATTR(i)) {
+			if (strlcat(ir->ir_line, idm->idm_attrs[i],
+			    sizeof(ir->ir_line)) >= sizeof(ir->ir_line))
+				/*
+				 * entry yields a line > 1024, trash it.
+				 */
+				return (-1);
+
+			if (i == ATTR_UID) {
+				ir->ir_key.ik_uid = strtonum(
+				    idm->idm_attrs[i], 0,
+				    UID_MAX, NULL);
+			} else if (i == ATTR_GR_GID) {
+				ir->ir_key.ik_gid = strtonum(
+				    idm->idm_attrs[i], 0,
+				    GID_MAX, NULL);
+			}
+		} else if (idm->idm_list & F_LIST(i)) {
+			if (aldap_match_entry(m, idm->idm_attrs[i], &ldap_attrs) == -1)
+				return (-1);
+			if (ldap_attrs[0] == NULL)
+				return (-1);
+			for (k = 0; k >= 0 && ldap_attrs[k] != NULL; k++) {
+				if (strlcat(ir->ir_line, ldap_attrs[k],
+				    sizeof(ir->ir_line)) >= sizeof(ir->ir_line))
+					continue;
+				if (ldap_attrs[k+1] != NULL)
+					if (strlcat(ir->ir_line, ",",
+						    sizeof(ir->ir_line))
+					    >= sizeof(ir->ir_line)) {
+						aldap_free_entry(ldap_attrs);
+						return (-1);
+					}
+			}
+			aldap_free_entry(ldap_attrs);
+		} else {
+			if (aldap_match_entry(m, idm->idm_attrs[i], &ldap_attrs) == -1)
+				return (-1);
+			if (ldap_attrs[0] == NULL)
+				return (-1);
+			if (strlcat(ir->ir_line, ldap_attrs[0],
+			    sizeof(ir->ir_line)) >= sizeof(ir->ir_line)) {
+				aldap_free_entry(ldap_attrs);
+				return (-1);
+			}
+			if (i == ATTR_UID) {
+				ir->ir_key.ik_uid = strtonum(
+				    ldap_attrs[0], 0, UID_MAX, NULL);
+			} else if (i == ATTR_GR_GID) {
+				ir->ir_key.ik_uid = strtonum(
+				    ldap_attrs[0], 0, GID_MAX, NULL);
+			}
+			aldap_free_entry(ldap_attrs);
+		}
+
+		if (i + 1 != max_attr)
+			if (strlcat(ir->ir_line, ":",
+			    sizeof(ir->ir_line)) >= sizeof(ir->ir_line))
+				return (-1);
+	}
+
+	return (0);
+}
+
+int
+client_search_idm(struct env *env, struct idm *idm, struct aldap *al,
+    char **attrs, char *filter, int min_attr, int max_attr,
+    enum imsg_type type)
+{
+	struct idm_req		 ir;
+	struct aldap_message	*m;
+	const char		*errstr;
+
+	if (aldap_search(al, idm->idm_basedn, LDAP_SCOPE_SUBTREE,
+		    filter, attrs, 0, 0, 0) == -1) {
+		aldap_get_errno(al, &errstr);
+		log_debug("%s", errstr);
+		return (-1);
+	}
+
+	while ((m = aldap_parse(al)) != NULL) {
+		if (al->msgid != m->msgid) {
+			aldap_freemsg(m);
+			return (-1);
+		}
+		/* end of the search result chain */
+		if (m->message_type == LDAP_RES_SEARCH_RESULT) {
+			aldap_freemsg(m);
+			break;
+		}
+		/* search entry; the rest we won't handle */
+		if (m->message_type != LDAP_RES_SEARCH_ENTRY) {
+			aldap_freemsg(m);
+			return (-1);
+		}
+
+		if (client_build_req(idm, &ir, m, min_attr, max_attr) == 0)
+			imsg_compose_event(env->sc_iev, type, 0, 0, -1,
+			    &ir, sizeof(ir));
+		aldap_freemsg(m);
+	}
+
+	return (0);
+}
+
+int
 client_try_idm(struct env *env, struct idm *idm)
 {
-	const char		*where, *errstr;
+	const char		*where;
 	char			*attrs[ATTR_MAX+1];
-	char			**ldap_attrs;
-	int			 i, j, k;
-	struct idm_req		 ir;
+	int			 i, j;
 	struct aldap_message	*m;
 	struct aldap		*al;
 
@@ -471,93 +585,14 @@ client_try_idm(struct env *env, struct idm *idm)
 	}
 	attrs[j] = NULL;
 
-	where = "search";
-	if (aldap_search(al, idm->idm_basedn, LDAP_SCOPE_SUBTREE,
-		    idm->idm_filters[FILTER_USER], attrs, 0, 0, 0) == -1) {
-		aldap_get_errno(al, &errstr);
-		log_debug("%s\n", errstr);
-		goto bad;
-	}
-
 	/*
 	 * build password line.
 	 */
-	while ((m = aldap_parse(al)) != NULL) {
-		where = "verifying msgid";
-		if (al->msgid != m->msgid) {
-			aldap_freemsg(m);
-			goto bad;
-		}
-		/* end of the search result chain */
-		if (m->message_type == LDAP_RES_SEARCH_RESULT) {
-			aldap_freemsg(m);
-			break;
-		}
-		/* search entry; the rest we won't handle */
-		where = "verifying message_type";
-		if (m->message_type != LDAP_RES_SEARCH_ENTRY) {
-			aldap_freemsg(m);
-			goto bad;
-		}
-		/* search entry */
-		bzero(&ir, sizeof(ir));
-		for (i = 0, j = 0; i < ATTR_MAX; i++) {
-			if (idm->idm_flags & F_FIXED_ATTR(i)) {
-				if (strlcat(ir.ir_line, idm->idm_attrs[i],
-				    sizeof(ir.ir_line)) >= sizeof(ir.ir_line))
-					/*
-					 * entry yields a line > 1024, trash it.
-					 */
-					goto next_pwdentry;
-				if (i == ATTR_UID) {
-					ir.ir_key.ik_uid = strtonum(
-					    idm->idm_attrs[i], 0,
-					    UID_MAX, NULL);
-				}
-			} else if (idm->idm_list & F_LIST(i)) {
-				if (aldap_match_entry(m, attrs[j++], &ldap_attrs) == -1)
-					goto next_pwdentry;
-				if (ldap_attrs[0] == NULL)
-					goto next_pwdentry;
-				for (k = 0; k >= 0 && ldap_attrs[k] != NULL; k++) {
-					if (strlcat(ir.ir_line, ldap_attrs[k],
-					    sizeof(ir.ir_line)) >= sizeof(ir.ir_line))
-						continue;
-					if (ldap_attrs[k+1] != NULL)
-						if (strlcat(ir.ir_line, ",",
-							    sizeof(ir.ir_line))
-						    >= sizeof(ir.ir_line)) {
-							aldap_free_entry(ldap_attrs);
-							goto next_pwdentry;
-						}
-				}
-				aldap_free_entry(ldap_attrs);
-			} else {
-				if (aldap_match_entry(m, attrs[j++], &ldap_attrs) == -1)
-					goto next_pwdentry;
-				if (ldap_attrs[0] == NULL)
-					goto next_pwdentry;
-				if (strlcat(ir.ir_line, ldap_attrs[0],
-				    sizeof(ir.ir_line)) >= sizeof(ir.ir_line)) {
-					aldap_free_entry(ldap_attrs);
-					goto next_pwdentry;
-				}
-				if (i == ATTR_UID) {
-					ir.ir_key.ik_uid = strtonum(
-					    ldap_attrs[0], 0, UID_MAX, NULL);
-				}
-				aldap_free_entry(ldap_attrs);
-			}
-			if (i != ATTR_SHELL)
-				if (strlcat(ir.ir_line, ":",
-				    sizeof(ir.ir_line)) >= sizeof(ir.ir_line))
-					goto next_pwdentry;
-		}
-		imsg_compose_event(env->sc_iev, IMSG_PW_ENTRY, 0, 0, -1,
-		    &ir, sizeof(ir));
-next_pwdentry:
-		aldap_freemsg(m);
-	}
+	where = "search";
+	log_debug("searching password entries");
+	if (client_search_idm(env, idm, al, attrs,
+	    idm->idm_filters[FILTER_USER], 0, ATTR_MAX, IMSG_PW_ENTRY) == -1)
+		goto bad;
 
 	bzero(attrs, sizeof(attrs));
 	for (i = ATTR_GR_MIN, j = 0; i < ATTR_GR_MAX; i++) {
@@ -567,94 +602,15 @@ next_pwdentry:
 	}
 	attrs[j] = NULL;
 
-	where = "search";
-	if (aldap_search(al, idm->idm_basedn, LDAP_SCOPE_SUBTREE,
-		    idm->idm_filters[FILTER_GROUP], attrs, 0, 0, 0) == -1) {
-		aldap_get_errno(al, &errstr);
-		log_debug("%s\n", errstr);
-		
-		goto bad;
-	}
-
 	/*
 	 * build group line.
 	 */
-	while ((m = aldap_parse(al)) != NULL) {
-		where = "verifying msgid";
-		if (al->msgid != m->msgid) {
-			aldap_freemsg(m);
-			goto bad;
-		}
-		/* end of the search result chain */
-		if (m->message_type == LDAP_RES_SEARCH_RESULT) {
-			aldap_freemsg(m);
-			break;
-		}
-		/* search entry; the rest we won't handle */
-		where = "verifying message_type";
-		if (m->message_type != LDAP_RES_SEARCH_ENTRY) {
-			aldap_freemsg(m);
-			goto bad;
-		}
-		/* search entry */
-		bzero(&ir, sizeof(ir));
-		for (i = ATTR_GR_MIN, j = 0; i < ATTR_GR_MAX; i++) {
-			if (idm->idm_flags & F_FIXED_ATTR(i)) {
-				if (strlcat(ir.ir_line, idm->idm_attrs[i],
-				    sizeof(ir.ir_line)) >= sizeof(ir.ir_line))
-					/*
-					 * entry yields a line > 1024, trash it.
-					 */
-					goto next_grpentry;
-				if (i == ATTR_GR_GID) {
-					ir.ir_key.ik_gid = strtonum(
-					    idm->idm_attrs[i], 0,
-					    GID_MAX, NULL);
-				}
-			} else if (idm->idm_list & F_LIST(i)) {
-				if (aldap_match_entry(m, attrs[j++], &ldap_attrs) == -1)
-					goto next_grpentry;
-				if (ldap_attrs[0] == NULL)
-					goto next_grpentry;
-				for (k = 0; k >= 0 && ldap_attrs[k] != NULL; k++) {
-					if (strlcat(ir.ir_line, ldap_attrs[k],
-					    sizeof(ir.ir_line)) >= sizeof(ir.ir_line))
-						continue;
-					if (ldap_attrs[k+1] != NULL)
-						if (strlcat(ir.ir_line, ",",
-							    sizeof(ir.ir_line))
-						    >= sizeof(ir.ir_line)) {
-							aldap_free_entry(ldap_attrs);
-							goto next_grpentry;
-						}
-				}
-				aldap_free_entry(ldap_attrs);
-			} else {
-				if (aldap_match_entry(m, attrs[j++], &ldap_attrs) == -1)
-					goto next_grpentry;
-				if (ldap_attrs[0] == NULL)
-					goto next_grpentry;
-				if (strlcat(ir.ir_line, ldap_attrs[0],
-				    sizeof(ir.ir_line)) >= sizeof(ir.ir_line)) {
-					aldap_free_entry(ldap_attrs);
-					goto next_grpentry;
-				}
-				if (i == ATTR_GR_GID) {
-					ir.ir_key.ik_uid = strtonum(
-					    ldap_attrs[0], 0, GID_MAX, NULL);
-				}
-				aldap_free_entry(ldap_attrs);
-			}
-			if (i != ATTR_GR_MEMBERS)
-				if (strlcat(ir.ir_line, ":",
-				    sizeof(ir.ir_line)) >= sizeof(ir.ir_line))
-					goto next_grpentry;
-		}
-		imsg_compose_event(env->sc_iev, IMSG_GRP_ENTRY, 0, 0, -1,
-		    &ir, sizeof(ir));
-next_grpentry:
-		aldap_freemsg(m);
-	}
+	where = "search";
+	log_debug("searching group entries");
+	if (client_search_idm(env, idm, al, attrs,
+	    idm->idm_filters[FILTER_GROUP], ATTR_GR_MIN, ATTR_GR_MAX,
+	    IMSG_GRP_ENTRY) == -1)
+		goto bad;
 
 	aldap_close(al);
 

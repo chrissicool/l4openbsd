@@ -91,8 +91,10 @@ static struct {
 static const char *allowed_kvars[] = {
 	"inpcb.inp_flags",
 	"sockb.so_rcv.sb_cc",
+	"sockb.so_rcv.sb_wat",
 	"sockb.so_rcv.sb_hiwat",
 	"sockb.so_snd.sb_cc",
+	"sockb.so_snd.sb_wat",
 	"sockb.so_snd.sb_hiwat",
 	"tcpcb.snd_una",
 	"tcpcb.snd_nxt",
@@ -115,6 +117,10 @@ static const char *allowed_kvars[] = {
 	"tcpcb.snd_scale",
 	"tcpcb.rcv_scale",
 	"tcpcb.last_ack_sent",
+	"tcpcb.rfbuf_cnt",
+	"tcpcb.rfbuf_ts",
+	"tcpcb.ts_recent_age",
+	"tcpcb.ts_recent",
 	NULL
 };
 
@@ -419,8 +425,10 @@ stats_display(unsigned long long total_elapsed, long double mbps,
 			}
 			P(inpcb, inp_flags, "0x%08x")
 			P(sockb, so_rcv.sb_cc, "%lu")
+			P(sockb, so_rcv.sb_wat, "%lu")
 			P(sockb, so_rcv.sb_hiwat, "%lu")
 			P(sockb, so_snd.sb_cc, "%lu")
+			P(sockb, so_snd.sb_wat, "%lu")
 			P(sockb, so_snd.sb_hiwat, "%lu")
 			P(tcpcb, snd_una, "%u")
 			P(tcpcb, snd_nxt, "%u")
@@ -443,6 +451,10 @@ stats_display(unsigned long long total_elapsed, long double mbps,
 			P(tcpcb, snd_scale, "%u")
 			P(tcpcb, rcv_scale, "%u")
 			P(tcpcb, last_ack_sent, "%u")
+			P(tcpcb, rfbuf_cnt, "%u")
+			P(tcpcb, rfbuf_ts, "%u")
+			P(tcpcb, ts_recent_age, "%u")
+			P(tcpcb, ts_recent, "%u")
 #undef S			    
 #undef P
 		}
@@ -803,7 +815,7 @@ clientloop(kvm_t *kvmh, u_long ktcbtab, struct addrinfo *aitop, int nconn)
 	struct statctx *psc;
 	struct pollfd *pfd;
 	char *buf;
-	int i, sock = -1;
+	int i;
 	ssize_t n;
 
 	if ((pfd = calloc(nconn, sizeof(*pfd))) == NULL)
@@ -814,7 +826,7 @@ clientloop(kvm_t *kvmh, u_long ktcbtab, struct addrinfo *aitop, int nconn)
 	clientconnect(aitop, pfd, nconn);
 
 	for (i = 0; i < nconn; i++) {
-		stats_prepare(psc + i, sock, kvmh, ktcbtab);
+		stats_prepare(psc + i, pfd[i].fd, kvmh, ktcbtab);
 		mainstats.nconns++;
 	}
 
@@ -860,7 +872,6 @@ clientloop(kvm_t *kvmh, u_long ktcbtab, struct addrinfo *aitop, int nconn)
 		warnx("Terminated by signal %d", done);
 
 	free(buf);
-	close(sock);
 	exit(0);
 }
 

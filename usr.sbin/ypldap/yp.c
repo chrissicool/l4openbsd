@@ -1,4 +1,4 @@
-/*	$OpenBSD: yp.c,v 1.6 2010/08/03 08:24:23 pyr Exp $ */
+/*	$OpenBSD: yp.c,v 1.10 2011/01/13 06:09:35 martinh Exp $ */
 /*
  * Copyright (c) 2008 Pierre-Yves Ritschard <pyr@openbsd.org>
  *
@@ -225,7 +225,7 @@ yp_dispatch(struct svc_req *req, SVCXPRT *trans)
 		if (yp_check(req) == -1)
 			return;
 		cb = (void *)ypproc_all_2_svc;
-		break;;
+		break;
 	case YPPROC_MASTER:
 		log_debug("ypproc_master");
 		if (yp_check(req) == -1)
@@ -324,6 +324,9 @@ ypproc_match_2_svc(ypreq_key *arg, struct svc_req *req)
 	const char		*estr;
 	char			 key[YPMAXRECORD+1];
 
+	log_debug("matching '%.*s' in map %s", arg->key.keydat_len,
+	   arg->key.keydat_val, arg->map);
+
 	if (yp_valid_domain(arg->domain, (struct ypresp_val *)&res) == -1)
 		return (&res);
 
@@ -333,12 +336,16 @@ ypproc_match_2_svc(ypreq_key *arg, struct svc_req *req)
 		 */
 		return (NULL);
 	}
+
+	if (arg->key.keydat_len > YPMAXRECORD) {
+		log_debug("argument too long");
+		return (NULL);
+	}
+	bzero(key, sizeof(key));
+	(void)strncpy(key, arg->key.keydat_val, arg->key.keydat_len);
+
 	if (strcmp(arg->map, "passwd.byname") == 0 ||
 	    strcmp(arg->map, "master.passwd.byname") == 0) {
-		bzero(key, sizeof(key));
-		(void)strncpy(key, arg->key.keydat_val,
-		    arg->key.keydat_len);
-		
 		ukey.ue_line = key;
 		if ((ue = RB_FIND(user_name_tree, env->sc_user_names,
 		    &ukey)) == NULL) {
@@ -350,9 +357,6 @@ ypproc_match_2_svc(ypreq_key *arg, struct svc_req *req)
 		return (&res);
 	} else if (strcmp(arg->map, "passwd.byuid") == 0 ||
 		   strcmp(arg->map, "master.passwd.byuid") == 0) {
-		bzero(key, sizeof(key));
-		(void)strncpy(key, arg->key.keydat_val,
-		    arg->key.keydat_len);
 		ukey.ue_uid = strtonum(key, 0, UID_MAX, &estr); 
 		if (estr) {
 			res.stat = YP_BADARGS;
@@ -368,9 +372,6 @@ ypproc_match_2_svc(ypreq_key *arg, struct svc_req *req)
 		yp_make_val(&res, ue->ue_line);
 		return (&res);
 	} else if (strcmp(arg->map, "group.bygid") == 0) {
-		bzero(key, sizeof(key));
-		(void)strncpy(key, arg->key.keydat_val,
-		    arg->key.keydat_len);
 		gkey.ge_gid = strtonum(key, 0, GID_MAX, &estr); 
 		if (estr) {
 			res.stat = YP_BADARGS;
@@ -385,10 +386,6 @@ ypproc_match_2_svc(ypreq_key *arg, struct svc_req *req)
 		yp_make_val(&res, ge->ge_line);
 		return (&res);
 	} else if (strcmp(arg->map, "group.byname") == 0) {
-		bzero(key, sizeof(key));
-		(void)strncpy(key, arg->key.keydat_val,
-		    arg->key.keydat_len);
-		
 		gkey.ge_line = key;
 		if ((ge = RB_FIND(group_name_tree, env->sc_group_names,
 		    &gkey)) == NULL) {
@@ -456,7 +453,7 @@ ypproc_next_2_svc(ypreq_key *arg, struct svc_req *req)
 		    &ukey)) == NULL) {
 			/*
 			 * canacar's trick:
-			 * the user might have been deleted in between calls to
+			 * the user might have been deleted in between calls
 			 * to next since the tree may be modified by a reload.
 			 * next should still return the next user in
 			 * lexicographical order, hence insert the search key

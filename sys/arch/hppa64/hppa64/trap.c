@@ -1,4 +1,4 @@
-/*	$OpenBSD: trap.c,v 1.10 2010/07/01 04:33:59 jsing Exp $	*/
+/*	$OpenBSD: trap.c,v 1.13 2011/01/02 13:16:53 jsing Exp $	*/
 
 /*
  * Copyright (c) 2005 Michael Shalayeff
@@ -27,8 +27,6 @@
 #include <sys/signalvar.h>
 #include <sys/user.h>
 
-#include <net/netisr.h>
-
 #include "systrace.h"
 #include <dev/systrace.h>
 
@@ -37,12 +35,20 @@
 #include <machine/autoconf.h>
 #include <machine/psl.h>
 
-#include <machine/db_machdep.h>	/* XXX always needed for inst_store() */
 #ifdef DDB
+#include <machine/db_machdep.h>
+#endif
+
 #ifdef TRAPDEBUG
 #include <ddb/db_output.h>
 #endif
-#endif
+
+static __inline int inst_store(u_int ins) {
+	return (ins & 0xf0000000) == 0x60000000 ||	/* st */
+	       (ins & 0xf4000200) == 0x24000200 ||	/* fst/cst */
+	       (ins & 0xfc000200) == 0x0c000200 ||	/* stby */
+	       (ins & 0xfc0003c0) == 0x0c0001c0;	/* ldcw */
+}
 
 const char *trap_type[] = {
 	"invalid",

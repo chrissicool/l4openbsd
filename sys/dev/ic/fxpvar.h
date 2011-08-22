@@ -1,4 +1,4 @@
-/*	$OpenBSD: fxpvar.h,v 1.32 2010/08/06 14:11:43 deraadt Exp $	*/
+/*	$OpenBSD: fxpvar.h,v 1.34 2010/09/07 16:21:42 deraadt Exp $	*/
 /*	$NetBSD: if_fxpvar.h,v 1.1 1997/06/05 02:01:58 thorpej Exp $	*/
 
 /*                  
@@ -127,7 +127,6 @@ struct fxp_softc {
 	int phy_10Mbps_only;		/* PHY is 10Mbps-only device */
 	int eeprom_size;		/* size of serial EEPROM */
 	int rx_bufs;			/* how many rx buffers allocated? */
-	void *sc_powerhook;		/* powerhook */
 	struct fxp_txsw txs[FXP_NTXCB];
 	struct fxp_txsw *sc_cbt_cons, *sc_cbt_prod, *sc_cbt_prev;
 	int sc_cbt_cnt;
@@ -142,6 +141,7 @@ struct fxp_softc {
 	u_int16_t sc_bundle_max;	/* max # frames per interrupt (ucode) */
 	u_int16_t sc_min_size_mask;	/* bit-mask describing the minimum
 					 * size of frame that will be bundled */
+	struct workq_task	sc_resume_wqt;
 };
 
 /* Macros to ease CSR access. */
@@ -159,6 +159,8 @@ extern int fxp_attach(struct fxp_softc *, const char *);
 void fxp_detach(struct fxp_softc *);
 void fxp_init(void *);
 void fxp_stop(struct fxp_softc *, int, int);
+int fxp_activate(struct device *, int);
+void fxp_resume(void *, void *);
 
 #define	FXP_RXMAP_GET(sc)	((sc)->sc_rxmaps[(sc)->sc_rxfree++])
 #define	FXP_RXMAP_PUT(sc,map)	((sc)->sc_rxmaps[--(sc)->sc_rxfree] = (map))

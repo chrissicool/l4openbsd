@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile,v 1.10 2005/11/27 18:27:41 deraadt Exp $
+#	$OpenBSD: Makefile,v 1.12 2010/09/04 09:39:56 blambert Exp $
 
 PROG=	route
 MAN=	route.8

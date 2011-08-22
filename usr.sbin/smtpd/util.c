@@ -1,9 +1,9 @@
-/*	$OpenBSD: util.c,v 1.35 2010/06/01 23:06:25 jacekm Exp $	*/
+/*	$OpenBSD: util.c,v 1.38 2010/11/29 15:25:56 gilles Exp $	*/
 
 /*
  * Copyright (c) 2000,2001 Markus Friedl.  All rights reserved.
  * Copyright (c) 2008 Gilles Chehade <gilles@openbsd.org>
- * Copyright (c) 2009-2010 Jacek Masiulaniec <jacekm@dobremiasto.net>
+ * Copyright (c) 2009 Jacek Masiulaniec <jacekm@dobremiasto.net>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -26,11 +26,14 @@
 #include <sys/stat.h>
 #include <sys/resource.h>
 
+#include <netinet/in.h>
+
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
 #include <event.h>
 #include <fcntl.h>
+#include <imsg.h>
 #include <libgen.h>
 #include <netdb.h>
 #include <pwd.h>
@@ -42,6 +45,10 @@
 #include <unistd.h>
 
 #include "smtpd.h"
+#include "log.h"
+
+const char *log_in6addr(const struct in6_addr *);
+const char *log_sockaddr(struct sockaddr *);
 
 int
 bsnprintf(char *str, size_t size, const char *format, ...)
@@ -54,6 +61,28 @@ bsnprintf(char *str, size_t size, const char *format, ...)
 	va_end(ap);
 	if (ret == -1 || ret >= (int)size)
 		return 0;
+
+	return 1;
+}
+
+/* Close file, signifying temporary error condition (if any) to the caller. */
+int
+safe_fclose(FILE *fp)
+{
+	if (ferror(fp)) {
+		fclose(fp);
+		return 0;
+	}
+	if (fflush(fp)) {
+		fclose(fp);
+		if (errno == ENOSPC)
+			return 0;
+		fatal("safe_fclose: fflush");
+	}
+	if (fsync(fileno(fp)))
+		fatal("safe_fclose: fsync");
+	if (fclose(fp))
+		fatal("safe_fclose: fclose");
 
 	return 1;
 }
@@ -166,16 +195,146 @@ ss_to_text(struct sockaddr_storage *ss)
 	buf[0] = '\0';
 	p = buf;
 
-	if (ss->ss_family == PF_INET6) {
-		strlcpy(buf, "IPv6:", sizeof(buf));
-		p = buf + 5;
+	if (ss->ss_family == PF_INET) {
+		in_addr_t addr;
+		
+		addr = ((struct sockaddr_in *)ss)->sin_addr.s_addr;
+		bsnprintf(p, NI_MAXHOST,
+		    "%d.%d.%d.%d",
+		    addr & 0xff,
+		    (addr >> 8) & 0xff,
+		    (addr >> 16) & 0xff,
+		    (addr >> 24) & 0xff);
 	}
 
-	if (getnameinfo((struct sockaddr *)ss, ss->ss_len, p,
-	    NI_MAXHOST, NULL, 0, NI_NUMERICHOST))
-		fatalx("ss_to_text: getnameinfo");
+	if (ss->ss_family == PF_INET6) {
+		struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)ss;
+		struct in6_addr	*in6_addr;
+
+		strlcpy(buf, "IPv6:", sizeof(buf));
+		p = buf + 5;
+		in6_addr = &in6->sin6_addr;
+		bsnprintf(p, NI_MAXHOST, "%s", log_in6addr(in6_addr));
+	}
 
 	return (buf);
+}
+
+char *
+ss_to_ptr(struct sockaddr_storage *ss)
+{
+	static char buffer[1024];
+
+	/* we need to construct a PTR query */
+	switch (ss->ss_family) {
+	case AF_INET: {
+		in_addr_t addr;
+		
+		addr = ((struct sockaddr_in *)ss)->sin_addr.s_addr;
+
+		bsnprintf(buffer, sizeof (buffer),
+		    "%d.%d.%d.%d.in-addr.arpa",
+		    (addr >> 24) & 0xff,
+		    (addr >> 16) & 0xff,
+		    (addr >> 8) & 0xff,
+		    addr & 0xff);
+		break;
+	}
+	case AF_INET6: {
+		struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)ss;
+		struct in6_addr	*in6_addr;
+
+		in6_addr = &in6->sin6_addr;
+		bsnprintf(buffer, sizeof (buffer),
+		    "%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d."
+		    "%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d."
+		    "ip6.arpa",
+		    in6_addr->s6_addr[15] & 0xf,
+		    (in6_addr->s6_addr[15] >> 4) & 0xf,
+		    in6_addr->s6_addr[14] & 0xf,
+		    (in6_addr->s6_addr[14] >> 4) & 0xf,
+		    in6_addr->s6_addr[13] & 0xf,
+		    (in6_addr->s6_addr[13] >> 4) & 0xf,
+		    in6_addr->s6_addr[12] & 0xf,
+		    (in6_addr->s6_addr[12] >> 4) & 0xf,
+		    in6_addr->s6_addr[11] & 0xf,
+		    (in6_addr->s6_addr[11] >> 4) & 0xf,
+		    in6_addr->s6_addr[10] & 0xf,
+		    (in6_addr->s6_addr[10] >> 4) & 0xf,
+		    in6_addr->s6_addr[9] & 0xf,
+		    (in6_addr->s6_addr[9] >> 4) & 0xf,
+		    in6_addr->s6_addr[8] & 0xf,
+		    (in6_addr->s6_addr[8] >> 4) & 0xf,
+		    in6_addr->s6_addr[7] & 0xf,
+		    (in6_addr->s6_addr[7] >> 4) & 0xf,
+		    in6_addr->s6_addr[6] & 0xf,
+		    (in6_addr->s6_addr[6] >> 4) & 0xf,
+		    in6_addr->s6_addr[5] & 0xf,
+		    (in6_addr->s6_addr[5] >> 4) & 0xf,
+		    in6_addr->s6_addr[4] & 0xf,
+		    (in6_addr->s6_addr[4] >> 4) & 0xf,
+		    in6_addr->s6_addr[3] & 0xf,
+		    (in6_addr->s6_addr[3] >> 4) & 0xf,
+		    in6_addr->s6_addr[2] & 0xf,
+		    (in6_addr->s6_addr[2] >> 4) & 0xf,
+		    in6_addr->s6_addr[1] & 0xf,
+		    (in6_addr->s6_addr[1] >> 4) & 0xf,
+		    in6_addr->s6_addr[0] & 0xf,
+		    (in6_addr->s6_addr[0] >> 4) & 0xf);
+		break;
+	}
+	default:
+		fatalx("dns_query_ptr");
+	}
+
+	return buffer;
+}
+
+int
+valid_message_id(char *mid)
+{
+	u_int8_t cnt;
+
+	/* [0-9]{10}\.[a-zA-Z0-9]{16} */
+	for (cnt = 0; cnt < 10; ++cnt, ++mid)
+		if (! isdigit((int)*mid))
+			return 0;
+
+	if (*mid++ != '.')
+		return 0;
+
+	for (cnt = 0; cnt < 16; ++cnt, ++mid)
+		if (! isalnum((int)*mid))
+			return 0;
+
+	return (*mid == '\0');
+}
+
+int
+valid_message_uid(char *muid)
+{
+	u_int8_t cnt;
+
+	/* [0-9]{10}\.[a-zA-Z0-9]{16}\.[0-9]{0,} */
+	for (cnt = 0; cnt < 10; ++cnt, ++muid)
+		if (! isdigit((int)*muid))
+			return 0;
+
+	if (*muid++ != '.')
+		return 0;
+
+	for (cnt = 0; cnt < 16; ++cnt, ++muid)
+		if (! isalnum((int)*muid))
+			return 0;
+
+	if (*muid++ != '.')
+		return 0;
+
+	for (cnt = 0; *muid != '\0'; ++cnt, ++muid)
+		if (! isdigit((int)*muid))
+			return 0;
+
+	return (cnt != 0);
 }
 
 char *
@@ -302,22 +461,49 @@ lowercase(char *buf, char *s, size_t len)
 }
 
 void
-sa_set_port(struct sockaddr *sa, char *port)
+message_set_errormsg(struct message *messagep, char *fmt, ...)
 {
-	char hbuf[NI_MAXHOST];
+	int ret;
+	va_list ap;
+
+	va_start(ap, fmt);
+
+	ret = vsnprintf(messagep->session_errorline, MAX_LINE_SIZE, fmt, ap);
+	if (ret >= MAX_LINE_SIZE)
+		strlcpy(messagep->session_errorline + (MAX_LINE_SIZE - 4), "...", 4);
+
+	/* this should not happen */
+	if (ret == -1)
+		err(1, "vsnprintf");
+
+	va_end(ap);
+}
+
+char *
+message_get_errormsg(struct message *messagep)
+{
+	return messagep->session_errorline;
+}
+
+void
+sa_set_port(struct sockaddr *sa, int port)
+{
+	char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
 	struct addrinfo hints, *res;
 	int error;
 
-	error = getnameinfo(sa, sa->sa_len, hbuf, sizeof hbuf, NULL, 0, NI_NUMERICHOST);
+	error = getnameinfo(sa, sa->sa_len, hbuf, sizeof(hbuf), NULL, 0, NI_NUMERICHOST);
 	if (error)
 		fatalx("sa_set_port: getnameinfo failed");
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = PF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_NUMERICHOST;
+	hints.ai_flags = AI_NUMERICHOST|AI_NUMERICSERV;
 
-	error = getaddrinfo(hbuf, port, &hints, &res);
+	snprintf(sbuf, sizeof(sbuf), "%d", port);
+
+	error = getaddrinfo(hbuf, sbuf, &hints, &res);
 	if (error)
 		fatalx("sa_set_port: getaddrinfo failed");
 
@@ -330,7 +516,7 @@ path_dup(struct path *path)
 {
 	struct path *pathp;
 
-	pathp = calloc(1, sizeof(struct path));
+	pathp = calloc(sizeof(struct path), 1);
 	if (pathp == NULL)
 		fatal("calloc");
 
@@ -413,8 +599,7 @@ session_socket_no_linger(int fd)
 int
 session_socket_error(int fd)
 {
-	socklen_t len;
-	int error;
+	int	 error, len;
 
 	len = sizeof(error);
 	if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &len) == -1)
@@ -423,103 +608,37 @@ session_socket_error(int fd)
 	return (error);
 }
 
-/*
- * Find unused slot in a pointer table.
- */
-int
-table_alloc(void ***p, int *szp)
+const char *
+log_in6addr(const struct in6_addr *addr)
 {
-	void	**array;
-	int	  array_sz, i, new;
+	struct sockaddr_in6	sa_in6;
+	u_int16_t		tmp16;
 
-	array = *p;
-	array_sz = *szp;
+	bzero(&sa_in6, sizeof(sa_in6));
+	sa_in6.sin6_len = sizeof(sa_in6);
+	sa_in6.sin6_family = AF_INET6;
+	memcpy(&sa_in6.sin6_addr, addr, sizeof(sa_in6.sin6_addr));
 
-	for (i = 0; i < array_sz; i++)
-		if (array[i] == NULL)
-			break;
-
-	/* array full? */
-	if (i == array_sz) {
-		if (array_sz * 2 < array_sz)
-			fatalx("table_alloc: overflow");
-		array_sz *= 2;
-		array = realloc(array, ++array_sz * sizeof *array);
-		if (array == NULL)
-			fatal("array_alloc");
-		for (new = i; new < array_sz; new++)
-			array[new] = NULL;
-		*p = array;
-		*szp = array_sz;
+	/* XXX thanks, KAME, for this ugliness... adopted from route/show.c */
+	if (IN6_IS_ADDR_LINKLOCAL(&sa_in6.sin6_addr) ||
+	    IN6_IS_ADDR_MC_LINKLOCAL(&sa_in6.sin6_addr)) {
+		memcpy(&tmp16, &sa_in6.sin6_addr.s6_addr[2], sizeof(tmp16));
+		sa_in6.sin6_scope_id = ntohs(tmp16);
+		sa_in6.sin6_addr.s6_addr[2] = 0;
+		sa_in6.sin6_addr.s6_addr[3] = 0;
 	}
 
-	return i;
+	return (log_sockaddr((struct sockaddr *)&sa_in6));
 }
 
-/*
- * Retrieve table entry residing at given index.
- */
-void *
-table_lookup(void **p, int sz, int i)
+const char *
+log_sockaddr(struct sockaddr *sa)
 {
-	if (i < 0 || i >= sz)
-		return (NULL);
-	return p[i];
-}
+	static char	buf[NI_MAXHOST];
 
-void
-auxsplit(struct aux *a, char *aux)
-{
-	int col;
-	char *val;
-
-	bzero(a, sizeof *a);
-	col = 0;
-	for (;;) {
-		val = strsep(&aux, "|");
-		if (val == NULL)
-			break;
-		col++;
-		if (col == 1)
-			a->mode = val;
-		else if (col == 2)
-			a->mail_from = val;
-		else if (col == 3)
-			a->rcpt_to = val;
-		else if (col == 4)
-			a->user_from = val;
-		else if (a->mode[0] == 'R') {
-			if (col == 5)
-				a->rcpt = val;
-			else if (col == 6)
-				a->relay_via = val;
-			else if (col == 7)
-				a->port = val;
-			else if (col == 8)
-				a->ssl = val;
-			else if (col == 9)
-				a->cert = val;
-			else if (col == 10)
-				a->auth = val;
-		} else if (col == 5)
-			a->user_to = val;
-		else if (col == 6)
-			a->path = val;
-	}
-}
-
-char *
-rcpt_pretty(struct aux *aux)
-{
-	switch (aux->mode[0]) {
-	case 'M':
-	case 'D':
-	case 'P':
-		return aux->user_to;
-	case 'F':
-		return aux->path;
-	case 'R':
-		return aux->rcpt;
-	}
-	return NULL;
+	if (getnameinfo(sa, sa->sa_len, buf, sizeof(buf), NULL, 0,
+	    NI_NUMERICHOST))
+		return ("(unknown)");
+	else
+		return (buf);
 }

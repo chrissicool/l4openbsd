@@ -1,6 +1,6 @@
-/*	$Id: term.h,v 1.27 2010/07/31 21:43:07 schwarze Exp $ */
+/*	$Id: term.h,v 1.29 2011/01/09 14:30:48 schwarze Exp $ */
 /*
- * Copyright (c) 2008, 2009, 2010 Kristaps Dzonsons <kristaps@bsd.lv>
+ * Copyright (c) 2008, 2009, 2010, 2011 Kristaps Dzonsons <kristaps@bsd.lv>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -71,9 +71,15 @@ struct	termp_ps {
 	size_t		  pdfobjsz;	/* size of pdfobjs */
 };
 
+struct	termp_tbl {
+	int		  width;	/* width in fixed chars */
+	int		  decimal;	/* decimal point position */
+};
+
 struct	termp {
 	enum termtype	  type;
-	size_t		  defrmargin;	/* Right margin of the device.. */
+	struct rofftbl	  tbl;		/* table configuration */
+	size_t		  defrmargin;	/* Right margin of the device. */
 	size_t		  rmargin;	/* Current right margin. */
 	size_t		  maxrmargin;	/* Max right margin. */
 	size_t		  maxcols;	/* Max size of buf. */
@@ -120,6 +126,7 @@ struct	termp {
 };
 
 struct termp	 *term_alloc(enum termenc);
+void		  term_tbl(struct termp *, const struct tbl_span *);
 void		  term_free(struct termp *);
 void		  term_newln(struct termp *);
 void		  term_vspace(struct termp *);

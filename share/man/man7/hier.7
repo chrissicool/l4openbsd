@@ -1,4 +1,4 @@
-.\"	$OpenBSD: hier.7,v 1.85 2010/07/05 22:26:20 tedu Exp $
+.\"	$OpenBSD: hier.7,v 1.92 2010/10/31 23:57:17 jmc Exp $
 .\"	$NetBSD: hier.7,v 1.7 1994/11/30 19:07:10 jtc Exp $
 .\"
 .\" Copyright (c) 1990, 1993
@@ -30,7 +30,7 @@
 .\"
 .\"	@(#)hier.7	8.1 (Berkeley) 6/5/93
 .\"
-.Dd $Mdocdate: July 5 2010 $
+.Dd $Mdocdate: October 31 2010 $
 .Dt HIER 7
 .Os
 .Sh NAME
@@ -56,12 +56,15 @@ Pure kernel executable
 (the operating system loaded into memory at boot-time).
 .It /bsd.mp
 Pure kernel executable
-for multi-processor machines.
+for multiprocessor machines.
 .It /bsd.rd
 Installation kernel.
 The built-in RAM disk contains utilities which can be run
 without an external file system, so this kernel is useful
 for limited system maintenance too.
+.It /bsd.sp
+Pure kernel executable
+for single processor machines.
 .It /dev/
 Block and character device files.
 .Pp
@@ -134,6 +137,10 @@ configuration files (see
 .It raddb/servers/
 List of radius servers and their associated shared secrets for
 .Xr login_radius 8 .
+.It rc.d/
+.Xr packages 7
+start/stop scripts and subroutines for
+.Xr rc 8 .
 .It skel/
 Example
 .Sq .\&
@@ -362,7 +369,7 @@ System daemons and utilities (executed by users).
 .It share/
 Architecture independent data files.
 .Pp
-.Bl -tag -width "groff_font/" -compact
+.Bl -tag -width "calendar/" -compact
 .It calendar/
 Variety of pre-fab calendar files (see
 .Xr calendar 1 ) .
@@ -394,36 +401,21 @@ Additional words from Webster's.
 .It words
 Common words.
 .It papers/
-Reference databases (see
-.Xr refer 1 ) .
+Reference databases.
 .It special/
 Custom word lists.
 .El
 .Pp
 .It doc/
-Miscellaneous documentation;
-source for most of the
-.Bx 4.3
-manuals.
+Miscellaneous documentation.
 .Pp
 .Bl -tag -width html/ -compact
 .It html/
 HTML documentation.
-.It psd/
-.Ux
-Programmer's Supplementary Documents (PSD).
-.It smm/
-.Ux
-System Manager's Manuals (SMM).
-.It usd/
-.Ux
-User's Supplementary Documents (USD).
 .El
 .Pp
 .It games/
 ASCII text files used by various games.
-.It groff_font/
-GNU troff shared fonts.
 .It info/
 Texinfo source files.
 .It lkm/
@@ -505,11 +497,6 @@ the termcap file (see
 .It texinfo/
 Templates for
 .Xr texinfo 5 .
-.It tmac/
-Text processing macros (see
-.Xr nroff 1
-and
-.Xr troff 1 ) .
 .It vi/catalog/
 Catalog files for the
 .Xr vi 1
@@ -634,9 +621,6 @@ Log files for
 .Pp
 .It mail/
 User mailbox files.
-.It msgs/
-Database for
-.Xr msgs 1 .
 .It named/
 Chroot directory for
 .Xr named 8 .

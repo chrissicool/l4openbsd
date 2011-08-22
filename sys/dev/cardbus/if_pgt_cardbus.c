@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_pgt_cardbus.c,v 1.11 2010/03/27 21:40:13 jsg Exp $ */
+/*	$OpenBSD: if_pgt_cardbus.c,v 1.13 2010/09/06 19:20:21 deraadt Exp $ */
 
 /*
  * Copyright (c) 2006 Marcus Glocker <mglocker@openbsd.org>
@@ -31,6 +31,7 @@
 #include <sys/malloc.h>
 #include <sys/timeout.h>
 #include <sys/device.h>
+#include <sys/workq.h>
 
 #include <machine/bus.h>
 #include <machine/intr.h>
@@ -217,10 +218,10 @@ pgt_cardbus_disable(struct pgt_softc *sc)
 void
 pgt_cardbus_power(struct pgt_softc *sc, int why)
 {
-	if (why == PWR_RESUME)
+	if (why == DVACT_RESUME)
 		if (sc->sc_enable != NULL)
 			(*sc->sc_enable)(sc);
-	if (why == PWR_SUSPEND)
+	if (why == DVACT_SUSPEND)
 		if (sc->sc_disable != NULL)
 			(*sc->sc_disable)(sc);
 }

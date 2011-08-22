@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_iwi.c,v 1.105 2010/08/03 18:26:25 kettenis Exp $	*/
+/*	$OpenBSD: if_iwi.c,v 1.111 2010/11/15 19:11:57 damien Exp $	*/
 
 /*-
  * Copyright (c) 2004-2008
@@ -76,7 +76,6 @@ int		iwi_match(struct device *, void *, void *);
 void		iwi_attach(struct device *, struct device *, void *);
 int		iwi_activate(struct device *, int);
 void		iwi_resume(void *, void *);
-void		iwi_power(int, void *);
 int		iwi_alloc_cmd_ring(struct iwi_softc *, struct iwi_cmd_ring *);
 void		iwi_reset_cmd_ring(struct iwi_softc *, struct iwi_cmd_ring *);
 void		iwi_free_cmd_ring(struct iwi_softc *, struct iwi_cmd_ring *);
@@ -299,7 +298,6 @@ iwi_attach(struct device *parent, struct device *self, void *aux)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = iwi_init;
 	ifp->if_ioctl = iwi_ioctl;
 	ifp->if_start = iwi_start;
 	ifp->if_watchdog = iwi_watchdog;
@@ -313,8 +311,6 @@ iwi_attach(struct device *parent, struct device *self, void *aux)
 	ic->ic_newstate = iwi_newstate;
 	ic->ic_send_mgmt = iwi_send_mgmt;
 	ieee80211_media_init(ifp, iwi_media_change, iwi_media_status);
-
-	sc->powerhook = powerhook_establish(iwi_power, sc);
 
 #if NBPFILTER > 0
 	bpfattach(&sc->sc_drvbpf, ifp, DLT_IEEE802_11_RADIO,
@@ -353,27 +349,16 @@ iwi_activate(struct device *self, int act)
 		break;
 	}
 
-	return (0);
+	return 0;
 }
 
 void
 iwi_resume(void *arg1, void *arg2)
 {
-	iwi_power(PWR_RESUME, arg1);
-}
-
-void
-iwi_power(int why, void *arg)
-{
-	struct iwi_softc *sc = arg;
+	struct iwi_softc *sc = arg1;
 	struct ifnet *ifp = &sc->sc_ic.ic_if;
 	pcireg_t data;
 	int s;
-
-	if (why != PWR_RESUME) {
-		iwi_stop(ifp, 0);
-		return;
-	}
 
 	/* clear device specific PCI configuration register 0x41 */
 	data = pci_conf_read(sc->sc_pct, sc->sc_pcitag, 0x40);
@@ -381,12 +366,15 @@ iwi_power(int why, void *arg)
 	pci_conf_write(sc->sc_pct, sc->sc_pcitag, 0x40, data);
 
 	s = splnet();
+	while (sc->sc_flags & IWI_FLAG_BUSY)
+		tsleep(&sc->sc_flags, 0, "iwipwr", 0);
 	sc->sc_flags |= IWI_FLAG_BUSY;
 
 	if (ifp->if_flags & IFF_UP)
 		iwi_init(ifp);
 
 	sc->sc_flags &= ~IWI_FLAG_BUSY;
+	wakeup(&sc->sc_flags);
 	splx(s);
 }
 
@@ -1486,9 +1474,11 @@ iwi_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	 * Prevent processes from entering this function while another
 	 * process is tsleep'ing in it.
 	 */
-	if (sc->sc_flags & IWI_FLAG_BUSY) {
+	while ((sc->sc_flags & IWI_FLAG_BUSY) && error == 0)
+		error = tsleep(&sc->sc_flags, PCATCH, "iwiioc", 0);
+	if (error != 0) {
 		splx(s);
-		return EBUSY;
+		return error;
 	}
 	sc->sc_flags |= IWI_FLAG_BUSY;
 
@@ -1545,6 +1535,7 @@ iwi_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	}
 
 	sc->sc_flags &= ~IWI_FLAG_BUSY;
+	wakeup(&sc->sc_flags);
 	splx(s);
 	return error;
 }
@@ -2347,6 +2338,9 @@ iwi_stop(struct ifnet *ifp, int disable)
 	sc->sc_tx_timer = 0;
 	ifp->if_timer = 0;
 	ifp->if_flags &= ~(IFF_RUNNING | IFF_OACTIVE);
+
+	/* in case we were scanning, release the scan "lock" */
+	ic->ic_scan_lock = IEEE80211_SCAN_UNLOCKED;
 
 	ieee80211_new_state(ic, IEEE80211_S_INIT, -1);
 

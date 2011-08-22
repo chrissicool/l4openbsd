@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.591 2010/08/03 18:42:40 henning Exp $	*/
+/*	$OpenBSD: parse.y,v 1.597 2010/12/31 12:15:31 bluhm Exp $	*/
 
 /*
  * Copyright (c) 2001 Markus Friedl.  All rights reserved.
@@ -152,7 +152,7 @@ enum	{ PF_STATE_OPT_MAX, PF_STATE_OPT_NOSYNC, PF_STATE_OPT_SRCTRACK,
 	    PF_STATE_OPT_MAX_SRC_STATES, PF_STATE_OPT_MAX_SRC_CONN,
 	    PF_STATE_OPT_MAX_SRC_CONN_RATE, PF_STATE_OPT_MAX_SRC_NODES,
 	    PF_STATE_OPT_OVERLOAD, PF_STATE_OPT_STATELOCK,
-	    PF_STATE_OPT_TIMEOUT, PF_STATE_OPT_SLOPPY, 
+	    PF_STATE_OPT_TIMEOUT, PF_STATE_OPT_SLOPPY,
 	    PF_STATE_OPT_PFLOW };
 
 enum	{ PF_SRCTRACK_NONE, PF_SRCTRACK, PF_SRCTRACK_GLOBAL, PF_SRCTRACK_RULE };
@@ -452,13 +452,13 @@ int	parseport(char *, struct range *r, int);
 
 %token	PASS BLOCK MATCH SCRUB RETURN IN OS OUT LOG QUICK ON FROM TO FLAGS
 %token	RETURNRST RETURNICMP RETURNICMP6 PROTO INET INET6 ALL ANY ICMPTYPE
-%token	ICMP6TYPE CODE KEEP MODULATE STATE PORT RDR NAT BINATTO NODF
+%token	ICMP6TYPE CODE KEEP MODULATE STATE PORT BINATTO NODF
 %token	MINTTL ERROR ALLOWOPTS FASTROUTE FILENAME ROUTETO DUPTO REPLYTO NO LABEL
 %token	NOROUTE URPFFAILED FRAGMENT USER GROUP MAXMSS MAXIMUM TTL TOS DROP TABLE
-%token	REASSEMBLE FRAGDROP FRAGCROP ANCHOR NATANCHOR RDRANCHOR BINATANCHOR
+%token	REASSEMBLE ANCHOR
 %token	SET OPTIMIZATION TIMEOUT LIMIT LOGINTERFACE BLOCKPOLICY RANDOMID
 %token	REQUIREORDER SYNPROXY FINGERPRINTS NOSYNC DEBUG SKIP HOSTID
-%token	ANTISPOOF FOR INCLUDE
+%token	ANTISPOOF FOR INCLUDE MATCHES
 %token	BITMASK RANDOM SOURCEHASH ROUNDROBIN STATICPORT PROBABILITY
 %token	ALTQ CBQ PRIQ HFSC BANDWIDTH TBRSIZE LINKSHARE REALTIME UPPERLIMIT
 %token	QUEUE PRIORITY QLIMIT RTABLE
@@ -822,7 +822,7 @@ anchorrule	: ANCHOR anchorname dir quick interface af proto fromto
 				pf_anchor_setup(&r,
 				    &pf->astack[pf->asd]->ruleset,
 				    $2 ? $2 : pf->alast->name);
-		
+
 				if (r.anchor == NULL)
 					err(1, "anchorrule: unable to "
 					    "create ruleset");
@@ -2060,7 +2060,7 @@ pfrule		: action dir logquick interface af proto fromto
 				if (($8.rroute.rdr = calloc(1,
 				    sizeof(*$8.rroute.rdr))) == NULL)
 					err(1, "$8.rroute.rdr");
-				$8.rroute.rdr->host = $8.route.host;	
+				$8.rroute.rdr->host = $8.route.host;
 			}
 			if ($8.queues.qname != NULL) {
 				if (strlcpy(r.qname, $8.queues.qname,
@@ -2103,7 +2103,7 @@ pfrule		: action dir logquick interface af proto fromto
 					r.divert.addr =
 					    $8.divert.addr->addr.v.a.addr;
 				}
-			}	
+			}
 			r.divert_packet.port = $8.divert_packet.port;
 
 			expand_rule(&r, 0, $4, &$8.nat, &$8.rdr, &$8.rroute, $6,
@@ -2208,7 +2208,7 @@ filter_opt	: USER uids {
 
 			p = floor($2 * UINT_MAX + 0.5);
 			if (p < 0.0 || p > UINT_MAX) {
-				yyerror("invalid probability: %lf", p);
+				yyerror("invalid probability: %g%%", $2 * 100);
 				YYERROR;
 			}
 			filter_opts.prob = (u_int32_t)p;
@@ -2482,6 +2482,7 @@ logopts		: logopt			{ $$ = $1; }
 		;
 
 logopt		: ALL		{ $$.log = PF_LOG_ALL; $$.logif = 0; }
+		| MATCHES	{ $$.log = PF_LOG_MATCHES; $$.logif = 0; }
 		| USER		{ $$.log = PF_LOG_SOCKET_LOOKUP; $$.logif = 0; }
 		| GROUP		{ $$.log = PF_LOG_SOCKET_LOOKUP; $$.logif = 0; }
 		| TO string	{
@@ -4008,12 +4009,15 @@ rule_consistent(struct pf_rule *r, int anchor_call)
 		yyerror("nat-to and rdr-to require keep state");
 		problems++;
 	}
-	if (r->nat.addr.type != PF_ADDR_NONE && r->direction != PF_OUT) {
-		yyerror("nat-to can only be used outbound");
+	if (r->direction == PF_INOUT && (r->nat.addr.type != PF_ADDR_NONE ||
+	    r->rdr.addr.type != PF_ADDR_NONE)) {
+		yyerror("nat-to and rdr-to require a direction");
 		problems++;
 	}
-	if (r->rdr.addr.type != PF_ADDR_NONE && r->direction != PF_IN) {
-		yyerror("rdr-to can only be used inbound");
+	if (r->af == AF_INET6 && (r->scrub_flags &
+	    (PFSTATE_NODF|PFSTATE_RANDOMID|PFSTATE_SETTOS))) {
+		yyerror("address family inet6 does not support scrub options "
+		    "no-df, random-id, set-tos");
 		problems++;
 	}
 
@@ -4549,7 +4553,7 @@ collapse_redirspec(struct pf_pool *rpool, struct pf_rule *r,
 		return (1);
 	} else if (i == 1) {	/* only one address */
 		for (h = rs->rdr->host; h != NULL; h = h->next)
-			if (!h->af || !r->af || r->af == h->af) 
+			if (!h->af || !r->af || r->af == h->af)
 				break;
 		rpool->addr = h->addr;
 		if (!allow_if && h->ifname) {
@@ -4559,7 +4563,7 @@ collapse_redirspec(struct pf_pool *rpool, struct pf_rule *r,
 		if (h->ifname && strlcpy(rpool->ifname, h->ifname,
 		    sizeof(rpool->ifname)) >= sizeof(rpool->ifname))
 			errx(1, "collapse_redirspec: strlcpy");
-		
+
 		return (0);
 	} else {		/* more than one address */
 		if (rs->pool_opts.type &&
@@ -4850,7 +4854,7 @@ expand_rule(struct pf_rule *r, int keeprule, struct node_if *interfaces,
 				    ":0 in a binat-to rule");
 				error++;
 			}
-			if (PF_AZERO(&r->src.addr.v.a.mask, af) || 
+			if (PF_AZERO(&r->src.addr.v.a.mask, af) ||
 			    PF_AZERO(&r->nat.addr.v.a.mask, af)) {
 				yyerror ("source and redir addresess must have "
 				    "a matching network mask in binat-rule");
@@ -5030,13 +5034,11 @@ lookup(char *s)
 		{ "block-policy",	BLOCKPOLICY},
 		{ "cbq",		CBQ},
 		{ "code",		CODE},
-		{ "crop",		FRAGCROP},
 		{ "debug",		DEBUG},
 		{ "divert-packet",	DIVERTPACKET},
 		{ "divert-reply",	DIVERTREPLY},
 		{ "divert-to",		DIVERTTO},
 		{ "drop",		DROP},
-		{ "drop-ovl",		FRAGDROP},
 		{ "dup-to",		DUPTO},
 		{ "fastroute",		FASTROUTE},
 		{ "file",		FILENAME},
@@ -5066,6 +5068,7 @@ lookup(char *s)
 		{ "log",		LOG},
 		{ "loginterface",	LOGINTERFACE},
 		{ "match",		MATCH},
+		{ "matches",		MATCHES},
 		{ "max",		MAXIMUM},
 		{ "max-mss",		MAXMSS},
 		{ "max-src-conn",	MAXSRCCONN},
@@ -5074,8 +5077,6 @@ lookup(char *s)
 		{ "max-src-states",	MAXSRCSTATES},
 		{ "min-ttl",		MINTTL},
 		{ "modulate",		MODULATE},
-		{ "nat",		NAT},
-		{ "nat-anchor",		NATANCHOR},
 		{ "nat-to",		NATTO},
 		{ "no",			NO},
 		{ "no-df",		NODF},
@@ -5098,8 +5099,6 @@ lookup(char *s)
 		{ "quick",		QUICK},
 		{ "random",		RANDOM},
 		{ "random-id",		RANDOMID},
-		{ "rdr",		RDR},
-		{ "rdr-anchor",		RDRANCHOR},
 		{ "rdr-to",		RDRTO},
 		{ "realtime",		REALTIME},
 		{ "reassemble",		REASSEMBLE},
@@ -5333,7 +5332,7 @@ top:
 		if (next == '=')
 			return (NE);
 		lungetc(next);
-		break;		
+		break;
 	case '<':
 		next = lgetc(0);
 		if (next == '>') {

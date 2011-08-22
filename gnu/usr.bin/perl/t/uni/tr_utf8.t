@@ -1,5 +1,6 @@
+#!perl -w
 #
-# $Id: tr_utf8.t,v 1.6 2009/10/12 18:30:28 millert Exp $
+# $Id$
 #
 # This script is written intentionally in UTF-8
 # Requires Encode 1.83 or better
@@ -28,11 +29,11 @@ BEGIN {
         exit 0;
     }
     $| = 1;
+    require './test.pl';
 }
 
 use strict;
-use Test::More tests => 8;
-
+plan(tests => 8);
 use encoding 'utf8';
 
 my @hiragana =  map {chr} ord("ぁ")..ord("ん");

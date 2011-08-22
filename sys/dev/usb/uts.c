@@ -1,4 +1,4 @@
-/*	$OpenBSD: uts.c,v 1.26 2009/12/05 20:39:31 matthieu Exp $ */
+/*	$OpenBSD: uts.c,v 1.28 2011/01/25 20:03:36 jakemsr Exp $ */
 
 /*
  * Copyright (c) 2007 Robert Nagy <robert@openbsd.org>
@@ -221,8 +221,6 @@ uts_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev, &sc->sc_dev);
-
 	a.accessops = &uts_accessops;
 	a.accesscookie = sc;
 
@@ -241,14 +239,10 @@ uts_detach(struct device *self, int flags)
 		sc->sc_intr_pipe = NULL;
 	}
 
-	sc->sc_dying = 1;
-
 	if (sc->sc_wsmousedev != NULL) {
 		rv = config_detach(sc->sc_wsmousedev, flags);
 		sc->sc_wsmousedev = NULL;
 	}
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev, &sc->sc_dev);
 
 	return (rv);
 }

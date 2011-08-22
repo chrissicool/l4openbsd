@@ -1,7 +1,7 @@
 #! /usr/bin/perl
 
 # ex:ts=8 sw=4:
-# $OpenBSD: PkgCheck.pm,v 1.23 2010/07/12 15:54:48 espie Exp $
+# $OpenBSD: PkgCheck.pm,v 1.28 2010/12/29 13:03:05 espie Exp $
 #
 # Copyright (c) 2003-2010 Marc Espie <espie@openbsd.org>
 #
@@ -451,6 +451,7 @@ sub may_remove
 			$self->remove($state, $name);
 		}
 	}
+	$state->{bogus}{$name} = 1;
 }
 
 sub for_all_packages
@@ -460,6 +461,10 @@ sub for_all_packages
 	$state->progress->for_list($msg, $l,
 	    sub {
 		return if $state->{removed}{$_[0]};
+		if ($state->{bogus}{$_[0]}) {
+			$state->errsay("skipping #1", $_[0]);
+			return;
+		}
 		&$code;
 	    });
 }
@@ -511,7 +516,7 @@ sub sanity_check
 sub dependencies_check
 {
 	my ($self, $state, $l) = @_;
-	OpenBSD::SharedLibs::add_libs_from_system($state->{destdir});
+	OpenBSD::SharedLibs::add_libs_from_system($state->{destdir}, $state);
 	$self->for_all_packages($state, $l, "Direct dependencies", sub {
 		my $name = shift;
 		my $plist = OpenBSD::PackingList->from_installation($name,
@@ -625,8 +630,9 @@ sub parse_and_run
 	if (@ARGV != 0) {
 		$state->usage;
 	}
-	lock_db(0) unless $state->{subst}->value('nolock');
+	lock_db(0, $state) unless $state->{subst}->value('nolock');
 	$self->run($state);
+	return 0;
 }
 
 1;

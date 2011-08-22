@@ -1,4 +1,4 @@
-/*	$OpenBSD: pci_machdep.c,v 1.35 2010/07/08 20:56:31 jordan Exp $	*/
+/*	$OpenBSD: pci_machdep.c,v 1.40 2011/01/10 16:26:27 kettenis Exp $	*/
 /*	$NetBSD: pci_machdep.c,v 1.3 2003/05/07 21:33:58 fvdl Exp $	*/
 
 /*-
@@ -96,6 +96,20 @@
 #include <machine/mpbiosvar.h>
 #endif
 
+/*
+ * Memory Mapped Configuration space access.
+ *
+ * Since mapping the whole configuration space will cost us up to
+ * 256MB of kernel virtual memory, we use seperate mappings per bus.
+ * The mappings are created on-demand, such that we only use kernel
+ * virtual memory for busses that are actually present.
+ */
+bus_addr_t pci_mcfg_addr;
+int pci_mcfg_min_bus, pci_mcfg_max_bus;
+bus_space_tag_t pci_mcfgt = X86_BUS_SPACE_MEM;
+bus_space_handle_t pci_mcfgh[256];
+void pci_mcfg_map_bus(int);
+
 struct mutex pci_conf_lock = MUTEX_INITIALIZER(IPL_HIGH);
 
 #define	PCI_CONF_LOCK()						\
@@ -125,7 +139,7 @@ struct bus_dma_tag pci_bus_dma_tag = {
 	_bus_dmamap_load_uio,
 	_bus_dmamap_load_raw,
 	_bus_dmamap_unload,
-	NULL,
+	_bus_dmamap_sync,
 	_bus_dmamem_alloc,
 	_bus_dmamem_free,
 	_bus_dmamem_map,
@@ -172,10 +186,46 @@ pci_decompose_tag(pci_chipset_tag_t pc, pcitag_t tag, int *bp, int *dp, int *fp)
 		*fp = (tag >> 8) & 0x7;
 }
 
+int
+pci_conf_size(pci_chipset_tag_t pc, pcitag_t tag)
+{
+	int bus;
+
+	if (pci_mcfg_addr) {
+		pci_decompose_tag(pc, tag, &bus, NULL, NULL);
+		if (bus >= pci_mcfg_min_bus && bus <= pci_mcfg_max_bus)
+			return PCIE_CONFIG_SPACE_SIZE;
+	}
+
+	return PCI_CONFIG_SPACE_SIZE;
+}
+
+void
+pci_mcfg_map_bus(int bus)
+{
+	if (pci_mcfgh[bus])
+		return;
+
+	if (bus_space_map(pci_mcfgt, pci_mcfg_addr + (bus << 20), 1 << 20,
+	    0, &pci_mcfgh[bus]))
+		panic("pci_conf_read: cannot map mcfg space");
+}
+
 pcireg_t
 pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
 {
 	pcireg_t data;
+	int bus;
+
+	if (pci_mcfg_addr && reg >= PCI_CONFIG_SPACE_SIZE) {
+		pci_decompose_tag(pc, tag, &bus, NULL, NULL);
+		if (bus >= pci_mcfg_min_bus && bus <= pci_mcfg_max_bus) {
+			pci_mcfg_map_bus(bus);
+			data = bus_space_read_4(pci_mcfgt, pci_mcfgh[bus],
+			    (tag & 0x000ff00) << 4 | reg);
+			return data;
+		}
+	}
 
 	PCI_CONF_LOCK();
 	outl(PCI_MODE1_ADDRESS_REG, tag | reg);
@@ -189,6 +239,18 @@ pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
 void
 pci_conf_write(pci_chipset_tag_t pc, pcitag_t tag, int reg, pcireg_t data)
 {
+	int bus;
+
+	if (pci_mcfg_addr && reg >= PCI_CONFIG_SPACE_SIZE) {
+		pci_decompose_tag(pc, tag, &bus, NULL, NULL);
+		if (bus >= pci_mcfg_min_bus && bus <= pci_mcfg_max_bus) {
+			pci_mcfg_map_bus(bus);
+			bus_space_write_4(pci_mcfgt, pci_mcfgh[bus],
+			    (tag & 0x000ff00) << 4 | reg, data);
+			return;
+		}
+	}
+
 	PCI_CONF_LOCK();
 	outl(PCI_MODE1_ADDRESS_REG, tag | reg);
 	outl(PCI_MODE1_DATA_REG, data);

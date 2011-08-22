@@ -1,0 +1,52 @@
+BLANK-LINE(1)              OpenBSD Reference Manual              BLANK-LINE(1)
+
+NNAAMMEE
+     bbllaannkk--lliinnee - handling of blank line
+
+DDEESSCCRRIIPPTTIIOONN
+     Single br:
+     Single Pp:
+
+     Single sp:
+
+     Single blank:
+
+     Double br:
+     br Pp:
+
+     Pp br:
+
+     Double Pp:
+
+     br sp:
+
+     sp br:
+
+     Pp sp:
+
+     sp Pp:
+
+
+     Double sp:
+
+
+     br blank:
+
+     blank br:
+
+     Pp blank:
+
+     blank Pp:
+
+
+     sp blank:
+
+
+     blank sp:
+
+
+     Double blank:
+
+
+     End.
+

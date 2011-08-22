@@ -1,4 +1,4 @@
-/*	$OpenBSD: m197_machdep.c,v 1.42 2010/06/22 17:42:37 miod Exp $	*/
+/*	$OpenBSD: m197_machdep.c,v 1.45 2011/01/05 22:14:39 miod Exp $	*/
 
 /*
  * Copyright (c) 2009 Miodrag Vallat.
@@ -97,10 +97,6 @@ u_int	m197_raiseipl(u_int);
 u_int	m197_setipl(u_int);
 void	m197_smp_setup(struct cpu_info *);
 void	m197_soft_ipi(void);
-void	m197_startup(void);
-
-vaddr_t obiova;
-vaddr_t flashva;
 
 /*
  * Figure out how much real memory is available.
@@ -156,32 +152,6 @@ m197_memsize()
 	 * Return a ``safe'' 32MB.
 	 */
 	return (32 * 1024 * 1024);
-}
-
-void
-m197_startup()
-{
-	/*
-	 * Grab the FLASH space that we hardwired in pmap_bootstrap
-	 */
-	flashva = FLASH_START;
-	uvm_map(kernel_map, (vaddr_t *)&flashva, FLASH_SIZE,
-	    NULL, UVM_UNKNOWN_OFFSET, 0,
-	      UVM_MAPFLAG(UVM_PROT_NONE, UVM_PROT_NONE, UVM_INH_NONE,
-	        UVM_ADV_NORMAL, UVM_FLAG_FIXED));
-	if (flashva != FLASH_START)
-		panic("flashva %lx: FLASH not free", flashva);
-
-	/*
-	 * Grab the OBIO space that we hardwired in pmap_bootstrap
-	 */
-	obiova = OBIO197_START;
-	uvm_map(kernel_map, (vaddr_t *)&obiova, OBIO197_SIZE,
-	    NULL, UVM_UNKNOWN_OFFSET, 0,
-	      UVM_MAPFLAG(UVM_PROT_NONE, UVM_PROT_NONE, UVM_INH_NONE,
-	        UVM_ADV_NORMAL, UVM_FLAG_FIXED));
-	if (obiova != OBIO197_START)
-		panic("obiova %lx: OBIO not free", obiova);
 }
 
 /*
@@ -603,16 +573,16 @@ m197_ipi_handler(struct trapframe *eframe)
 		arg2 = ci->ci_ipi_arg2;
 
 		if (ipi & CI_IPI_TLB_FLUSH_KERNEL) {
-			cmmu_flush_tlb(ci->ci_cpuid, 1, 0, 0);
+			cmmu_tlb_inv(ci->ci_cpuid, 1, 0);
 		}
 		else if (ipi & CI_IPI_TLB_FLUSH_USER) {
-			cmmu_flush_tlb(ci->ci_cpuid, 0, 0, 0);
+			cmmu_tlb_inv(ci->ci_cpuid, 0, 0);
 		}
 		else if (ipi & CI_IPI_CACHE_FLUSH) {
-			cmmu_flush_cache(ci->ci_cpuid, arg1, arg2);
+			cmmu_cache_wbinv(ci->ci_cpuid, arg1, arg2);
 		}
 		else if (ipi & CI_IPI_ICACHE_FLUSH) {
-			cmmu_flush_inst_cache(ci->ci_cpuid, arg1, arg2);
+			cmmu_icache_inv(ci->ci_cpuid, arg1, arg2);
 		}
 		else if (ipi & CI_IPI_DMA_CACHECTL) {
 			dma_cachectl_local(arg1, arg2, DMA_CACHE_INV);

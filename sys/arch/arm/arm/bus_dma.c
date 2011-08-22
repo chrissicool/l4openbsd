@@ -1,4 +1,4 @@
-/*	$OpenBSD: bus_dma.c,v 1.17 2010/03/31 19:46:26 miod Exp $	*/
+/*	$OpenBSD: bus_dma.c,v 1.20 2011/01/04 21:12:55 miod Exp $	*/
 /*	$NetBSD: bus_dma.c,v 1.38 2003/10/30 08:44:13 scw Exp $	*/
 
 /*-
@@ -605,9 +605,6 @@ _bus_dmamap_sync(bus_dma_tag_t t, bus_dmamap_t map, bus_addr_t offset,
  * by bus-specific DMA memory allocation functions.
  */
 
-extern paddr_t physical_start;
-extern paddr_t physical_end;
-
 int
 _bus_dmamem_alloc(bus_dma_tag_t t, bus_size_t size, bus_size_t alignment,
     bus_size_t boundary, bus_dma_segment_t *segs, int nsegs, int *rsegs,
@@ -689,7 +686,9 @@ _bus_dmamem_map(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 	size_t ssize;
 	bus_addr_t addr;
 	int curseg, error;
-	pt_entry_t *ptep/*, pte*/;
+#ifdef DEBUG_DMA
+	pt_entry_t *ptep;
+#endif
 
 #ifdef DEBUG_DMA
 	printf("dmamem_map: t=%p segs=%p nsegs=%x size=%lx flags=%x\n", t,
@@ -738,9 +737,7 @@ _bus_dmamem_map(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 			if (flags & BUS_DMA_COHERENT) {
 				cpu_dcache_wbinv_range(va, PAGE_SIZE);
 				cpu_drain_writebuf();
-				ptep = vtopte(va);
-				*ptep &= ~L2_S_CACHE_MASK;
-				PTE_SYNC(ptep);
+				pmap_uncache_page(va, addr);
 				tlb_flush();
 			}
 #ifdef DEBUG_DMA
@@ -802,7 +799,7 @@ _bus_dmamem_mmap(bus_dma_tag_t t, bus_dma_segment_t *segs, int nsegs,
 			continue;
 		}
 
-		return (atop(segs[i].ds_addr + off));
+		return (segs[i].ds_addr + off);
 	}
 
 	/* Page not found. */

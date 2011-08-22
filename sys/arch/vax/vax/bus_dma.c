@@ -1,4 +1,4 @@
-/*	$OpenBSD: bus_dma.c,v 1.24 2010/03/29 19:21:58 oga Exp $	*/
+/*	$OpenBSD: bus_dma.c,v 1.26 2010/12/26 15:41:00 miod Exp $	*/
 /*	$NetBSD: bus_dma.c,v 1.5 1999/11/13 00:32:20 thorpej Exp $	*/
 
 /*-
@@ -56,7 +56,7 @@
 #include <machine/ka43.h>
 #include <machine/sid.h>
 
-extern	vaddr_t avail_start, avail_end, virtual_avail;
+extern	vaddr_t virtual_avail;
 
 int	_bus_dmamap_load_buffer(bus_dma_tag_t, bus_dmamap_t, void *,
 	    bus_size_t, struct proc *, int, paddr_t *, int *, int);
@@ -536,7 +536,7 @@ _bus_dmamem_mmap(t, segs, nsegs, off, prot, flags)
 			continue;
 		}
 
-		return (atop(segs[i].ds_addr + off));
+		return (segs[i].ds_addr + off);
 	}
 
 	/* Page not found. */

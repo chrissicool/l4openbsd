@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_rum.c,v 1.89 2010/07/02 03:13:42 tedu Exp $	*/
+/*	$OpenBSD: if_rum.c,v 1.97 2011/01/25 20:03:35 jakemsr Exp $	*/
 
 /*-
  * Copyright (c) 2005-2007 Damien Bergamini <damien.bergamini@free.fr>
@@ -328,7 +328,7 @@ rum_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	usb_init_task(&sc->sc_task, rum_task, sc);
+	usb_init_task(&sc->sc_task, rum_task, sc, USB_TASK_TYPE_GENERIC);
 	timeout_set(&sc->scan_to, rum_next_scan, sc);
 
 	sc->amrr.amrr_min_success_threshold =  1;
@@ -419,7 +419,6 @@ rum_attach(struct device *parent, struct device *self, void *aux)
 
 	ifp->if_softc = sc;
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-	ifp->if_init = rum_init;
 	ifp->if_ioctl = rum_ioctl;
 	ifp->if_start = rum_start;
 	ifp->if_watchdog = rum_watchdog;
@@ -447,9 +446,6 @@ rum_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_txtap.wt_ihdr.it_len = htole16(sc->sc_txtap_len);
 	sc->sc_txtap.wt_ihdr.it_present = htole32(RT2573_TX_RADIOTAP_PRESENT);
 #endif
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_ATTACH, sc->sc_udev,
-	    &sc->sc_dev);
 }
 
 int
@@ -461,12 +457,19 @@ rum_detach(struct device *self, int flags)
 
 	s = splusb();
 
-	ieee80211_ifdetach(ifp);	/* free all nodes */
-	if_detach(ifp);
+	if (timeout_initialized(&sc->scan_to))
+		timeout_del(&sc->scan_to);
+	if (timeout_initialized(&sc->amrr_to))
+		timeout_del(&sc->amrr_to);
 
-	usb_rem_task(sc->sc_udev, &sc->sc_task);
-	timeout_del(&sc->scan_to);
-	timeout_del(&sc->amrr_to);
+	usb_rem_wait_task(sc->sc_udev, &sc->sc_task);
+
+	usbd_ref_wait(sc->sc_udev);
+
+	if (ifp->if_softc != NULL) {
+		ieee80211_ifdetach(ifp);	/* free all nodes */
+		if_detach(ifp);
+	}
 
 	if (sc->amrr_xfer != NULL) {
 		usbd_free_xfer(sc->amrr_xfer);
@@ -485,9 +488,6 @@ rum_detach(struct device *self, int flags)
 	rum_free_tx_list(sc);
 
 	splx(s);
-
-	usbd_add_drv_event(USB_EVENT_DRIVER_DETACH, sc->sc_udev,
-	    &sc->sc_dev);
 
 	return 0;
 }
@@ -641,8 +641,15 @@ rum_next_scan(void *arg)
 	struct ieee80211com *ic = &sc->sc_ic;
 	struct ifnet *ifp = &ic->ic_if;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return;
+
+	usbd_ref_incr(sc->sc_udev);
+
 	if (ic->ic_state == IEEE80211_S_SCAN)
 		ieee80211_next_scan(ifp);
+
+	usbd_ref_decr(sc->sc_udev);
 }
 
 void
@@ -653,6 +660,9 @@ rum_task(void *arg)
 	enum ieee80211_state ostate;
 	struct ieee80211_node *ni;
 	uint32_t tmp;
+
+	if (usbd_is_dying(sc->sc_udev))
+		return;
 
 	ostate = ic->ic_state;
 
@@ -667,7 +677,8 @@ rum_task(void *arg)
 
 	case IEEE80211_S_SCAN:
 		rum_set_chan(sc, ic->ic_bss->ni_chan);
-		timeout_add_msec(&sc->scan_to, 200);
+		if (!usbd_is_dying(sc->sc_udev))
+			timeout_add_msec(&sc->scan_to, 200);
 		break;
 
 	case IEEE80211_S_AUTH:
@@ -1341,6 +1352,11 @@ rum_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	struct ifreq *ifr;
 	int s, error = 0;
 
+	if (usbd_is_dying(sc->sc_udev))
+		return ENXIO;
+
+	usbd_ref_incr(sc->sc_udev);
+
 	s = splnet();
 
 	switch (cmd) {
@@ -1403,6 +1419,8 @@ rum_ioctl(struct ifnet *ifp, u_long cmd, caddr_t data)
 	}
 
 	splx(s);
+
+	usbd_ref_decr(sc->sc_udev);
 
 	return error;
 }
@@ -1930,7 +1948,6 @@ rum_read_eeprom(struct rum_softc *sc)
 int
 rum_bbp_init(struct rum_softc *sc)
 {
-#define N(a)	(sizeof (a) / sizeof ((a)[0]))
 	int i, ntries;
 
 	/* wait for BBP to be ready */
@@ -1947,7 +1964,7 @@ rum_bbp_init(struct rum_softc *sc)
 	}
 
 	/* initialize BBP registers to default values */
-	for (i = 0; i < N(rum_def_bbp); i++)
+	for (i = 0; i < nitems(rum_def_bbp); i++)
 		rum_bbp_write(sc, rum_def_bbp[i].reg, rum_def_bbp[i].val);
 
 	/* write vendor-specific BBP values (from EEPROM) */
@@ -1958,13 +1975,11 @@ rum_bbp_init(struct rum_softc *sc)
 	}
 
 	return 0;
-#undef N
 }
 
 int
 rum_init(struct ifnet *ifp)
 {
-#define N(a)	(sizeof (a) / sizeof ((a)[0]))
 	struct rum_softc *sc = ifp->if_softc;
 	struct ieee80211com *ic = &sc->sc_ic;
 	uint32_t tmp;
@@ -1974,7 +1989,7 @@ rum_init(struct ifnet *ifp)
 	rum_stop(ifp, 0);
 
 	/* initialize MAC registers to default values */
-	for (i = 0; i < N(rum_def_mac); i++)
+	for (i = 0; i < nitems(rum_def_mac); i++)
 		rum_write(sc, rum_def_mac[i].reg, rum_def_mac[i].val);
 
 	/* set host ready */
@@ -2101,7 +2116,6 @@ rum_init(struct ifnet *ifp)
 
 fail:	rum_stop(ifp, 1);
 	return error;
-#undef N
 }
 
 void
@@ -2227,7 +2241,8 @@ rum_amrr_start(struct rum_softc *sc, struct ieee80211_node *ni)
 	     i--);
 	ni->ni_txrate = i;
 
-	timeout_add_sec(&sc->amrr_to, 1);
+	if (!usbd_is_dying(sc->sc_udev))
+		timeout_add_sec(&sc->amrr_to, 1);
 }
 
 void
@@ -2235,6 +2250,9 @@ rum_amrr_timeout(void *arg)
 {
 	struct rum_softc *sc = arg;
 	usb_device_request_t req;
+
+	if (usbd_is_dying(sc->sc_udev))
+		return;
 
 	/*
 	 * Asynchronously read statistic registers (cleared by read).
@@ -2278,17 +2296,21 @@ rum_amrr_update(usbd_xfer_handle xfer, usbd_private_handle priv,
 
 	ieee80211_amrr_choose(&sc->amrr, sc->sc_ic.ic_bss, &sc->amn);
 
-	timeout_add_sec(&sc->amrr_to, 1);
+	if (!usbd_is_dying(sc->sc_udev))
+		timeout_add_sec(&sc->amrr_to, 1);
 }
 
 int
 rum_activate(struct device *self, int act)
 {
+	struct rum_softc *sc = (struct rum_softc *)self;
+
 	switch (act) {
 	case DVACT_ACTIVATE:
 		break;
 
 	case DVACT_DEACTIVATE:
+		usbd_deactivate(sc->sc_udev);
 		break;
 	}
 

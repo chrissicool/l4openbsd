@@ -1,4 +1,4 @@
-/*	$OpenBSD: subr_autoconf.c,v 1.61 2010/06/30 22:05:44 deraadt Exp $	*/
+/*	$OpenBSD: subr_autoconf.c,v 1.63 2010/09/08 15:50:11 deraadt Exp $	*/
 /*	$NetBSD: subr_autoconf.c,v 1.21 1996/04/04 06:06:18 cgd Exp $	*/
 
 /*
@@ -49,7 +49,6 @@
 #include <sys/limits.h>
 #include <sys/malloc.h>
 #include <sys/systm.h>
-/* Extra stuff from Matthias Drochner <drochner@zelux6.zel.kfa-juelich.de> */
 #include <sys/queue.h>
 #include <sys/proc.h>
 
@@ -778,12 +777,13 @@ config_activate_children(struct device *parent, int act)
 		case DVACT_ACTIVATE:
 			rv = config_activate(d);
 			break;
-		case DVACT_DEACTIVATE:
-			rv = config_deactivate(d);
-			break;
 		case DVACT_SUSPEND:
 		case DVACT_RESUME:
+		case DVACT_QUIESCE:
 			rv = config_suspend(d, act);
+			break;
+		case DVACT_DEACTIVATE:
+			rv = config_deactivate(d);
 			break;
 		}
 		if (rv == 0)

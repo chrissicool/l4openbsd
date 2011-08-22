@@ -1,4 +1,4 @@
-/*	$OpenBSD: esa.c,v 1.19 2010/07/15 03:43:11 jakemsr Exp $	*/
+/*	$OpenBSD: esa.c,v 1.22 2010/09/07 16:21:44 deraadt Exp $	*/
 /* $NetBSD: esa.c,v 1.12 2002/03/24 14:17:35 jmcneill Exp $ */
 
 /*
@@ -102,6 +102,7 @@ struct audio_device esa_device = {
 int		esa_match(struct device *, void *, void *);
 void		esa_attach(struct device *, struct device *, void *);
 int		esa_detach(struct device *, int);
+int		esa_activate(struct device *, int);
 
 /* audio(9) functions */
 int		esa_open(void *, int);
@@ -160,7 +161,6 @@ int		esa_add_list(struct esa_voice *, struct esa_list *, u_int16_t,
 void		esa_remove_list(struct esa_voice *, struct esa_list *, int);
 
 /* power management */
-void		esa_powerhook(int, void *);
 int		esa_suspend(struct esa_softc *);
 int		esa_resume(struct esa_softc *);
 
@@ -219,7 +219,7 @@ struct cfdriver esa_cd = {
 
 struct cfattach esa_ca = {
 	sizeof(struct esa_softc), esa_match, esa_attach,
-	esa_detach, /*esa_activate*/ NULL
+	esa_detach, esa_activate
 };
 
 /*
@@ -1144,13 +1144,6 @@ esa_attach(struct device *parent, struct device *self, void *aux)
 		sc->sc_audiodev[i] =
 		    audio_attach_mi(&esa_hw_if, &sc->voice[i], &sc->sc_dev);
 	}
-
-	sc->powerhook = powerhook_establish(esa_powerhook, sc);
-	if (sc->powerhook == NULL)
-		printf("%s: WARNING: unable to establish powerhook\n",
-		    sc->sc_dev.dv_xname);
-
-	return;
 }
 
 int
@@ -1604,21 +1597,21 @@ esa_remove_list(struct esa_voice *vc, struct esa_list *el, int index)
 	return;
 }
 
-void
-esa_powerhook(int why, void *hdl)
+int
+esa_activate(struct device *self, int act)
 {
-	struct esa_softc *sc = (struct esa_softc *)hdl;
+	struct esa_softc *sc = (struct esa_softc *)self;
 
-	switch (why) {
-	case PWR_SUSPEND:
-	case PWR_STANDBY:
+	switch (act) {
+	case DVACT_SUSPEND:
 		esa_suspend(sc);
 		break;
-	case PWR_RESUME:
+	case DVACT_RESUME:
 		esa_resume(sc);
 		(sc->codec_if->vtbl->restore_ports)(sc->codec_if);
 		break;
 	}
+	return 0;
 }
 
 int

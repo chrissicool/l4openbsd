@@ -1,4 +1,4 @@
-/*	$OpenBSD: ioprbs.c,v 1.22 2010/07/14 06:16:04 matthew Exp $	*/
+/*	$OpenBSD: ioprbs.c,v 1.25 2010/11/20 20:11:19 miod Exp $	*/
 
 /*
  * Copyright (c) 2001 Niklas Hallqvist
@@ -180,7 +180,7 @@ ioprbs_attach(struct device *parent, struct device *self, void *aux)
 			struct	i2o_param_rbs_device_info bdi;
 			struct	i2o_param_rbs_operation op;
 		} p;
-	} param /* XXX gcc __attribute__ ((__packed__)) */;
+	} __packed param;
 	int i;
 
 	TAILQ_INIT(&sc->sc_free_ccb);
@@ -714,7 +714,7 @@ ioprbs_internal_cache_cmd(xs)
 	case REQUEST_SENSE:
 		DPRINTF(("REQUEST SENSE tgt %d ", target));
 		bzero(&sd, sizeof sd);
-		sd.error_code = 0x70;
+		sd.error_code = SSD_ERRCODE_CURRENT;
 		sd.segment = 0;
 		sd.flags = SKEY_NO_SENSE;
 		bzero(sd.info, sizeof sd.info);
@@ -731,6 +731,7 @@ ioprbs_internal_cache_cmd(xs)
 		inq.version = 2;
 		inq.response_format = 2;
 		inq.additional_length = 32;
+		inq.flags |= SID_CmdQue;
 		strlcpy(inq.vendor, "I2O", sizeof inq.vendor);
 		snprintf(inq.product, sizeof inq.product, "Container #%02d",
 		    target);

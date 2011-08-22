@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.64 2010/08/03 18:42:41 henning Exp $	*/
+/*	$OpenBSD: parse.y,v 1.72 2010/11/28 14:35:58 gilles Exp $	*/
 
 /*
  * Copyright (c) 2008 Gilles Chehade <gilles@openbsd.org>
@@ -37,19 +37,16 @@
 #include <errno.h>
 #include <event.h>
 #include <ifaddrs.h>
-#include <limits.h>
+#include <imsg.h>
+#include <netdb.h>
 #include <paths.h>
 #include <pwd.h>
-#include <netdb.h>
-#include <stdarg.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <util.h>
 
 #include "smtpd.h"
+#include "log.h"
 
 TAILQ_HEAD(files, file)		 files = TAILQ_HEAD_INITIALIZER(files);
 static struct file {
@@ -117,7 +114,7 @@ typedef struct {
 
 %}
 
-%token	EXPIRE SIZE LISTEN ON ALL PORT
+%token	QUEUE INTERVAL SIZE LISTEN ON ALL PORT EXPIRE
 %token	MAP TYPE HASH LIST SINGLE SSL SMTPS CERTIFICATE
 %token	DNS DB PLAIN EXTERNAL DOMAIN CONFIG SOURCE
 %token  RELAY VIA DELIVER TO MAILDIR MBOX HOSTNAME
@@ -126,8 +123,9 @@ typedef struct {
 %token	<v.string>	STRING
 %token  <v.number>	NUMBER
 %type	<v.map>		map
-%type	<v.number>	decision port from auth ssl size
+%type	<v.number>	quantifier decision port from auth ssl size expire credentials
 %type	<v.cond>	condition
+%type	<v.tv>		interval
 %type	<v.object>	mapref
 %type	<v.string>	certname user tag on alias
 
@@ -178,7 +176,23 @@ optnl		: '\n' optnl
 nl		: '\n' optnl
 		;
 
-size		: NUMBER			{
+quantifier      : /* empty */                   { $$ = 1; }  	 
+		| 'm'                           { $$ = 60; } 	 
+		| 'h'                           { $$ = 3600; } 	 
+		| 'd'                           { $$ = 86400; } 	 
+		;
+
+interval	: NUMBER quantifier		{
+			if ($1 < 0) {
+				yyerror("invalid interval: %lld", $1);
+				YYERROR;
+			}
+			$$.tv_usec = 0;
+			$$.tv_sec = $1 * $2;
+		}
+		;
+
+size		: NUMBER		{
 			if ($1 < 0) {
 				yyerror("invalid size: %lld", $1);
 				YYERROR;
@@ -234,6 +248,7 @@ ssl		: SMTPS				{ $$ = F_SMTPS; }
 		| TLS				{ $$ = F_STARTTLS; }
 		| SSL				{ $$ = F_SSL; }
 		| /* empty */			{ $$ = 0; }
+		;
 
 auth		: ENABLE AUTH  			{ $$ = 1; }
 		| /* empty */			{ $$ = 0; }
@@ -251,14 +266,42 @@ tag		: TAG STRING			{
 		| /* empty */			{ $$ = NULL; }
 		;
 
-main		: EXPIRE STRING {
-      			conf->sc_qexpire = delaytonum($2);
-      			if (conf->sc_qexpire == -1) {
+expire		: EXPIRE STRING {
+			$$ = delaytonum($2);
+			if ($$ == -1) {
 				yyerror("invalid expire delay: %s", $2);
 				YYERROR;
 			}
-      		}
-		| SIZE size {
+			free($2);
+		}
+		| /* empty */	{ $$ = conf->sc_qexpire; }
+		;
+
+credentials	: AUTH STRING	{
+			struct map *m;
+
+			if ((m = map_findbyname(conf, $2)) == NULL) {
+				yyerror("no such map: %s", $2);
+				free($2);
+				YYERROR;
+			}
+			free($2);
+			$$ = m->m_id;
+		}
+		| /* empty */	{ $$ = 0; }
+		;
+
+main		: QUEUE INTERVAL interval	{
+			conf->sc_qintval = $3;
+		}
+		| EXPIRE STRING {
+			conf->sc_qexpire = delaytonum($2);
+			if (conf->sc_qexpire == -1) {
+				yyerror("invalid expire delay: %s", $2);
+				YYERROR;
+			}
+		}
+	       	| SIZE size {
        			conf->sc_maxsize = $2;
 		}
 		| LISTEN ON STRING port ssl certname auth tag {
@@ -433,6 +476,7 @@ keyval		: STRING ARROW STRING		{
 
 			TAILQ_INSERT_TAIL(contents, me, me_entry);
 		}
+		;
 
 keyval_list	: keyval
 		| keyval comma keyval_list
@@ -805,40 +849,40 @@ user		: USER STRING		{
 action		: DELIVER TO MAILDIR user		{
 			rule->r_user = $4;
 			rule->r_action = A_MAILDIR;
-			if (strlcpy(rule->r_value.path, "~/Maildir",
-			    sizeof(rule->r_value.path)) >=
-			    sizeof(rule->r_value.path))
+			if (strlcpy(rule->r_value.buffer, "~/Maildir",
+			    sizeof(rule->r_value.buffer)) >=
+			    sizeof(rule->r_value.buffer))
 				fatal("pathname too long");
 		}
 		| DELIVER TO MAILDIR STRING user	{
 			rule->r_user = $5;
 			rule->r_action = A_MAILDIR;
-			if (strlcpy(rule->r_value.path, $4,
-			    sizeof(rule->r_value.path)) >=
-			    sizeof(rule->r_value.path))
+			if (strlcpy(rule->r_value.buffer, $4,
+			    sizeof(rule->r_value.buffer)) >=
+			    sizeof(rule->r_value.buffer))
 				fatal("pathname too long");
 			free($4);
 		}
 		| DELIVER TO MBOX			{
 			rule->r_action = A_MBOX;
-			if (strlcpy(rule->r_value.path, _PATH_MAILDIR "/%u",
-			    sizeof(rule->r_value.path))
-			    >= sizeof(rule->r_value.path))
+			if (strlcpy(rule->r_value.buffer, _PATH_MAILDIR "/%u",
+			    sizeof(rule->r_value.buffer))
+			    >= sizeof(rule->r_value.buffer))
 				fatal("pathname too long");
 		}
 		| DELIVER TO MDA STRING user		{
 			rule->r_user = $5;
 			rule->r_action = A_EXT;
-			if (strlcpy(rule->r_value.command, $4,
-			    sizeof(rule->r_value.command))
-			    >= sizeof(rule->r_value.command))
+			if (strlcpy(rule->r_value.buffer, $4,
+			    sizeof(rule->r_value.buffer))
+			    >= sizeof(rule->r_value.buffer))
 				fatal("command too long");
 			free($4);
 		}
 		| RELAY				{
 			rule->r_action = A_RELAY;
 		}
-		| RELAY VIA STRING port ssl certname auth {
+		| RELAY VIA STRING port ssl certname credentials {
 			rule->r_action = A_RELAYVIA;
 
 			if ($5 == 0 && ($6 != NULL || $7)) {
@@ -856,8 +900,10 @@ action		: DELIVER TO MAILDIR user		{
 			rule->r_value.relayhost.port = $4;
 			rule->r_value.relayhost.flags |= $5;
 
-			if ($7)
+			if ($7) {
 				rule->r_value.relayhost.flags |= F_AUTH;
+				rule->r_value.relayhost.secmapid = $7;
+			}
 
 			if ($6 != NULL) {
 				if (ssl_load_certfile(conf, $6, F_CCERT) < 0) {
@@ -956,6 +1002,7 @@ on		: ON STRING	{
 			$$ = $2;
 		}
 		| /* empty */	{ $$ = NULL; }
+		;
 
 rule		: decision on from			{
 
@@ -974,9 +1021,15 @@ rule		: decision on from			{
 
 			TAILQ_INIT(conditions);
 
-		} FOR conditions action	tag {
+		} FOR conditions action	tag expire {
 			struct rule	*subr;
 			struct cond	*cond;
+
+			if ($8)
+				(void)strlcpy(rule->r_tag, $8, sizeof(rule->r_tag));
+			free($8);
+
+			rule->r_qexpire = $9;
 
 			while ((cond = TAILQ_FIRST(conditions)) != NULL) {
 
@@ -1049,6 +1102,7 @@ lookup(char *s)
 		{ "hash",		HASH },
 		{ "hostname",		HOSTNAME },
 		{ "include",		INCLUDE },
+		{ "interval",		INTERVAL },
 		{ "list",		LIST },
 		{ "listen",		LISTEN },
 		{ "local",		LOCAL },
@@ -1060,6 +1114,7 @@ lookup(char *s)
 		{ "on",			ON },
 		{ "plain",		PLAIN },
 		{ "port",		PORT },
+		{ "queue",		QUEUE },
 		{ "reject",		REJECT },
 		{ "relay",		RELAY },
 		{ "single",		SINGLE },
@@ -1452,7 +1507,9 @@ parse_config(struct smtpd *x_conf, const char *filename, int opts)
 	SPLAY_INIT(conf->sc_ssl);
 	SPLAY_INIT(&conf->sc_sessions);
 
-	conf->sc_qexpire = SMTPD_EXPIRE;
+	conf->sc_qexpire = SMTPD_QUEUE_EXPIRY;
+	conf->sc_qintval.tv_sec = SMTPD_QUEUE_INTERVAL;
+	conf->sc_qintval.tv_usec = 0;
 	conf->sc_opts = opts;
 
 	if ((file = pushfile(filename, 0)) == NULL) {
@@ -1839,45 +1896,45 @@ set_localaddrs(void)
 int
 delaytonum(char *str)
 {
-	unsigned int	 factor;
-	size_t		 len;
-	const char	*errstr = NULL;
-	int		 delay;
-
+	unsigned int     factor;
+	size_t           len;
+	const char      *errstr = NULL;
+	int              delay;
+  	
 	/* we need at least 1 digit and 1 unit */
 	len = strlen(str);
 	if (len < 2)
 		goto bad;
-
+	
 	switch(str[len - 1]) {
-
+		
 	case 's':
 		factor = 1;
 		break;
-
+		
 	case 'm':
 		factor = 60;
 		break;
-
+		
 	case 'h':
 		factor = 60 * 60;
 		break;
-
+		
 	case 'd':
 		factor = 24 * 60 * 60;
 		break;
-
+		
 	default:
 		goto bad;
 	}
-	
+  	
 	str[len - 1] = '\0';
 	delay = strtonum(str, 1, INT_MAX / factor, &errstr);
 	if (errstr)
 		goto bad;
-
+	
 	return (delay * factor);
-
+  	
 bad:
 	return (-1);
 }

@@ -1,4 +1,4 @@
-/*	$OpenBSD: midi.c,v 1.28 2010/07/06 01:12:45 ratchov Exp $	*/
+/*	$OpenBSD: midi.c,v 1.32 2010/11/20 05:12:38 deraadt Exp $	*/
 /*
  * Copyright (c) 2008 Alexandre Ratchov <alex@caoua.org>
  *
@@ -271,13 +271,17 @@ thru_eof(struct aproc *p, struct abuf *ibuf)
 {
 	if (!(p->flags & APROC_QUIT))
 		return;
-	if (LIST_EMPTY(&p->ins))
+	if (LIST_EMPTY(&p->ins) || LIST_EMPTY(&p->outs))
 		aproc_del(p);
 }
 
 void
 thru_hup(struct aproc *p, struct abuf *obuf)
 {
+	if (!(p->flags & APROC_QUIT))
+		return;
+	if (LIST_EMPTY(&p->outs))
+		aproc_del(p);
 }
 
 void
@@ -471,7 +475,7 @@ ctl_qfr(struct aproc *p)
 		p->u.ctl.fr -= p->u.ctl.fps;
 		p->u.ctl.sec++;
 		if (p->u.ctl.sec < 60)
-			break;;
+			break;
 		p->u.ctl.sec = 0;
 		p->u.ctl.min++;
 		if (p->u.ctl.min < 60)
@@ -560,20 +564,19 @@ ctl_getidx(struct aproc *p, char *who)
 			umap |= (1 << i);
 	} 
 	for (unit = 0; ; unit++) {
-		if (unit == CTL_NSLOT)
+		if (unit == CTL_NSLOT) {
+#ifdef DEBUG
+			if (debug_level >= 1) {
+				dbg_puts(name);
+				dbg_puts(": too many instances\n");
+			}
+#endif
 			return -1;
+		}
 		if ((umap & (1 << unit)) == 0)
 			break;
 	}
-#ifdef DEBUG
-	if (debug_level >= 3) {
-		aproc_dbg(p);
-		dbg_puts(": new control name is ");
-		dbg_puts(name);
-		dbg_putu(unit);
-		dbg_puts("\n");
-	}
-#endif
+
 	/*
 	 * find a free controller slot with the same name/unit
 	 */
@@ -583,7 +586,8 @@ ctl_getidx(struct aproc *p, char *who)
 		    slot->unit == unit) {
 #ifdef DEBUG
 			if (debug_level >= 3) {
-				aproc_dbg(p);
+				dbg_puts(name);
+				dbg_putu(unit);
 				dbg_puts(": found slot ");
 				dbg_putu(i);
 				dbg_puts("\n");
@@ -608,8 +612,16 @@ ctl_getidx(struct aproc *p, char *who)
 			bestidx = i;
 		}
 	}
-	if (bestidx == CTL_NSLOT)
+	if (bestidx == CTL_NSLOT) {
+#ifdef DEBUG
+		if (debug_level >= 1) {
+			dbg_puts(name);
+			dbg_putu(unit);
+			dbg_puts(": out of mixer slots\n");
+		}
+#endif
 		return -1;
+	}
 	slot = p->u.ctl.slot + bestidx;
 	if (slot->name[0] != '\0')
 		slot->vol = MIDI_MAXCTL;
@@ -618,7 +630,8 @@ ctl_getidx(struct aproc *p, char *who)
 	slot->unit = unit;
 #ifdef DEBUG
 	if (debug_level >= 3) {
-		aproc_dbg(p);
+		dbg_puts(name);
+		dbg_putu(unit);
 		dbg_puts(": overwritten slot ");
 		dbg_putu(bestidx);
 		dbg_puts("\n");

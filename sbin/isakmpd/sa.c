@@ -1,4 +1,4 @@
-/* $OpenBSD: sa.c,v 1.113 2007/09/02 15:19:24 deraadt Exp $	 */
+/* $OpenBSD: sa.c,v 1.115 2010/12/09 12:46:11 martinh Exp $	 */
 /* $EOM: sa.c,v 1.112 2000/12/12 00:22:52 niklas Exp $	 */
 
 /*
@@ -199,7 +199,18 @@ sa_check_peer(struct sa *sa, void *v_addr)
 		return 0;
 
 	sa->transport->vtbl->get_dst(sa->transport, &dst);
-	return (net_addrcmp(dst, addr->addr) == 0);
+	if (net_addrcmp(dst, addr->addr) != 0)
+		return 0;
+
+	/* same family, length and address, check port if inet/inet6 */
+	switch (dst->sa_family) {
+	case AF_INET:
+		return ((struct sockaddr_in *)dst)->sin_port == ((struct sockaddr_in *)addr->addr)->sin_port;
+	case AF_INET6:
+		return ((struct sockaddr_in6 *)dst)->sin6_port == ((struct sockaddr_in6 *)addr->addr)->sin6_port;
+	}
+
+	return 1;
 }
 
 struct dst_isakmpspi_arg {
@@ -517,6 +528,14 @@ report_proto(FILE *fd, struct proto *proto)
 
 		case IPSEC_ESP_AES_128_CTR:
 			fprintf(fd, "AES-128 (CTR)\n");
+			break;
+
+		case IPSEC_ESP_AES_GCM_16:
+			fprintf(fd, "AES (GCM)\n");
+			break;
+
+		case IPSEC_ESP_AES_GMAC:
+			fprintf(fd, "AES (GMAC)\n");
 			break;
 
 		case IPSEC_ESP_CAST:

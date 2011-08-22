@@ -1,4 +1,4 @@
-/*	$OpenBSD: editor.c,v 1.242 2010/08/09 17:31:45 deraadt Exp $	*/
+/*	$OpenBSD: editor.c,v 1.248 2011/02/19 21:18:59 krw Exp $	*/
 
 /*
  * Copyright (c) 1997-2000 Todd C. Miller <Todd.Miller@courtesan.com>
@@ -65,7 +65,7 @@ struct space_allocation {
 	daddr64_t	minsz;	/* starts as blocks, xlated to sectors. */
 	daddr64_t	maxsz;	/* starts as blocks, xlated to sectors. */
 	int		rate;	/* % of extra space to use */
-	char 	       *mp;
+	char	       *mp;
 };
 
 /* entries for swap and var are changed by editor_allocspace() */
@@ -130,7 +130,7 @@ struct partition **sort_partitions(struct disklabel *);
 void	getdisktype(struct disklabel *, char *, char *);
 void	find_bounds(struct disklabel *);
 void	set_bounds(struct disklabel *);
-void	set_uid(struct disklabel *);
+void	set_duid(struct disklabel *);
 struct diskchunk *free_chunks(struct disklabel *);
 void	mpcopy(char **, char **);
 int	micmp(const void *, const void *);
@@ -291,7 +291,7 @@ editor(struct disklabel *lp, int f)
 			break;
 
 		case 'i':
-			set_uid(&label);
+			set_duid(&label);
 			break;
 
 		case 'm':
@@ -350,7 +350,7 @@ editor(struct disklabel *lp, int f)
 			 * there is no need to do anything before exiting. Note
 			 * that 'w' will reset dflag and aflag to allow 'q' to
 			 * exit without further questions.
- 			 */
+			 */
 			if (!dflag && !aflag &&
 			    memcmp(lp, &label, sizeof(label)) == 0) {
 				puts("No label changes.");
@@ -390,11 +390,11 @@ editor(struct disklabel *lp, int f)
 			    i++)
 				fprintf(stderr, "Free sectors: %16llu - %16llu "
 				    "(%16llu)\n",
-			    	    chunks[i].start, chunks[i].stop - 1,
-			   	    chunks[i].stop - chunks[i].start);
+				    chunks[i].start, chunks[i].stop - 1,
+				    chunks[i].stop - chunks[i].start);
 			fprintf(stderr, "Total free sectors: %llu.\n",
 			    editor_countfree(&label));
-		    	break;
+			break;
 		}
 
 		case 's':
@@ -842,7 +842,7 @@ editor_add(struct disklabel *lp, char *p)
 		fprintf(stderr, "Partition must be between 'a' and '%c' "
 		    "(excluding 'c').\n", 'a' + MAXPARTITIONS - 1);
 		return;
-	}	
+	}
 	pp = &lp->d_partitions[partno];
 
 	if (pp->p_fstype != FS_UNUSED && DL_GETPSIZE(pp) != 0) {
@@ -859,7 +859,7 @@ editor_add(struct disklabel *lp, char *p)
 		memset(&lp->d_partitions[lp->d_npartitions], 0, sizeof(*pp));
 
 	/* Make sure selected partition is zero'd too. */
-	memset(pp, 0, sizeof(*pp)); 
+	memset(pp, 0, sizeof(*pp));
 	chunks = free_chunks(lp);
 
 	/*
@@ -901,7 +901,7 @@ editor_add(struct disklabel *lp, char *p)
 			return;
 	}
 	/* Bailed out at some point, so effectively delete the partition. */
-	DL_SETPSIZE(pp, 0);
+	memset(pp, 0, sizeof(*pp));
 }
 
 /*
@@ -1130,8 +1130,8 @@ getuint(struct disklabel *lp, char *prompt, char *helpstring,
 {
 	char buf[BUFSIZ], *endptr, *p, operator = '\0';
 	u_int64_t rval = oval;
+	int64_t mult = 1;
 	size_t n;
-	int mult = 1;
 	double d, percent = 1.0;
 
 	/* We only care about the remainder */
@@ -1173,17 +1173,23 @@ getuint(struct disklabel *lp, char *prompt, char *helpstring,
 					break;
 				case 'k':
 					if (lp->d_secsize > 1024)
-						mult = -lp->d_secsize / 1024;
+						mult = -lp->d_secsize / 1024LL;
 					else
-						mult = 1024 / lp->d_secsize;
+						mult = 1024LL / lp->d_secsize;
 					buf[--n] = '\0';
 					break;
 				case 'm':
-					mult = 1048576 / lp->d_secsize;
+					mult = (1024LL * 1024) / lp->d_secsize;
 					buf[--n] = '\0';
 					break;
 				case 'g':
-					mult = 1073741824 / lp->d_secsize;
+					mult = (1024LL * 1024 * 1024) /
+					    lp->d_secsize;
+					buf[--n] = '\0';
+					break;
+				case 't':
+					mult = (1024LL * 1024 * 1024 * 1024) /
+					    lp->d_secsize;
 					buf[--n] = '\0';
 					break;
 				case '%':
@@ -1608,24 +1614,24 @@ set_bounds(struct disklabel *lp)
  * Allow user to interactively change disklabel UID.
  */
 void
-set_uid(struct disklabel *lp)
+set_duid(struct disklabel *lp)
 {
-	u_int uid[8];
 	char *s;
 	int i;
 
-	printf("The disklabel UID is currently: ");
-	uid_print(stdout, lp);
-	printf("\n");
+	printf("The disklabel UID is currently: "
+	    "%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx\n",
+            lp->d_uid[0], lp->d_uid[1], lp->d_uid[2], lp->d_uid[3],
+            lp->d_uid[4], lp->d_uid[5], lp->d_uid[6], lp->d_uid[7]);
 
 	do {
-		s = getstring("uid", "The disklabel UID, given as a 16 "
+		s = getstring("duid", "The disklabel UID, given as a 16 "
 		    "character hexadecimal string.", NULL);
 		if (s == NULL || strlen(s) == 0) {
 			fputs("Command aborted\n", stderr);
 			return;
 		}
-		i = uid_parse(lp, s);
+		i = duid_parse(lp, s);
 		if (i != 0)
 			fputs("Invalid UID entered.\n", stderr);
 	} while (i != 0);
@@ -1725,7 +1731,7 @@ editor_countfree(struct disklabel *lp)
 	for (i = 0; chunks[i].start != 0 || chunks[i].stop != 0; i++)
 		freesectors += chunks[i].stop - chunks[i].start;
 
-	return (freesectors);	
+	return (freesectors);
 }
 
 void
@@ -1830,7 +1836,7 @@ mpsave(struct disklabel *lp)
 	/* Sort mountpoints so we don't try to mount /usr/local before /usr */
 	qsort((void *)mi, MAXPARTITIONS, sizeof(struct mountinfo), micmp);
 
-	if (fp = fopen(fstabfile, "w")) {
+	if ((fp = fopen(fstabfile, "w"))) {
 		for (i = 0; i < MAXPARTITIONS && mi[i].mountpoint; i++) {
 			j =  mi[i].partno;
 			fprintf(fp, "%s%c %s %s rw 1 %d\n", bdev, 'a' + j,
@@ -1935,7 +1941,7 @@ get_fsize(struct disklabel *lp, int partno)
 {
 	u_int64_t ui, fsize, frag;
 	struct partition *pp = &lp->d_partitions[partno];
-	
+
 	if (!expert || pp->p_fstype != FS_BSDFFS)
 		return (0);
 
@@ -2240,7 +2246,7 @@ max_partition_size(struct disklabel *lp, int partno)
 			continue;
 		maxsize = chunks[i].stop - offset;
 		break;
-	}	
+	}
 	return (maxsize);
 }
 

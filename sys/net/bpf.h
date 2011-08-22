@@ -1,4 +1,4 @@
-/*	$OpenBSD: bpf.h,v 1.39 2010/06/26 16:49:01 henning Exp $	*/
+/*	$OpenBSD: bpf.h,v 1.41 2010/10/29 03:43:35 canacar Exp $	*/
 /*	$NetBSD: bpf.h,v 1.15 1996/12/13 07:57:33 mikel Exp $	*/
 
 /*
@@ -49,7 +49,7 @@ typedef u_int32_t	bpf_u_int32;
  * Alignment macros.  BPF_WORDALIGN rounds up to the next even multiple of
  * BPF_ALIGNMENT (which is at least as much as what a timeval needs).
  */
-#define BPF_ALIGNMENT sizeof(long)
+#define BPF_ALIGNMENT sizeof(u_int32_t)
 #define BPF_WORDALIGN(x) (((x) + (BPF_ALIGNMENT - 1)) & ~(BPF_ALIGNMENT - 1))
 
 #define BPF_MAXINSNS 512
@@ -273,6 +273,7 @@ void	 bpf_mtap(caddr_t, struct mbuf *, u_int);
 void	 bpf_mtap_hdr(caddr_t, caddr_t, u_int, struct mbuf *, u_int);
 void	 bpf_mtap_af(caddr_t, u_int32_t, struct mbuf *, u_int);
 void	 bpf_mtap_ether(caddr_t, struct mbuf *, u_int);
+void	 bpf_mtap_pflog(caddr_t, caddr_t, struct mbuf *);
 void	 bpfattach(caddr_t *, struct ifnet *, u_int, u_int);
 void	 bpfdetach(struct ifnet *);
 void	 bpfilterattach(int);

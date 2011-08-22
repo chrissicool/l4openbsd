@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile,v 1.18 2009/04/17 15:59:47 deraadt Exp $
+#	$OpenBSD: Makefile,v 1.20 2010/10/18 04:07:50 deraadt Exp $
 
 CBIN=		instbin
 ARCHDIR=	${.CURDIR}/..
@@ -25,7 +25,7 @@ CRUNCHGENOPTS?=-E
 KERNEL?=	RAMDISK
 UTILS?=		${.CURDIR}/../../miniroot
 
-LISTS=		${ARCHDIR}/list ${.CURDIR}/list
+LISTS=		${ARCHDIR}/list ${.CURDIR}/list.local
 MTREE=		${UTILS}/mtree.conf
 
 LIF?=		lif${REV}.fs
@@ -57,9 +57,6 @@ ${CDROM}: bsd ${CDBOOT}
 	    -V "OpenBSD/hppa ${OSREV} boot-only CD" \
 	    -o ${.OBJDIR}/${CDROM} ${.OBJDIR}/cd-dir
 	dd if=${CDBOOT} of=${.OBJDIR}/${CDROM} bs=32k count=1 conv=notrunc
-	vnconfig -v -c ${VND} ${.OBJDIR}/${CDROM}
-	disklabel -w ${VND} fakecdrom "OpenBSD/hppa    "
-	vnconfig -u ${VND}
 	dd if=/dev/zero bs=64k count=1 >> ${.OBJDIR}/${CDROM}
 
 obsd:

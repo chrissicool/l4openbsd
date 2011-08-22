@@ -1,4 +1,4 @@
-/* $OpenBSD: server-fn.c,v 1.40 2010/07/24 20:11:59 nicm Exp $ */
+/* $OpenBSD: server-fn.c,v 1.50 2011/01/23 11:03:43 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -30,17 +30,20 @@ void		server_callback_identify(int, short, void *);
 void
 server_fill_environ(struct session *s, struct environ *env)
 {
-	char		 tmuxvar[MAXPATHLEN], *term;
-	u_int		 idx;
+	char	var[MAXPATHLEN], *term;
+	u_int	idx;
+	long	pid;
 
-	if (session_index(s, &idx) != 0)
-		fatalx("session not found");
-	xsnprintf(tmuxvar, sizeof tmuxvar,
-	    "%s,%ld,%u", socket_path, (long) getpid(), idx);
-	environ_set(env, "TMUX", tmuxvar);
+	if (s != NULL) {
+		term = options_get_string(&s->options, "default-terminal");
+		environ_set(env, "TERM", term);
 
-	term = options_get_string(&s->options, "default-terminal");
-	environ_set(env, "TERM", term);
+		idx = s->idx;
+	} else
+		idx = -1;
+	pid = getpid();
+	xsnprintf(var, sizeof var, "%s,%ld,%d", socket_path, pid, idx);
+	environ_set(env, "TMUX", var);
 }
 
 void
@@ -175,7 +178,6 @@ void
 server_status_window(struct window *w)
 {
 	struct session	*s;
-	u_int		 i;
 
 	/*
 	 * This is slightly different. We want to redraw the status line of any
@@ -183,9 +185,8 @@ server_status_window(struct window *w)
 	 * current window.
 	 */
 
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		s = ARRAY_ITEM(&sessions, i);
-		if (s != NULL && session_has(s, w) != NULL)
+	RB_FOREACH(s, sessions, &sessions) {
+		if (session_has(s, w) != NULL)
 			server_status_session(s);
 	}
 }
@@ -244,13 +245,15 @@ server_lock_client(struct client *c)
 void
 server_kill_window(struct window *w)
 {
-	struct session	*s;
+	struct session	*s, *next_s;
 	struct winlink	*wl;
-	u_int		 i;
 
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		s = ARRAY_ITEM(&sessions, i);
-		if (s == NULL || session_has(s, w) == NULL)
+	next_s = RB_MIN(sessions, &sessions);
+	while (next_s != NULL) {
+		s = next_s;
+		next_s = RB_NEXT(sessions, &sessions, s);
+
+		if (session_has(s, w) == NULL)
 			continue;
 		while ((wl = winlink_find_by_window(&s->windows, w)) != NULL) {
 			if (session_detach(s, wl)) {
@@ -280,8 +283,10 @@ server_link_window(struct session *src, struct winlink *srcwl,
 	if (dstidx != -1)
 		dstwl = winlink_find_by_index(&dst->windows, dstidx);
 	if (dstwl != NULL) {
-		if (dstwl->window == srcwl->window)
-			return (0);
+		if (dstwl->window == srcwl->window) {
+			xasprintf(cause, "same index: %d", dstidx);
+			return (-1);
+		}
 		if (killflag) {
 			/*
 			 * Can't use session_detach as it will destroy session
@@ -363,11 +368,9 @@ struct session *
 server_next_session(struct session *s)
 {
 	struct session *s_loop, *s_out;
-	u_int		i;
 
 	s_out = NULL;
-	for (i = 0; i < ARRAY_LENGTH(&sessions); i++) {
-		s_loop = ARRAY_ITEM(&sessions, i);
+	RB_FOREACH(s_loop, sessions, &sessions) {
 		if (s_loop == s)
 			continue;
 		if (s_out == NULL ||
@@ -397,11 +400,30 @@ server_destroy_session(struct session *s)
 			c->session = NULL;
 			c->flags |= CLIENT_EXIT;
 		} else {
+			c->last_session = NULL;
 			c->session = s_new;
+			session_update_activity(s_new);
 			server_redraw_client(c);
 		}
 	}
 	recalculate_sizes();
+}
+
+void
+server_check_unattached (void)
+{
+	struct session	*s;
+
+	/*
+	 * If any sessions are no longer attached and have destroy-unattached
+	 * set, collect them.
+	 */
+	RB_FOREACH(s, sessions, &sessions) {
+		if (!(s->flags & SESSION_UNATTACHED))
+			continue;
+		if (options_get_number (&s->options, "destroy-unattached"))
+			session_destroy(s);
+	}
 }
 
 void

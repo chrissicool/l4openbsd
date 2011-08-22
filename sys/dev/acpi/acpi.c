@@ -1,4 +1,4 @@
-/* $OpenBSD: acpi.c,v 1.209 2010/08/08 20:45:18 kettenis Exp $ */
+/* $OpenBSD: acpi.c,v 1.222 2011/01/02 04:56:57 jordan Exp $ */
 /*
  * Copyright (c) 2005 Thorsten Lockert <tholo@sigmasoft.com>
  * Copyright (c) 2005 Jordan Hargrave <jordan@openbsd.org>
@@ -86,6 +86,10 @@ struct acpi_q *acpi_maptable(struct acpi_softc *, paddr_t, const char *,
 
 void	acpi_init_states(struct acpi_softc *);
 
+void 	acpi_gpe_task(void *, int);
+void	acpi_sbtn_task(void *, int);
+void	acpi_pbtn_task(void *, int);
+
 #ifndef SMALL_KERNEL
 
 int	acpi_thinkpad_enabled;
@@ -127,12 +131,16 @@ struct idechnl {
 };
 
 void	acpi_resume(struct acpi_softc *, int);
-void	acpi_susp_resume_gpewalk(struct acpi_softc *, int, int);
 int	acpi_add_device(struct aml_node *node, void *arg);
 
 struct gpe_block *acpi_find_gpe(struct acpi_softc *, int);
-void	acpi_enable_onegpe(struct acpi_softc *, int, int);
+void	acpi_enable_onegpe(struct acpi_softc *, int);
+void	acpi_disable_onegpe(struct acpi_softc *, int);
 int	acpi_gpe(struct acpi_softc *, int, void *);
+
+void	acpi_enable_rungpes(struct acpi_softc *);
+void	acpi_enable_wakegpes(struct acpi_softc *, int);
+void	acpi_disable_allgpes(struct acpi_softc *);
 
 #endif /* SMALL_KERNEL */
 
@@ -797,6 +805,9 @@ acpi_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_thread->sc = sc;
 	sc->sc_thread->running = 1;
 
+	/* Enable PCI Power Management. */
+	pci_dopm = 1;
+
 	acpi_attach_machdep(sc);
 
 	kthread_create_deferred(acpi_create_thread, sc);
@@ -1197,6 +1208,54 @@ acpi_init_states(struct acpi_softc *sc)
 	}
 }
 
+/* ACPI Workqueue support */
+SIMPLEQ_HEAD(,acpi_taskq) acpi_taskq =
+    SIMPLEQ_HEAD_INITIALIZER(acpi_taskq);
+
+void
+acpi_addtask(struct acpi_softc *sc, void (*handler)(void *, int), 
+    void *arg0, int arg1)
+{
+	struct acpi_taskq *wq;
+	int s;
+
+	wq = malloc(sizeof(*wq), M_DEVBUF, M_ZERO | M_NOWAIT);
+	if (wq == NULL)
+		return;
+	wq->handler = handler;
+	wq->arg0 = arg0;
+	wq->arg1 = arg1;
+	
+	s = spltty();
+	SIMPLEQ_INSERT_TAIL(&acpi_taskq, wq, next);
+	splx(s);
+}
+
+int
+acpi_dotask(struct acpi_softc *sc)
+{
+	struct acpi_taskq *wq;
+	int s;
+
+	s = spltty();
+	if (SIMPLEQ_EMPTY(&acpi_taskq)) {
+		splx(s);
+
+		/* we don't have anything to do */
+		return (0);
+	}
+	wq = SIMPLEQ_FIRST(&acpi_taskq);
+	SIMPLEQ_REMOVE_HEAD(&acpi_taskq, next);
+	splx(s);
+
+	wq->handler(wq->arg0, wq->arg1);
+
+	free(wq, M_DEVBUF);
+
+	/* We did something */
+	return (1);	
+}
+
 #ifndef SMALL_KERNEL
 int
 is_ata(struct aml_node *node)
@@ -1309,17 +1368,16 @@ acpi_foundide(struct aml_node *node, void *arg)
 void
 acpi_reset(void)
 {
-	struct acpi_fadt	*fadt;
 	u_int32_t		 reset_as, reset_len;
 	u_int32_t		 value;
-
-	fadt = acpi_softc->sc_fadt;
+	struct acpi_softc	*sc = acpi_softc;
+	struct acpi_fadt	*fadt = sc->sc_fadt;
 
 	/*
 	 * RESET_REG_SUP is not properly set in some implementations,
 	 * but not testing against it breaks more machines than it fixes
 	 */
-	if (acpi_softc->sc_revision <= 1 ||
+	if (sc->sc_revision <= 1 ||
 	    !(fadt->flags & FADT_RESET_REG_SUP) || fadt->reset_reg.address == 0)
 		return;
 
@@ -1333,11 +1391,87 @@ acpi_reset(void)
 	if (reset_len == 0)
 		reset_len = reset_as;
 
-	acpi_gasio(acpi_softc, ACPI_IOWRITE,
+	acpi_gasio(sc, ACPI_IOWRITE,
 	    fadt->reset_reg.address_space_id,
 	    fadt->reset_reg.address, reset_as, reset_len, &value);
 
 	delay(100000);
+}
+
+void
+acpi_gpe_task(void *arg0, int gpe)
+{
+	struct acpi_softc *sc = acpi_softc;
+	struct gpe_block *pgpe = &sc->gpe_table[gpe];
+
+	dnprintf(10, "handle gpe: %x\n", gpe);
+	if (pgpe->handler && pgpe->active) {
+		pgpe->active = 0;
+		pgpe->handler(sc, gpe, pgpe->arg);
+	}
+}
+
+void
+acpi_pbtn_task(void *arg0, int dummy)
+{
+	struct acpi_softc *sc = arg0;
+	uint16_t en;
+	int s;
+
+	dnprintf(1,"power button pressed\n");
+
+	/* Reset the latch and re-enable the GPE */
+	s = spltty();
+	en = acpi_read_pmreg(sc, ACPIREG_PM1_EN, 0);
+	acpi_write_pmreg(sc, ACPIREG_PM1_EN,  0,
+	    en | ACPI_PM1_PWRBTN_EN);
+	splx(s);
+
+	acpi_addtask(sc, acpi_powerdown_task, sc, 0);
+}
+
+void
+acpi_sbtn_task(void *arg0, int dummy)
+{
+	struct acpi_softc *sc = arg0;
+	uint16_t en;
+	int s;
+
+	dnprintf(1,"sleep button pressed\n");
+	aml_notify_dev(ACPI_DEV_SBD, 0x80);
+
+	/* Reset the latch and re-enable the GPE */
+	s = spltty();
+	en = acpi_read_pmreg(sc, ACPIREG_PM1_EN, 0);
+	acpi_write_pmreg(sc, ACPIREG_PM1_EN,  0,
+	    en | ACPI_PM1_SLPBTN_EN);
+	splx(s);
+}
+
+void
+acpi_powerdown_task(void *arg0, int dummy)
+{
+	/* XXX put a knob in front of this */
+	psignal(initproc, SIGUSR2);
+}
+
+void
+acpi_sleep_task(void *arg0, int sleepmode)
+{
+	struct acpi_softc *sc = arg0;
+	struct acpi_ac *ac;
+	struct acpi_bat *bat;
+
+	/* System goes to sleep here.. */
+	acpi_sleep_state(sc, sleepmode);
+
+	/* AC and battery information needs refreshing */
+	SLIST_FOREACH(ac, &sc->sc_ac, aac_link)
+		aml_notify(ac->aac_softc->sc_devnode,
+		    0x80);
+	SLIST_FOREACH(bat, &sc->sc_bat, aba_link)
+		aml_notify(bat->aba_softc->sc_devnode,
+		    0x80);
 }
 
 int
@@ -1360,6 +1494,8 @@ acpi_interrupt(void *arg)
 				if (en & sts & (1L << jdx)) {
 					/* Signal this GPE */
 					sc->gpe_table[idx+jdx].active = 1;
+					dnprintf(10, "queue gpe: %x\n", idx+jdx);
+					acpi_addtask(sc, acpi_gpe_task, NULL, idx+jdx);
 
 					/*
 					 * Edge interrupts need their STS bits
@@ -1389,7 +1525,8 @@ acpi_interrupt(void *arg)
 			acpi_write_pmreg(sc, ACPIREG_PM1_STS, 0,
 			    ACPI_PM1_PWRBTN_STS);
 			sts &= ~ACPI_PM1_PWRBTN_STS;
-			sc->sc_powerbtn = 1;
+
+			acpi_addtask(sc, acpi_pbtn_task, sc, 0);
 		}
 		if (sts & ACPI_PM1_SLPBTN_STS) {
 			/* Mask and acknowledge */
@@ -1398,7 +1535,8 @@ acpi_interrupt(void *arg)
 			acpi_write_pmreg(sc, ACPIREG_PM1_STS, 0,
 			    ACPI_PM1_SLPBTN_STS);
 			sts &= ~ACPI_PM1_SLPBTN_STS;
-			sc->sc_sleepbtn = 1;
+
+			acpi_addtask(sc, acpi_sbtn_task, sc, 0);
 		}
 		if (sts) {
 			printf("%s: PM1 stuck (en 0x%x st 0x%x), clearing\n",
@@ -1467,7 +1605,7 @@ acpi_add_device(struct aml_node *node, void *arg)
 }
 
 void
-acpi_enable_onegpe(struct acpi_softc *sc, int gpe, int enable)
+acpi_enable_onegpe(struct acpi_softc *sc, int gpe)
 {
 	uint8_t mask, en;
 	int s;
@@ -1476,13 +1614,70 @@ acpi_enable_onegpe(struct acpi_softc *sc, int gpe, int enable)
 	s = spltty();
 	mask = (1L << (gpe & 7));
 	en = acpi_read_pmreg(sc, ACPIREG_GPE_EN, gpe>>3);
-	dnprintf(50, "%sabling GPE %.2x (current: %sabled) %.2x\n",
-	    enable ? "en" : "dis", gpe, (en & mask) ? "en" : "dis", en);
-	if (enable)
-		en |= mask;
-	else
-		en &= ~mask;
-	acpi_write_pmreg(sc, ACPIREG_GPE_EN, gpe>>3, en);
+	dnprintf(50, "enabling GPE %.2x (current: %sabled) %.2x\n",
+	    gpe, (en & mask) ? "en" : "dis", en);
+	acpi_write_pmreg(sc, ACPIREG_GPE_EN, gpe>>3, en | mask);
+	splx(s);
+}
+
+void
+acpi_disable_onegpe(struct acpi_softc *sc, int gpe)
+{
+	uint8_t mask, en;
+	int s;
+
+	/* Read enabled register */
+	s = spltty();
+	mask = (1L << (gpe & 7));
+	en = acpi_read_pmreg(sc, ACPIREG_GPE_EN, gpe>>3);
+	dnprintf(50, "disabling GPE %.2x (current: %sabled) %.2x\n",
+	    gpe, (en & mask) ? "en" : "dis", en);
+	acpi_write_pmreg(sc, ACPIREG_GPE_EN, gpe>>3, en & ~mask);
+	splx(s);
+}
+
+/* Clear all GPEs */
+void
+acpi_disable_allgpes(struct acpi_softc *sc)
+{
+	int idx, s;
+
+	s = spltty();
+	for (idx = 0; idx < sc->sc_lastgpe; idx += 8) {
+		acpi_write_pmreg(sc, ACPIREG_GPE_EN, idx >> 3, 0);
+		acpi_write_pmreg(sc, ACPIREG_GPE_STS, idx >> 3, -1);
+	}
+	splx(s);
+}
+
+/* Enable runtime GPEs */
+void
+acpi_enable_rungpes(struct acpi_softc *sc)
+{
+	int s, idx;
+
+	s = spltty();
+	for (idx = 0; idx < sc->sc_lastgpe; idx++)
+		if (sc->gpe_table[idx].handler)
+			acpi_enable_onegpe(sc, idx);
+	splx(s);
+}
+
+/* Enable wakeup GPEs */
+void
+acpi_enable_wakegpes(struct acpi_softc *sc, int state)
+{
+	struct acpi_wakeq *wentry;
+	int s;
+
+	s = spltty();
+	SIMPLEQ_FOREACH(wentry, &sc->sc_wakedevs, q_next) {
+		dnprintf(10, "%.4s(S%d) gpe %.2x\n", wentry->q_node->name,
+		    wentry->q_state,
+		    wentry->q_gpe);
+		if (state <= wentry->q_state)
+			acpi_enable_onegpe(sc, wentry->q_gpe);
+	}
 	splx(s);
 }
 
@@ -1574,17 +1769,9 @@ acpi_foundprw(struct aml_node *node, void *arg)
 struct gpe_block *
 acpi_find_gpe(struct acpi_softc *sc, int gpe)
 {
-#if 1
 	if (gpe >= sc->sc_lastgpe)
 		return NULL;
 	return &sc->gpe_table[gpe];
-#else
-	SIMPLEQ_FOREACH(pgpe, &sc->sc_gpes, gpe_link) {
-		if (gpe >= pgpe->start && gpe <= (pgpe->start+7))
-			return &pgpe->table[gpe & 7];
-	}
-	return NULL;
-#endif
 }
 
 void
@@ -1606,10 +1793,7 @@ acpi_init_gpes(struct acpi_softc *sc)
 	ngpe = 0;
 
 	/* Clear GPE status */
-	for (idx = 0; idx < sc->sc_lastgpe; idx += 8) {
-		acpi_write_pmreg(sc, ACPIREG_GPE_EN,  idx>>3, 0);
-		acpi_write_pmreg(sc, ACPIREG_GPE_STS, idx>>3, -1);
-	}
+	acpi_disable_allgpes(sc);
 	for (idx = 0; idx < sc->sc_lastgpe; idx++) {
 		/* Search Level-sensitive GPES */
 		snprintf(name, sizeof(name), "\\_GPE._L%.2X", idx);
@@ -1637,40 +1821,6 @@ acpi_init_pm(struct acpi_softc *sc)
 	sc->sc_bfs = aml_searchname(&aml_root, "_BFS");
 	sc->sc_gts = aml_searchname(&aml_root, "_GTS");
 	sc->sc_sst = aml_searchname(&aml_root, "_SI_._SST");
-}
-
-void
-acpi_susp_resume_gpewalk(struct acpi_softc *sc, int state,
-    int wake_gpe_state)
-{
-	struct acpi_wakeq *wentry;
-	int idx;
-	u_int32_t gpe;
-
-	/* Clear GPE status */
-	for (idx = 0; idx < sc->sc_lastgpe; idx += 8) {
-		acpi_write_pmreg(sc, ACPIREG_GPE_EN,  idx>>3, 0);
-		acpi_write_pmreg(sc, ACPIREG_GPE_STS, idx>>3, -1);
-	}
-
-	SIMPLEQ_FOREACH(wentry, &sc->sc_wakedevs, q_next) {
-		dnprintf(10, "%.4s(S%d) gpe %.2x\n", wentry->q_node->name,
-		    wentry->q_state,
-		    wentry->q_gpe);
-
-		if (state <= wentry->q_state)
-			acpi_enable_onegpe(sc, wentry->q_gpe,
-			    wake_gpe_state);
-	}
-
-	/* If we are resuming (disabling wake GPEs), enable other GPEs */
-
-	if (wake_gpe_state == 0) {
-		for (gpe = 0; gpe < sc->sc_lastgpe; gpe++) {
-			if (sc->gpe_table[gpe].handler)
-				acpi_enable_onegpe(sc, gpe, 1);
-		}
-	}
 }
 
 int
@@ -1793,8 +1943,9 @@ acpi_resume(struct acpi_softc *sc, int state)
 		aml_evalnode(sc, sc->sc_sst, 1, &env, NULL);
 	}
 
-	/* Disable wake GPEs */
-	acpi_susp_resume_gpewalk(sc, state, 0);
+	/* Enable runtime GPEs */
+	acpi_disable_allgpes(sc);
+	acpi_enable_rungpes(sc);
 
 	config_suspend(TAILQ_FIRST(&alldevs), DVACT_RESUME);
 
@@ -1909,6 +2060,7 @@ acpi_prepare_sleep_state(struct acpi_softc *sc, int state)
 #endif /* NWSDISPLAY > 0 */
 
 	bufq_quiesce();
+	config_suspend(TAILQ_FIRST(&alldevs), DVACT_QUIESCE);
 
 	acpi_saved_spl = splhigh();
 	disable_intr();
@@ -1954,7 +2106,8 @@ acpi_prepare_sleep_state(struct acpi_softc *sc, int state)
 	    ACPI_PM1_ALL_STS);
 
 	/* Enable wake GPEs */
-	acpi_susp_resume_gpewalk(sc, state, 1);
+	acpi_disable_allgpes(sc);
+	acpi_enable_wakegpes(sc, state);
 
 fail:
 	if (error) {
@@ -1984,7 +2137,8 @@ acpi_powerdown(void)
 	 * In case acpi_prepare_sleep fails, we shouldn't try to enter
 	 * the sleep state. It might cost us the battery.
 	 */
-	acpi_susp_resume_gpewalk(acpi_softc, ACPI_STATE_S5, 1);
+	acpi_disable_allgpes(acpi_softc);
+	acpi_enable_wakegpes(acpi_softc, ACPI_STATE_S5);
 	if (acpi_prepare_sleep_state(acpi_softc, ACPI_STATE_S5) == 0)
 		acpi_enter_sleep_state(acpi_softc, ACPI_STATE_S5);
 }
@@ -1995,8 +2149,9 @@ acpi_thread(void *arg)
 	struct acpi_thread *thread = arg;
 	struct acpi_softc  *sc = thread->sc;
 	extern int aml_busy;
-	u_int32_t gpe;
 	int s;
+
+	rw_enter_write(&sc->sc_lck);
 
 	/*
 	 * If we have an interrupt handler, we can get notification
@@ -2023,13 +2178,8 @@ acpi_thread(void *arg)
 		splx(s);
 
 		/* Enable handled GPEs here */
-		for (gpe = 0; gpe < sc->sc_lastgpe; gpe++) {
-			if (sc->gpe_table[gpe].handler)
-				acpi_enable_onegpe(sc, gpe, 1);
-		}
+		acpi_enable_rungpes(sc);
 	}
-
-	rw_enter_write(&sc->sc_lck);
 
 	while (thread->running) {
 		s = spltty();
@@ -2046,77 +2196,9 @@ acpi_thread(void *arg)
 			continue;
 		}
 
-		for (gpe = 0; gpe < sc->sc_lastgpe; gpe++) {
-			struct gpe_block *pgpe = &sc->gpe_table[gpe];
-
-			if (pgpe->active) {
-				pgpe->active = 0;
-				dnprintf(50, "softgpe: %.2x\n", gpe);
-				if (pgpe->handler)
-					pgpe->handler(sc, gpe, pgpe->arg);
-			}
-		}
-		if (sc->sc_powerbtn) {
-			uint16_t en;
-
-			sc->sc_powerbtn = 0;
-			dnprintf(1,"power button pressed\n");
-			sc->sc_powerdown = 1;
-
-			/* Reset the latch and re-enable the GPE */
-			s = spltty();
-			en = acpi_read_pmreg(sc, ACPIREG_PM1_EN, 0);
-			acpi_write_pmreg(sc, ACPIREG_PM1_EN,  0,
-			    en | ACPI_PM1_PWRBTN_EN);
-			splx(s);
-
-		}
-		if (sc->sc_sleepbtn) {
-			uint16_t en;
-
-			sc->sc_sleepbtn = 0;
-			dnprintf(1,"sleep button pressed\n");
-			aml_notify_dev(ACPI_DEV_SBD, 0x80);
-
-			/* Reset the latch and re-enable the GPE */
-			s = spltty();
-			en = acpi_read_pmreg(sc, ACPIREG_PM1_EN, 0);
-			acpi_write_pmreg(sc, ACPIREG_PM1_EN,  0,
-			    en | ACPI_PM1_SLPBTN_EN);
-			splx(s);
-		}
-
-		/* handle polling here to keep code non-concurrent*/
-		if (sc->sc_poll) {
-			sc->sc_poll = 0;
-			acpi_poll_notify();
-		}
-
-		if (sc->sc_powerdown) {
-			sc->sc_powerdown = 0;
-
-			/* XXX put a knob in front of this */
-			psignal(initproc, SIGUSR2);
-		}
-
-		if (sc->sc_sleepmode) {
-			struct acpi_ac *ac;
-			struct acpi_bat *bat;
-			int sleepmode = sc->sc_sleepmode;
-
-			sc->sc_sleepmode = 0;
-			acpi_sleep_state(sc, sleepmode);
-
-			/* AC and battery information needs refreshing */
-			SLIST_FOREACH(ac, &sc->sc_ac, aac_link)
-				aml_notify(ac->aac_softc->sc_devnode,
-				    0x80);
-			SLIST_FOREACH(bat, &sc->sc_bat, aba_link)
-				aml_notify(bat->aba_softc->sc_devnode,
-				    0x80);
-
-			continue;
-		}
+		/* Run ACPI taskqueue */
+		while(acpi_dotask(acpi_softc))
+			;
 	}
 	free(thread, M_DEVBUF);
 
@@ -2403,8 +2485,12 @@ acpiioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 	switch (cmd) {
 	case APM_IOC_SUSPEND:
 	case APM_IOC_STANDBY:
-		sc->sc_sleepmode = ACPI_STATE_S3;
-		acpi_wakeup(sc);
+		if ((flag & FWRITE) == 0) {
+			error = EBADF;
+		} else {
+			acpi_addtask(sc, acpi_sleep_task, sc, ACPI_STATE_S3);
+			acpi_wakeup(sc);
+		}
 		break;
 	case APM_IOC_GETPOWER:
 		/* A/C */

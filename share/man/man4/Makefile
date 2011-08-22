@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile,v 1.513 2010/07/31 08:33:20 ratchov Exp $
+#	$OpenBSD: Makefile,v 1.519 2011/01/15 04:35:34 kevlo Exp $
 
 MAN=	aac.4 ac97.4 acphy.4 \
 	acpi.4 acpiac.4 acpiasus.4 acpibat.4 acpibtn.4 acpicpu.4 acpidock.4 \
@@ -16,8 +16,9 @@ MAN=	aac.4 ac97.4 acphy.4 \
 	boca.4 bpf.4 brgphy.4 bridge.4 btkbd.4 btms.4 btsco.4 bwi.4 \
 	cac.4 cas.4 cardbus.4 carp.4 ccd.4 cd.4 cdce.4 cdcef.4 che.4 cfxga.4 \
 	ch.4 ciphy.4 ciss.4 clcs.4 clct.4 cmpci.4 cnw.4 \
-	com.4 crypto.4 cue.4 cy.4 cz.4 dc.4 dcphy.4 ddb.4 de.4 divert.4 dpt.4 \
-	drm.4 eap.4 ec.4 eephy.4 ef.4 eg.4 ehci.4 eisa.4 el.4 em.4 gcu.4 \
+	com.4 crypto.4 cue.4 cy.4 cz.4 dc.4 dcphy.4 ddb.4 de.4 \
+	diskmap.4 divert.4 dpt.4 drm.4 \
+	eap.4 ec.4 eephy.4 ef.4 eg.4 ehci.4 eisa.4 el.4 em.4 gcu.4 \
 	emu.4 enc.4 endrun.4 envy.4 ep.4 epic.4 esa.4 \
 	eso.4 ess.4 et.4 etphy.4 ex.4 exphy.4 \
 	faith.4 fd.4 fdc.4 fins.4 fintek.4 fms.4 fpa.4 fxp.4 gdt.4 \
@@ -42,8 +43,8 @@ MAN=	aac.4 ac97.4 acphy.4 \
 	pcfiic.4 pciide.4 pckbc.4 pckbd.4 pcmcia.4 pcn.4 pcppi.4 pcscp.4 \
 	pf.4 pflog.4 pflow.4 pfsync.4 pgt.4 piixpm.4 pim.4 \
 	pms.4 ppb.4 ppp.4 pppoe.4 pty.4 puc.4 pwdog.4 qsphy.4 radio.4 raid.4 \
-	ral.4 random.4 ray.4 rd.4 re.4 rgephy.4 ricohrtc.4 \
-	rl.4 rlphy.4 route.4 rt.4 rum.4 run.4 \
+	ral.4 random.4 ray.4 rd.4 re.4 rdcphy.4 rgephy.4 ricohrtc.4 \
+	rl.4 rlphy.4 route.4 rsu.4 rt.4 rum.4 run.4 \
 	rtfps.4 rtii.4 rtw.4 safe.4 safte.4 san.4 sbt.4 sbus.4 schsio.4 \
 	scsi.4 sd.4 \
 	sdmmc.4 sdhc.4 se.4 ses.4 \
@@ -58,11 +59,11 @@ MAN=	aac.4 ac97.4 acphy.4 \
 	uipaq.4 uk.4 ukbd.4 \
 	ukphy.4 ulpt.4 umass.4 umbg.4 umct.4 umidi.4 umodem.4 ums.4 umsm.4 \
 	unix.4 uow.4 upgt.4 upl.4 uplcom.4 ural.4 urio.4 url.4 urlphy.4 \
-   	urndis.4 urtw.4 usb.4  usbf.4 uscanner.4 uslcom.4 uthum.4 \
-	uticom.4 utrh.4 uts.4 uvideo.4 uvisor.4 uvscom.4 uyap.4 uyurex.4 \
+   	urndis.4 urtw.4 urtwn.4 usb.4  usbf.4 uscanner.4 uslcom.4 uthum.4 \
+	uticom.4 utrh.4 uts.4 uvideo.4 uvisor.4 uvscom.4 uyap.4 utwitch.4 \
 	vether.4 vga.4 vgafb.4 vge.4 \
 	viaenv.4 viapm.4 viasio.4 vic.4 video.4 vlan.4 vmt.4 vnd.4 vr.4 \
-	vscsi.4 \
+	vscsi.4 vte.4 \
 	watchdog.4 wb.4 wbenv.4 wbng.4 wbsd.4 wbsio.4 wd.4 wdc.4 we.4 \
 	wi.4tbl wpi.4 wscons.4 wsdisplay.4 wskbd.4 wsmouse.4 wsmux.4 \
 	xe.4 xf86.4 xge.4 xl.4 xmphy.4 yds.4 ym.4 zero.4 zyd.4
@@ -78,7 +79,6 @@ MLINKS+=isa.4 isadma.4
 MLINKS+=isapnp.4 pnp.4
 MLINKS+=netintro.4 networking.4
 MLINKS+=pcmcia.4 pcic.4
-MLINKS+=pms.4 pmsi.4
 MLINKS+=pty.4 ptm.4
 MLINKS+=random.4 arandom.4
 MLINKS+=random.4 srandom.4 random.4 urandom.4

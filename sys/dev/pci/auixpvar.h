@@ -1,4 +1,4 @@
-/* $OpenBSD: auixpvar.h,v 1.1 2005/08/07 20:08:45 mickey Exp $ */
+/* $OpenBSD: auixpvar.h,v 1.3 2010/09/21 02:09:15 jakemsr Exp $ */
 /* $NetBSD: auixpvar.h,v 1.3 2005/01/12 15:54:34 kent Exp $*/
 
 /*
@@ -106,16 +106,11 @@ struct auixp_softc {
 	/* list of allocated DMA pieces */
 	SLIST_HEAD(auixp_dma_list, auixp_dma) sc_dma_list;
 
-	/* codecs */
-	int			sc_num_codecs;
-	struct auixp_codec	sc_codec[ATI_IXP_CODECS];
+	/* codec */
+	struct auixp_codec	sc_codec;
 	int			sc_codec_not_ready_bits;
 
 	/* last set audio parameters */
 	struct audio_params	sc_play_params;
 	struct audio_params	sc_rec_params;
-
-	/* suspend/resume */
-	void			*powerhook;
-	u_int16_t		*savemem;
 };

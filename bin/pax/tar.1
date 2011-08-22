@@ -1,4 +1,4 @@
-.\"	$OpenBSD: tar.1,v 1.52 2010/07/22 08:09:29 jmc Exp $
+.\"	$OpenBSD: tar.1,v 1.55 2010/12/02 04:08:27 tedu Exp $
 .\"
 .\" Copyright (c) 1996 SigmaSoft, Th. Lockert
 .\" All rights reserved.
@@ -23,9 +23,7 @@
 .\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 .\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.\"	$OpenBSD: tar.1,v 1.52 2010/07/22 08:09:29 jmc Exp $
-.\"
-.Dd $Mdocdate: July 22 2010 $
+.Dd $Mdocdate: December 2 2010 $
 .Dt TAR 1
 .Os
 .Sh NAME
@@ -34,7 +32,7 @@
 .Sh SYNOPSIS
 .Nm tar
 .Sm off
-.No { Cm crtux No } Op Cm 014578befHhjLmOoPpqsvwXZz
+.No { Cm crtux No } Op Cm 014578befHhjLmNOoPpqsvwXZz
 .Sm on
 .Bk -words
 .Op Ar blocking-factor | archive | replstr
@@ -45,7 +43,7 @@
 .Nm tar
 .No { Ns Fl crtux Ns }
 .Bk -words
-.Op Fl 014578eHhjLmOoPpqvwXZz
+.Op Fl 014578eHhjLmNOoPpqvwXZz
 .Op Fl b Ar blocking-factor
 .Op Fl C Ar directory
 .Op Fl f Ar archive
@@ -168,6 +166,9 @@ Synonym for the
 option.
 .It Fl m
 Do not preserve modification time.
+.It Fl N
+Use only the numeric UID and GID values when creating or extracting an
+archive.
 .It Fl O
 Write old-style (non-POSIX) archives.
 .It Fl o
@@ -280,17 +281,6 @@ The options
 .Op Fl 014578
 can be used to select one of the compiled-in backup devices,
 .Pa /dev/rstN .
-.Pp
-The
-.Nm
-utility exits with one of the following values:
-.Pp
-.Bl -tag -width 2n -offset indent -compact
-.It 0
-All files were processed successfully.
-.It 1
-An error occurred.
-.El
 .Sh ENVIRONMENT
 .Bl -tag -width Fl
 .It Ev TMPDIR
@@ -303,6 +293,17 @@ Default tape device to use instead of
 .Bl -tag -width "/dev/rst0"
 .It Pa /dev/rst0
 default archive name
+.El
+.Sh EXIT STATUS
+The
+.Nm
+utility exits with one of the following values:
+.Pp
+.Bl -tag -width Ds -offset indent -compact
+.It 0
+All files were processed successfully.
+.It 1
+An error occurred.
 .El
 .Sh EXAMPLES
 Create an archive on the default tape drive, containing the files named

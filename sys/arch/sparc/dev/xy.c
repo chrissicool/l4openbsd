@@ -1,4 +1,4 @@
-/*	$OpenBSD: xy.c,v 1.45 2010/05/23 10:49:19 dlg Exp $	*/
+/*	$OpenBSD: xy.c,v 1.50 2010/09/22 06:40:25 krw Exp $	*/
 /*	$NetBSD: xy.c,v 1.26 1997/07/19 21:43:56 pk Exp $	*/
 
 /*
@@ -209,12 +209,6 @@ struct xyc_attach_args {	/* this is the "aux" args to xyattach */
 };
 
 /*
- * dkdriver
- */
-
-struct dkdriver xydkdriver = { xystrategy };
-
-/*
  * start: disk label fix code (XXX)
  */
 
@@ -396,8 +390,8 @@ xycattach(parent, self, aux)
 		xyc->iopbase[lcv].relo = 1;	/* always the same */
 		xyc->iopbase[lcv].thro = XY_THRO;/* always the same */
 	}
-	xyc->ciorq = &xyc->reqs[XYC_CTLIOPB];    /* short hand name */
-	xyc->ciopb = &xyc->iopbase[XYC_CTLIOPB]; /* short hand name */
+	xyc->ciorq = &xyc->reqs[XYC_CTLIOPB];    /* shorthand name */
+	xyc->ciopb = &xyc->iopbase[XYC_CTLIOPB]; /* shorthand name */
 	xyc->xy_hand = 0;
 
 	/* read controller parameters and insure we have a 450/451 */
@@ -504,7 +498,6 @@ xyattach(parent, self, aux)
 	 * to start with a clean slate.
 	 */
 	bzero(&xy->sc_dk, sizeof(xy->sc_dk));
-	xy->sc_dk.dk_driver = &xydkdriver;
 	xy->sc_dk.dk_name = xy->sc_dev.dv_xname;
 
 	/* if booting, init the xy_softc */
@@ -593,7 +586,7 @@ xyattach(parent, self, aux)
 
 	xy->hw_spt = spt = 0; /* XXX needed ? */
 	/* Attach the disk: must be before getdisklabel to malloc label */
-	disk_attach(&xy->sc_dk);
+	disk_attach(&xy->sc_dev, &xy->sc_dk);
 
 	if (xygetdisklabel(xy, xa->buf) != 0)
 		goto done;
@@ -807,6 +800,7 @@ xyioctl(dev, command, addr, flag, p)
 		return 0;
 
 	case DIOCGDINFO:	/* get disk label */
+	case DIOCGPDINFO:	/* no separate 'physical' info available. */
 		bcopy(xy->sc_dk.dk_label, addr, sizeof(struct disklabel));
 		return 0;
 
@@ -924,7 +918,7 @@ xyread(dev, uio, flags)
 	int flags;
 {
 
-	return (physio(xystrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(xystrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -934,7 +928,7 @@ xywrite(dev, uio, flags)
 	int flags;
 {
 
-	return (physio(xystrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(xystrategy, dev, B_WRITE, minphys, uio));
 }
 
 

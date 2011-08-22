@@ -538,10 +538,9 @@ done:
 	if (--dev->open_count == 0) {
 		DRM_UNLOCK();
 		retcode = drm_lastclose(dev);
-	}
+	} else
+		DRM_UNLOCK();
 
-	DRM_UNLOCK();
-	
 	return (retcode);
 }
 
@@ -864,7 +863,7 @@ drmmmap(dev_t kdev, off_t offset, int prot)
 
 		rw_enter_write(&dma->dma_lock);
 		if (dma->pagelist != NULL)
-			phys = atop(dma->pagelist[offset >> PAGE_SHIFT]);
+			phys = dma->pagelist[offset >> PAGE_SHIFT];
 		rw_exit_write(&dma->dma_lock);
 
 		return (phys);
@@ -905,7 +904,7 @@ drmmmap(dev_t kdev, off_t offset, int prot)
 	case _DRM_FRAME_BUFFER:
 	case _DRM_REGISTERS:
 	case _DRM_AGP:
-		return (atop(offset + map->offset));
+		return (offset + map->offset);
 		break;
 	/* XXX unify all the bus_dmamem_mmap bits */
 	case _DRM_SCATTER_GATHER:
@@ -1442,7 +1441,7 @@ drm_gem_flink_ioctl(struct drm_device *dev, void *data,
 	struct drm_gem_flink	*args = data;
 	struct drm_obj		*obj;
 
-	if (!dev->driver->flags & DRIVER_GEM)
+	if (!(dev->driver->flags & DRIVER_GEM))
 		return (ENODEV);
 
 	obj = drm_gem_object_lookup(dev, file_priv, args->handle);
@@ -1477,7 +1476,7 @@ drm_gem_open_ioctl(struct drm_device *dev, void *data,
 	struct drm_obj		*obj, search;
 	int			 ret, handle;
 
-	if (!dev->driver->flags & DRIVER_GEM)
+	if (!(dev->driver->flags & DRIVER_GEM))
 		return (ENODEV);
 
 	search.name = args->name;

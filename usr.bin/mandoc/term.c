@@ -1,7 +1,7 @@
-/*	$Id: term.c,v 1.46 2010/07/31 21:43:07 schwarze Exp $ */
+/*	$Id: term.c,v 1.56 2011/01/30 16:05:29 schwarze Exp $ */
 /*
  * Copyright (c) 2008, 2009, 2010 Kristaps Dzonsons <kristaps@bsd.lv>
- * Copyright (c) 2010 Ingo Schwarze <schwarze@openbsd.org>
+ * Copyright (c) 2010, 2011 Ingo Schwarze <schwarze@openbsd.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -79,7 +79,7 @@ term_alloc(enum termenc enc)
 	p = calloc(1, sizeof(struct termp));
 	if (NULL == p) {
 		perror(NULL);
-		exit(EXIT_FAILURE);
+		exit((int)MANDOCLEVEL_SYSERR);
 	}
 
 	p->enc = enc;
@@ -130,6 +130,7 @@ term_flushln(struct termp *p)
 	size_t		 vbl;   /* number of blanks to prepend to output */
 	size_t		 vend;	/* end of word visual position on output */
 	size_t		 bp;    /* visual right border position */
+	size_t		 dv;    /* temporary for visual pos calculations */
 	int		 j;     /* temporary loop index for p->buf */
 	int		 jhy;	/* last hyph before overflow w/r/t j */
 	size_t		 maxvis; /* output position of visible boundary */
@@ -141,36 +142,32 @@ term_flushln(struct termp *p)
 	 * an indentation, but can be, for tagged lists or columns, a
 	 * small set of values. 
 	 */
-
-	assert(p->offset < p->rmargin);
-
-	maxvis = (int)(p->rmargin - p->offset) - p->overstep < 0 ?
-		/* LINTED */ 
-		0 : p->rmargin - p->offset - p->overstep;
-	mmax = (int)(p->maxrmargin - p->offset) - p->overstep < 0 ?
-		/* LINTED */
-		0 : p->maxrmargin - p->offset - p->overstep;
+	assert  (p->rmargin >= p->offset);
+	dv     = p->rmargin - p->offset;
+	maxvis = (int)dv > p->overstep ? dv - (size_t)p->overstep : 0;
+	dv     = p->maxrmargin - p->offset;
+	mmax   = (int)dv > p->overstep ? dv - (size_t)p->overstep : 0;
 
 	bp = TERMP_NOBREAK & p->flags ? mmax : maxvis;
 
 	/*
 	 * Indent the first line of a paragraph.
 	 */
-	vbl = p->flags & TERMP_NOLPAD ? 0 : p->offset;
+	vbl = p->flags & TERMP_NOLPAD ? (size_t)0 : p->offset;
 
-	vis = vend = i = 0;
+	vis = vend = 0;
+	i = 0;
 
 	while (i < (int)p->col) {
 		/*
 		 * Handle literal tab characters: collapse all
 		 * subsequent tabs into a single huge set of spaces.
 		 */
-		for (j = i; j < (int)p->col; j++) {
-			if ('\t' != p->buf[j])
-				break;
+		while (i < (int)p->col && '\t' == p->buf[i]) {
 			vend = (vis / p->tabwidth + 1) * p->tabwidth;
 			vbl += vend - vis;
 			vis = vend;
+			i++;
 		}
 
 		/*
@@ -180,8 +177,7 @@ term_flushln(struct termp *p)
 		 * space is printed according to regular spacing rules).
 		 */
 
-		/* LINTED */
-		for (jhy = 0; j < (int)p->col; j++) {
+		for (j = i, jhy = 0; j < (int)p->col; j++) {
 			if ((j && ' ' == p->buf[j]) || '\t' == p->buf[j])
 				break;
 
@@ -219,16 +215,9 @@ term_flushln(struct termp *p)
 
 			/* Remove the p->overstep width. */
 
-			bp += (int)/* LINTED */
-				p->overstep;
+			bp += (size_t)p->overstep;
 			p->overstep = 0;
 		}
-
-		/*
-		 * Skip leading tabs, they were handled above.
-		 */
-		while (i < (int)p->col && '\t' == p->buf[i])
-			i++;
 
 		/* Write out the [remaining] word. */
 		for ( ; i < (int)p->col; i++) {
@@ -240,7 +229,9 @@ term_flushln(struct termp *p)
 				j = i;
 				while (' ' == p->buf[i])
 					i++;
-				vbl += (i - j) * (*p->width)(p, ' ');
+				dv = (size_t)(i - j) * (*p->width)(p, ' ');
+				vbl += dv;
+				vend += dv;
 				break;
 			}
 			if (ASCII_NBRSP == p->buf[i]) {
@@ -267,9 +258,14 @@ term_flushln(struct termp *p)
 				p->viscol += (*p->width)(p, p->buf[i]);
 			}
 		}
-		vend += vbl;
 		vis = vend;
 	}
+
+	/*
+	 * If there was trailing white space, it was not printed;
+	 * so reset the cursor position accordingly.
+	 */
+	vis -= vbl;
 
 	p->col = 0;
 	p->overstep = 0;
@@ -282,8 +278,7 @@ term_flushln(struct termp *p)
 
 	if (TERMP_HANG & p->flags) {
 		/* We need one blank after the tag. */
-		p->overstep = /* LINTED */
-			vis - maxvis + (*p->width)(p, ' ');
+		p->overstep = (int)(vis - maxvis + (*p->width)(p, ' '));
 
 		/*
 		 * Behave exactly the same way as groff:
@@ -297,8 +292,7 @@ term_flushln(struct termp *p)
 		 */
 		if (p->overstep >= -1) {
 			assert((int)maxvis + p->overstep >= 0);
-			/* LINTED */
-			maxvis += p->overstep;
+			maxvis += (size_t)p->overstep;
 		} else
 			p->overstep = 0;
 
@@ -306,9 +300,8 @@ term_flushln(struct termp *p)
 		return;
 
 	/* Right-pad. */
-	if (maxvis > vis + /* LINTED */
-			((TERMP_TWOSPACE & p->flags) ? 
-			 (*p->width)(p, ' ') : 0)) {
+	if (maxvis > vis +
+	    ((TERMP_TWOSPACE & p->flags) ? (*p->width)(p, ' ') : 0)) {
 		p->viscol += maxvis - vis;
 		(*p->advance)(p, maxvis - vis);
 		vis += (maxvis - vis);
@@ -352,6 +345,17 @@ term_vspace(struct termp *p)
 	term_newln(p);
 	p->viscol = 0;
 	(*p->endline)(p);
+}
+
+
+static void
+numbered(struct termp *p, const char *word, size_t len)
+{
+	const char	*rhs;
+
+	rhs = chars_num2char(word, len);
+	if (rhs) 
+		encode(p, rhs, 1);
 }
 
 
@@ -455,7 +459,6 @@ void
 term_word(struct termp *p, const char *word)
 {
 	const char	*sv, *seq;
-	int		 sz;
 	size_t		 ssz;
 	enum roffdeco	 deco;
 
@@ -501,7 +504,7 @@ term_word(struct termp *p, const char *word)
 	else
 		p->flags |= TERMP_NOSPACE;
 
-	p->flags &= ~TERMP_SENTENCE;
+	p->flags &= ~(TERMP_SENTENCE | TERMP_IGNDELIM);
 
 	while (*word) {
 		if ((ssz = strcspn(word, "\\")) > 0)
@@ -512,9 +515,12 @@ term_word(struct termp *p, const char *word)
 			continue;
 
 		seq = ++word;
-		sz = a2roffdeco(&deco, &seq, &ssz);
+		word += a2roffdeco(&deco, &seq, &ssz);
 
 		switch (deco) {
+		case (DECO_NUMBERED):
+			numbered(p, seq, ssz);
+			break;
 		case (DECO_RESERVED):
 			res(p, seq, ssz);
 			break;
@@ -539,7 +545,6 @@ term_word(struct termp *p, const char *word)
 			break;
 		}
 
-		word += sz;
 		if (DECO_NOSPACE == deco && '\0' == *word)
 			p->flags |= TERMP_NOSPACE;
 	}
@@ -573,7 +578,7 @@ adjbuf(struct termp *p, size_t sz)
 	p->buf = realloc(p->buf, p->maxcols);
 	if (NULL == p->buf) {
 		perror(NULL);
-		exit(EXIT_FAILURE);
+		exit((int)MANDOCLEVEL_SYSERR);
 	}
 }
 
@@ -642,10 +647,54 @@ term_len(const struct termp *p, size_t sz)
 size_t
 term_strlen(const struct termp *p, const char *cp)
 {
-	size_t		 sz;
+	size_t		 sz, ssz, rsz, i;
+	enum roffdeco	 d;
+	const char	*seq, *rhs;
 
-	for (sz = 0; *cp; cp++)
-		sz += (*p->width)(p, *cp);
+	for (sz = 0; '\0' != *cp; )
+		/*
+		 * Account for escaped sequences within string length
+		 * calculations.  This follows the logic in term_word()
+		 * as we must calculate the width of produced strings.
+		 */
+		if ('\\' == *cp) {
+			seq = ++cp;
+			cp += a2roffdeco(&d, &seq, &ssz);
+
+			switch (d) {
+			case (DECO_RESERVED):
+				rhs = chars_res2str
+					(p->symtab, seq, ssz, &rsz);
+				break;
+			case (DECO_SPECIAL):
+				/* FALLTHROUGH */
+			case (DECO_SSPECIAL):
+				rhs = chars_spec2str
+					(p->symtab, seq, ssz, &rsz);
+
+				/* Allow for one-char escapes. */
+				if (DECO_SSPECIAL != d || rhs)
+					break;
+
+				rhs = seq;
+				rsz = ssz;
+				break;
+			default:
+				rhs = NULL;
+				break;
+			}
+
+			if (rhs)
+				for (i = 0; i < rsz; i++)
+					sz += (*p->width)(p, *rhs++);
+		} else if (ASCII_NBRSP == *cp) {
+			sz += (*p->width)(p, ' ');
+			cp++;
+		} else if (ASCII_HYPH == *cp) {
+			sz += (*p->width)(p, '-');
+			cp++;
+		} else
+			sz += (*p->width)(p, *cp++);
 
 	return(sz);
 }

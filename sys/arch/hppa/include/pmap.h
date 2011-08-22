@@ -1,4 +1,4 @@
-/*	$OpenBSD: pmap.h,v 1.37 2010/01/03 19:23:49 kettenis Exp $	*/
+/*	$OpenBSD: pmap.h,v 1.40 2010/12/26 15:40:59 miod Exp $	*/
 
 /*
  * Copyright (c) 2002-2004 Michael Shalayeff
@@ -91,13 +91,15 @@ struct vm_page *pmap_unmap_direct(vaddr_t);
  * according to the parisc manual aliased va's should be
  * different by high 12 bits only.
  */
-#define	PMAP_PREFER(o,h)	do {					\
-	vaddr_t pmap_prefer_hint;					\
-	pmap_prefer_hint = (*(h) & HPPA_PGAMASK) | ((o) & HPPA_PGAOFF);	\
-	if (pmap_prefer_hint < *(h))					\
-		pmap_prefer_hint += HPPA_PGALIAS;			\
-	*(h) = pmap_prefer_hint;					\
-} while(0)
+#define	PMAP_PREFER(o,h)	pmap_prefer(o, h)
+static __inline__ vaddr_t
+pmap_prefer(vaddr_t offs, vaddr_t hint)
+{
+	vaddr_t pmap_prefer_hint = (hint & HPPA_PGAMASK) | (offs & HPPA_PGAOFF);
+	if (pmap_prefer_hint < hint)
+		pmap_prefer_hint += HPPA_PGALIAS;
+	return pmap_prefer_hint;
+}
 
 #define	pmap_sid2pid(s)			(((s) + 1) << 1)
 #define pmap_kernel()			(&kernel_pmap_store)
@@ -109,7 +111,6 @@ struct vm_page *pmap_unmap_direct(vaddr_t);
 #define pmap_clear_reference(pg) pmap_changebit(pg, PTE_PROT(TLB_REFTRAP), 0)
 #define pmap_is_modified(pg)	pmap_testbit(pg, PTE_PROT(TLB_DIRTY))
 #define pmap_is_referenced(pg)	pmap_testbit(pg, PTE_PROT(TLB_REFTRAP))
-#define pmap_phys_address(ppn)	((ppn) << PAGE_SHIFT)
 
 #define pmap_unuse_final(p)		/* nothing */
 #define	pmap_remove_holes(map)		do { /* nothing */ } while (0)
@@ -120,7 +121,6 @@ boolean_t pmap_testbit(struct vm_page *, u_int);
 void pmap_write_protect(struct pmap *, vaddr_t, vaddr_t, vm_prot_t);
 void pmap_remove(struct pmap *pmap, vaddr_t sva, vaddr_t eva);
 void pmap_page_remove(struct vm_page *pg);
-void pmap_proc_iflush(struct proc *, vaddr_t, vsize_t);
 
 static __inline int
 pmap_prot(struct pmap *pmap, int prot)

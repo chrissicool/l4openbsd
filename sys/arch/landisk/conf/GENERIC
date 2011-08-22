@@ -1,4 +1,4 @@
-# $OpenBSD: GENERIC,v 1.26 2010/07/03 03:59:16 krw Exp $
+# $OpenBSD: GENERIC,v 1.32 2011/02/17 20:14:30 miod Exp $
 #
 # For further information on compiling OpenBSD kernels, see the config(8)
 # man page.
@@ -148,14 +148,18 @@ udsbr*	at uhub?		# D-Link DSB-R100 radio
 radio*	at udsbr?		# USB radio
 ugen*	at uhub?		# USB Generic driver
 uath*	at uhub?		# Atheros AR5005UG/AR5005UX
+athn*	at uhub?		# Atheros AR9002U
 ural*	at uhub?		# Ralink RT2500USB
 rum*	at uhub?		# Ralink RT2501USB/RT2601USB
 run*	at uhub?		# Ralink RT2700U/RT2800U/RT3000U
+rsu*	at uhub?		# Realtek RTL8188SU/RTL8191SU/RTL8192SU
+urtwn*	at uhub?		# Realtek RTL8188CU/RTL8192CU
 zyd*	at uhub?		# Zydas ZD1211
 #option	NATM
 #ueagle* at uhub?		# Analog Devices Eagle ADSL
 udcf*	at uhub?		# Gude Expert mouseCLOCK
 uthum*	at uhidev?		# TEMPerHUM sensor
+utwitch* at uhidev?		# YUREX BBU sensor
 #uow*	at uhub?		# Maxim/Dallas DS2490 1-Wire adapter
 #onewire* at uow?
 
@@ -163,7 +167,7 @@ udl*		at uhub?
 wsdisplay*	at udl?
 
 # Bluetooth controllers
-ubt*	at uhub?		# USB Bluetooth
+ubt*	at uhub? disable	# USB Bluetooth
 bthub*	at ubt?
 
 bthidev* at bthub?		# Bluetooth HID support
@@ -177,5 +181,5 @@ audio*	at btsco?
 sd*	at scsibus?			# SCSI disk drives
 cd*	at scsibus?			# SCSI CD-ROM drives
 
-# mouse & keyboard multiplexor pseudo-devices
-pseudo-device	wsmux		2
+pseudo-device	hotplug		1	# devices hot plugging
+pseudo-device	wsmux		2	# mouse & keyboard multiplexor

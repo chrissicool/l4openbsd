@@ -1,4 +1,4 @@
-.\"	$OpenBSD: pkg_create.1,v 1.64 2010/06/25 09:00:56 espie Exp $
+.\"	$OpenBSD: pkg_create.1,v 1.72 2011/02/07 00:02:50 schwarze Exp $
 .\"
 .\" Documentation and design originally from FreeBSD. All the code has
 .\" been rewritten since. We keep the documentation's notice:
@@ -21,7 +21,7 @@
 .\" [jkh] Took John's changes back and made some additional extensions for
 .\" better integration with FreeBSD's new ports collection.
 .\"
-.Dd $Mdocdate: June 25 2010 $
+.Dd $Mdocdate: February 7 2011 $
 .Dt PKG_CREATE 1
 .Os
 .Sh NAME
@@ -33,10 +33,7 @@
 .Op Fl mnQqvx
 .Op Fl A Ar arches
 .Op Fl B Ar pkg-destdir
-.Oo Fl D Ar name
-.Ns Oo Ns = Ns Ar value
-.Oc
-.Oc
+.Op Fl D Ar name Ns Op = Ns Ar value
 .Op Fl L Ar localbase
 .Op Fl M Ar displayfile
 .Op Fl P Ar pkg-dependency
@@ -45,6 +42,7 @@
 .Op Fl W Ar wantedlib
 .Fl d Ar desc
 .Fl D Ar COMMENT Ns = Ns Ar value
+.Fl D Ar PORTSDIR Ns = Ns Ar value
 .Fl f Ar packinglist
 .Fl p Ar prefix
 .Ar pkg-name
@@ -86,6 +84,26 @@ see
 records extra information in the packing-list, such as the existence
 of symlinks and hard links, computes and stores file checksums, and
 verifies that all special objects are properly annotated in the packing-list.
+.Pp
+It will also check all
+.Cm @wantlib
+for reachability, by looking into all installed
+.Cm @depend .
+It may also ask the ports tree for extra dependencies,
+provided some other
+.Cm @depend
+refers to the same
+.Ev BASE_PKGPATH
+.Po
+see
+.Xr bsd.port.mk 5
+.Pc .
+The rationale is that those libraries must already be present for
+the package to build correctly, and thus be reachable through the
+subset of
+.Cm @depend
+that are not pure
+.Ev RUN_DEPENDS .
 .Pp
 The options are as follows:
 .Bl -tag -width Ds
@@ -133,6 +151,9 @@ Strongly recommended, otherwise updates won't work.
 If defined, appended to the description.
 .It Ar MAINTAINER
 If defined, appended to the description.
+.It Ar USE_GROFF
+Set to 1 to have groff format manpages behind the scenes during
+package creation.
 .El
 .It Fl d No [-] Ns Ar desc
 Fetch long description for package from file
@@ -256,6 +277,29 @@ All these commands start with an
 Here is a list:
 .Pp
 .Bl -tag -width Ds -compact
+.It Cm @ask-update Ar pkgspec Ar message
+Mechanism to prevent unwanted updates.
+If the new package is installed as part of an update matching
+.Ar pkgspec ,
+the
+.Ar message
+will be displayed to the user.
+In non-interactive mode, the update will abort.
+Otherwise, the user will have a chance to proceed.
+Automated updates can be done by using
+.Fl D Ar update_stem ,
+with
+.Ar stem
+the stem of the
+.Ar pkgspec .
+Classical use case for postgresql:
+.Bd -literal -offset 3n
+@ask-update postgresql-server<-8 Make sure your existing database is backed up
+.Ed
+.Pp
+Use very sparingly.
+Most cases that seem to require manual updates just require a bit more thought.
+.Pp
 .It Cm @arch Ar arches
 List of architectures for which this package is intended.
 .Pp
@@ -657,6 +701,22 @@ annotations can help
 .Nm pkg_add
 get a sense of continuity.
 .Pp
+.It Cm @rcscript Ar filename
+Script for the
+.Pa /etc/rc.d
+framework.
+Contrary to
+.Cm @file ,
+absolute paths are okay, e.g.,
+.Bd -literal -offset indent
+@rcscript ${RCDIR}/ballsd
+.Ed
+.Pp
+In this case, performs an implicit
+.Cm @cwd
+to
+.Pa ${RCDIR} .
+.Pp
 .It Cm @sample Ar filename
 Last preceding
 .Cm @file
@@ -750,6 +810,7 @@ and not during true deletions.
 Original location of the package, automatically recorded in installed packages
 by
 .Xr pkg_add 1 .
+.Pp
 .It Cm @wantlib Ar libspec
 Package needs a shared library to work.
 .Ar libspec

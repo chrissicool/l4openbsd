@@ -1,4 +1,4 @@
-#	$OpenBSD: install.md,v 1.46 2010/06/27 00:42:00 krw Exp $
+#	$OpenBSD: install.md,v 1.48 2011/01/03 00:36:49 deraadt Exp $
 #
 #
 # Copyright (c) 1996 The NetBSD Foundation, Inc.
@@ -40,25 +40,22 @@ NCPU=$(sysctl -n hw.ncpufound)
 md_installboot() {
 	local _disk=$1
 
-	cd /mnt
-	if [[ -f bsd.mp ]] && ((NCPU > 1)); then
+	if [[ -f /mnt/bsd.mp ]] && ((NCPU > 1)); then
 		echo "Multiprocessor machine; using bsd.mp instead of bsd."
-		mv bsd bsd.sp 2>/dev/null
-		mv bsd.mp bsd
+		mv /mnt/bsd /mnt/bsd.sp 2>/dev/null
+		mv /mnt/bsd.mp /mnt/bsd
 	fi
 
-	[[ $PARTTABLE == MBR ]] || return
-
-	if mount -t msdos /dev/${_disk}i /mnt2 ; then
-		if cp /usr/mdec/ofwboot /mnt2; then
-			umount /mnt2
-			return
+	# If there is an MSDOS partition on the boot disk, copy ofwboot
+	# into it.
+	if fdisk $_disk | grep -q 'Signature: 0xAA55'; then
+		if fdisk $_disk | grep -q '^..: 06 '; then
+			if mount /dev/${_disk}i /mnt2 >/dev/null 2>&1; then
+				cp /usr/mdec/ofwboot /mnt2
+				umount /mnt2
+			fi
 		fi
 	fi
-
-	echo "Failed to install bootblocks."
-	echo "You will not be able to boot OpenBSD from $_disk."
-	exit
 }
 
 md_has_hfs () {

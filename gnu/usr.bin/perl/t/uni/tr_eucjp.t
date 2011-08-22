@@ -1,14 +1,11 @@
+#! perl -w
 #
-# $Id: tr_eucjp.t,v 1.5 2009/10/12 18:30:28 millert Exp $
+# $Id$
 #
 # This script is written intentionally in EUC-JP
 # -- dankogai
 
 BEGIN {
-    if ($ENV{'PERL_CORE'}){
-        chdir 't';
-        @INC = '../lib';
-    }
     require Config; import Config;
     if ($Config{'extensions'} !~ /\bEncode\b/) {
       print "1..0 # Skip: Encode was not built\n";
@@ -27,11 +24,11 @@ BEGIN {
         exit 0;
     }
     $| = 1;
+    require './test.pl';
 }
 
 use strict;
-use Test::More tests => 6;
-use Encode;
+plan(tests => 6);
 use encoding 'euc-jp';
 
 my @hiragana =  map {chr} ord("¤¡")..ord("¤ó");

@@ -1,4 +1,4 @@
-/*	$OpenBSD: usbdivar.h,v 1.37 2009/11/12 20:16:37 deraadt Exp $ */
+/*	$OpenBSD: usbdivar.h,v 1.42 2011/01/16 22:35:29 jakemsr Exp $ */
 /*	$NetBSD: usbdivar.h,v 1.70 2002/07/11 21:14:36 augustss Exp $	*/
 /*	$FreeBSD: src/sys/dev/usb/usbdivar.h,v 1.11 1999/11/17 22:33:51 n_hibma Exp $	*/
 
@@ -103,8 +103,10 @@ struct usbd_bus {
 	/* Filled by usb driver */
 	struct usbd_device     *root_hub;
 	usbd_device_handle	devices[USB_MAX_DEVICES];
-	char			needs_explore;/* a hub a signalled a change */
 	char			use_polling;
+	char			dying;
+	int			flags;
+#define USB_BUS_CONFIG_PENDING	0x01
 	struct usb_softc       *usbctl;
 	struct usb_device_stats	stats;
 	int 			intr_context;
@@ -123,6 +125,8 @@ struct usbd_bus {
 struct usbd_device {
 	struct usbd_bus	       *bus;           /* our controller */
 	struct usbd_pipe       *default_pipe;  /* pipe 0 */
+	u_int8_t		dying;	       /* hardware removed */
+	u_int8_t		ref_cnt;       /* # of procs using device */
 	u_int8_t		address;       /* device address */
 	u_int8_t		config;	       /* current configuration # */
 	u_int8_t		depth;         /* distance from root hub */
@@ -143,6 +147,7 @@ struct usbd_device {
 	const struct usbd_quirks     *quirks;  /* device quirks, always set */
 	struct usbd_hub	       *hub;           /* only if this is a hub */
 	struct device         **subdevs;       /* sub-devices, 0 terminated */
+	int			ndevs;	       /* # of subdevs */
 };
 
 struct usbd_interface {
@@ -153,6 +158,7 @@ struct usbd_interface {
 	struct usbd_endpoint   *endpoints;
 	void		       *priv;
 	LIST_HEAD(, usbd_pipe)	pipes;
+	u_int8_t		claimed;
 };
 
 struct usbd_pipe {
@@ -216,6 +222,8 @@ struct usbd_xfer {
 
 void usbd_init(void);
 void usbd_finish(void);
+void usb_begin_tasks(void);
+void usb_end_tasks(void);
 
 #ifdef USB_DEBUG
 void usbd_dump_iface(struct usbd_interface *iface);
@@ -247,7 +255,7 @@ void		usb_transfer_complete(usbd_xfer_handle xfer);
 void		usb_disconnect_port(struct usbd_port *up, struct device *);
 
 /* Routines from usb.c */
-void		usb_needs_explore(usbd_device_handle);
+void		usb_needs_explore(usbd_device_handle, int);
 void		usb_needs_reattach(usbd_device_handle);
 void		usb_schedsoftintr(struct usbd_bus *);
 

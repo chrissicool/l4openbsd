@@ -1,4 +1,4 @@
-/*	$OpenBSD: tcp_output.c,v 1.90 2010/07/09 16:58:06 reyk Exp $	*/
+/*	$OpenBSD: tcp_output.c,v 1.93 2011/01/07 17:50:42 bluhm Exp $	*/
 /*	$NetBSD: tcp_output.c,v 1.16 1997/06/03 16:17:09 kml Exp $	*/
 
 /*
@@ -227,6 +227,12 @@ tcp_output(struct tcpcb *tp)
 #ifdef TCP_ECN
 	int needect;
 #endif
+
+	if (tp->t_flags & TF_BLOCKOUTPUT) {
+		tp->t_flags |= TF_NEEDOUTPUT;
+		return (0);
+	} else
+		tp->t_flags &= ~TF_NEEDOUTPUT;
 
 #if defined(TCP_SACK) && defined(TCP_SIGNATURE) && defined(DIAGNOSTIC)
 	if (tp->sack_enable && (tp->t_flags & TF_SIGNATURE))
@@ -593,6 +599,11 @@ send:
 		*lp++ = htonl(tcp_now + tp->ts_modulate);
 		*lp   = htonl(tp->ts_recent);
 		optlen += TCPOLEN_TSTAMP_APPA;
+
+		/* Set receive buffer autosizing timestamp. */
+		if (tp->rfbuf_ts == 0)
+			tp->rfbuf_ts = tcp_now;
+
 	}
 
 #ifdef TCP_SIGNATURE
@@ -1030,6 +1041,8 @@ send:
 		if (SEQ_GT(tp->snd_nxt + len, tp->snd_max))
 			tp->snd_max = tp->snd_nxt + len;
 
+	tcp_update_sndspace(tp);
+
 	/*
 	 * Trace.
 	 */
@@ -1138,6 +1151,8 @@ out:
 			tcp_mtudisc(tp->t_inpcb, -1);
 			return (0);
 		}
+		if (error == EACCES)	/* translate pf(4) error for userland */
+			error = EHOSTUNREACH;
 		if ((error == EHOSTUNREACH || error == ENETDOWN) &&
 		    TCPS_HAVERCVDSYN(tp->t_state)) {
 			tp->t_softerror = error;

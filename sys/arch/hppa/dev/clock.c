@@ -1,4 +1,4 @@
-/*	$OpenBSD: clock.c,v 1.25 2010/08/01 09:01:45 kettenis Exp $	*/
+/*	$OpenBSD: clock.c,v 1.28 2011/01/09 19:37:51 jasper Exp $	*/
 
 /*
  * Copyright (c) 1998-2003 Michael Shalayeff
@@ -41,14 +41,8 @@
 #include <machine/cpufunc.h>
 #include <machine/autoconf.h>
 
-#if defined(DDB)
-#include <uvm/uvm_extern.h>
-#include <machine/db_machdep.h>
-#include <ddb/db_sym.h>
-#include <ddb/db_extern.h>
-#endif
-
 u_long	cpu_hzticks;
+int	timeset;
 
 int	cpu_hardclock(void *);
 u_int	itmr_get_timecount(struct timecounter *);
@@ -62,6 +56,8 @@ cpu_initclocks(void)
 {
 	struct cpu_info *ci = curcpu();
 	u_long __itmr;
+
+	cpu_hzticks = (PAGE0->mem_10msec * 100) / hz;
 
 	itmr_timecounter.tc_frequency = PAGE0->mem_10msec * 100;
 	tc_init(&itmr_timecounter);
@@ -155,6 +151,7 @@ inittodr(time_t t)
 	ts.tv_sec = tod.sec;
 	ts.tv_nsec = tod.usec * 1000;
 	tc_setclock(&ts);
+	timeset = 1;
 
 	if (!tbad) {
 		u_long	dt;
@@ -178,6 +175,13 @@ resettodr()
 {
 	struct timeval tv;
 	int error;
+
+	/*
+	 * We might have been called by boot() due to a crash early
+	 * on.  Don't reset the clock chip in this case.
+	 */
+	if (!timeset)
+		return;
 
 	microtime(&tv);
 

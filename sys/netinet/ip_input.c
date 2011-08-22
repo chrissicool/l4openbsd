@@ -1,4 +1,4 @@
-/*	$OpenBSD: ip_input.c,v 1.182 2010/07/09 16:58:06 reyk Exp $	*/
+/*	$OpenBSD: ip_input.c,v 1.186 2011/02/11 12:16:30 bluhm Exp $	*/
 /*	$NetBSD: ip_input.c,v 1.30 1996/03/16 23:53:58 christos Exp $	*/
 
 /*
@@ -704,7 +704,7 @@ in_iawithaddr(struct in_addr ina, struct mbuf *m, u_int rdomain)
 				if (m)
 					m->m_flags |= M_BCAST;
 				return ia;
-			    }
+			}
 		}
 	}
 
@@ -1557,6 +1557,12 @@ ip_forward(m, srcrt)
 		ipstat.ips_cantfrag++;
 		break;
 
+	case EACCES:
+		/*
+		 * pf(4) blocked the packet. There is no need to send an ICMP
+		 * packet back since pf(4) takes care of it.
+		 */
+		goto freecopy;
 	case ENOBUFS:
 		/*
 		 * a router should not generate ICMP_SOURCEQUENCH as
@@ -1572,7 +1578,7 @@ ip_forward(m, srcrt)
 
  freecopy:
 	if (mcopy)
-		m_free(mcopy);
+		m_freem(mcopy);
  freert:
 #ifndef SMALL_KERNEL
 	if (ipmultipath && ipforward_rt.ro_rt &&
@@ -1737,7 +1743,7 @@ ip_savecontrol(struct inpcb *inp, struct mbuf **mp, struct ip *ip,
 	}
 	if (inp->inp_flags & INP_RECVTTL) {
 		*mp = sbcreatecontrol((caddr_t) &ip->ip_ttl,
-		    sizeof(u_char), IP_RECVTTL, IPPROTO_IP);
+		    sizeof(u_int8_t), IP_RECVTTL, IPPROTO_IP);
 		if (*mp)
 			mp = &(*mp)->m_next;
 	}

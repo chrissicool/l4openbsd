@@ -31,7 +31,7 @@
 
 *******************************************************************************/
 
-/* $OpenBSD: if_em_hw.c,v 1.56 2010/08/03 16:39:33 jsg Exp $ */
+/* $OpenBSD: if_em_hw.c,v 1.60 2011/02/15 19:15:25 miod Exp $ */
 /*
  * if_em_hw.c Shared functions for accessing and configuring the MAC
  */
@@ -480,6 +480,7 @@ em_set_mac_type(struct em_hw *hw)
 		break;
 	case E1000_DEV_ID_82574L:
 	case E1000_DEV_ID_82574LA:
+	case E1000_DEV_ID_82583V:
 		hw->mac_type = em_82574;
 		break;
 	case E1000_DEV_ID_82575EB_PT:
@@ -5352,8 +5353,14 @@ em_init_eeprom_params(struct em_hw *hw)
 			    E1000_EECD_SIZE_EX_SHIFT);
 		}
 
-		eeprom->word_size = 1 << 
-		    (eeprom_size + EEPROM_WORD_SIZE_SHIFT);
+		/* EEPROM access above 16k is unsupported */
+		if (eeprom_size + EEPROM_WORD_SIZE_SHIFT >
+		    EEPROM_WORD_SIZE_SHIFT_MAX) {
+			eeprom->word_size = 1 << EEPROM_WORD_SIZE_SHIFT_MAX;
+		} else {
+			eeprom->word_size = 1 << 
+			    (eeprom_size + EEPROM_WORD_SIZE_SHIFT);
+		}
 	}
 	return ret_val;
 }
@@ -7108,6 +7115,7 @@ em_clear_hw_cntrs(struct em_hw *hw)
 	temp = E1000_READ_REG(hw, ICRXDMTC);
 }
 
+#ifndef SMALL_KERNEL
 /******************************************************************************
  * Adjusts the statistic counters when a frame is accepted by TBI_ACCEPT
  *
@@ -7187,6 +7195,7 @@ em_tbi_adjust_stats(struct em_hw *hw, struct em_hw_stats *stats,
 		stats->prc1522++;
 	}
 }
+#endif	/* !SMALL_KERNEL */
 
 /******************************************************************************
  * Gets the current PCI bus type, speed, and width of the hardware
@@ -8482,13 +8491,13 @@ em_get_phy_cfg_done(struct em_hw *hw)
 		msec_delay_irq(10);
 		break;
 	case em_80003es2lan:
+	case em_82575:
 		/* Separate *_CFG_DONE_* bit for each port */
 		if (E1000_READ_REG(hw, STATUS) & E1000_STATUS_FUNC_1)
 			cfg_mask = E1000_EEPROM_CFG_DONE_PORT_1;
 		/* FALLTHROUGH */
 	case em_82571:
 	case em_82572:
-	case em_82575:
 		while (timeout) {
 			if (E1000_READ_REG(hw, EEMNGCTL) & cfg_mask)
 				break;
@@ -8499,7 +8508,6 @@ em_get_phy_cfg_done(struct em_hw *hw)
 		if (!timeout) {
 			DEBUGOUT("MNG configuration cycle has not completed."
 			    "\n");
-			return -E1000_ERR_RESET;
 		}
 		break;
 	}

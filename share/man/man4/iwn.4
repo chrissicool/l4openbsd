@@ -1,4 +1,4 @@
-.\" $OpenBSD: iwn.4,v 1.29 2010/06/19 08:05:23 damien Exp $
+.\" $OpenBSD: iwn.4,v 1.32 2011/01/09 16:00:53 damien Exp $
 .\"
 .\" Copyright (c) 2007,2008
 .\"	Damien Bergamini <damien.bergamini@free.fr>. All rights reserved.
@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: June 19 2010 $
+.Dd $Mdocdate: January 9 2011 $
 .Dt IWN 4
 .Os
 .Sh NAME
@@ -101,9 +101,6 @@ The
 driver offloads both encryption and decryption of unicast data frames to the
 hardware for the CCMP cipher.
 .Pp
-The device has one temperature sensor in degC.
-Sensor data is updated every 500 milliseconds.
-.Pp
 The
 .Nm
 driver can be configured at runtime with
@@ -111,7 +108,7 @@ driver can be configured at runtime with
 or on boot with
 .Xr hostname.if 5 .
 .Sh FILES
-The driver needs at least version 5.5 of the following firmware files,
+The driver needs at least version 5.6 of the following firmware files,
 which are loaded when an interface is brought up:
 .Pp
 .Bl -tag -width Ds -offset indent -compact
@@ -121,6 +118,8 @@ which are loaded when an interface is brought up:
 .It Pa /etc/firmware/iwn-1000
 .It Pa /etc/firmware/iwn-6000
 .It Pa /etc/firmware/iwn-6050
+.It Pa /etc/firmware/iwn-6005
+.It Pa /etc/firmware/iwn-6030
 .El
 .Pp
 These firmware files are not free because Intel refuses to grant
@@ -134,7 +133,7 @@ A prepackaged version of the firmware, designed to be used with
 .Xr pkg_add 1 ,
 can be found at:
 .Bd -literal -offset 3n
-http://damien.bergamini.free.fr/packages/openbsd/iwn-firmware-5.5.tgz
+http://damien.bergamini.free.fr/packages/openbsd/iwn-firmware-5.6.tgz
 .Ed
 .Sh EXAMPLES
 The following
@@ -149,17 +148,10 @@ dhcp NONE NONE NONE nwkey 0x1deadbeef1 chan 11
 .Pp
 Configure iwn0 to join network
 .Dq my_net
-using WPA-PSK with passphrase
+using WPA with passphrase
 .Dq my_passphrase :
 .Bd -literal -offset indent
-# ifconfig iwn0 nwid my_net wpa wpapsk \e
-	`wpa-psk my_net my_passphrase`
-.Ed
-.Pp
-Return iwn0 to its default settings:
-.Bd -literal -offset indent
-# ifconfig iwn0 -bssid -chan media autoselect \e
-	nwid "" -nwkey -wpa -wpapsk
+# ifconfig iwn0 nwid my_net wpakey my_passphrase
 .Ed
 .Pp
 Join an existing BSS network,
@@ -199,8 +191,7 @@ The driver will reset the hardware.
 .Xr netintro 4 ,
 .Xr pci 4 ,
 .Xr hostname.if 5 ,
-.Xr ifconfig 8 ,
-.Xr wpa-psk 8
+.Xr ifconfig 8
 .Sh AUTHORS
 The
 .Nm

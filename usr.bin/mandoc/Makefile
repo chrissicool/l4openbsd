@@ -1,8 +1,8 @@
-#	$OpenBSD: Makefile,v 1.44 2010/07/31 21:43:07 schwarze Exp $
+#	$OpenBSD: Makefile,v 1.52 2011/01/09 14:30:48 schwarze Exp $
 
 .include <bsd.own.mk>
 
-VERSION=1.10.5
+VERSION=1.10.9
 CFLAGS+=-DVERSION=\"${VERSION}\"
 CFLAGS+=-W -Wall -Wstrict-prototypes
 
@@ -10,15 +10,14 @@ CFLAGS+=-W -Wall -Wstrict-prototypes
 CFLAGS+=-Wno-unused-parameter
 .endif
 
-SRCS=	roff.c mandoc.c
+SRCS=	roff.c tbl.c tbl_opts.c tbl_layout.c tbl_data.c mandoc.c
 SRCS+=	mdoc_macro.c mdoc.c mdoc_hash.c mdoc_strings.c \
-	mdoc_argv.c mdoc_validate.c mdoc_action.c lib.c att.c \
+	mdoc_argv.c mdoc_validate.c lib.c att.c \
 	arch.c vol.c msec.c st.c
-SRCS+=	man_macro.c man.c man_hash.c man_validate.c \
-	man_action.c man_argv.c
+SRCS+=	man_macro.c man.c man_hash.c man_validate.c man_argv.c
 SRCS+=	main.c mdoc_term.c chars.c term.c tree.c man_term.c
 SRCS+=	html.c mdoc_html.c man_html.c out.c
-SRCS+=	term_ps.c term_ascii.c
+SRCS+=	term_ps.c term_ascii.c tbl_term.c tbl_html.c
 
 PROG=	mandoc
 

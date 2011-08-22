@@ -1,4 +1,4 @@
-/*	$OpenBSD: machdep.c,v 1.193 2010/07/01 05:33:32 jsing Exp $	*/
+/*	$OpenBSD: machdep.c,v 1.199 2011/01/14 13:32:43 jsing Exp $	*/
 
 /*
  * Copyright (c) 1999-2003 Michael Shalayeff
@@ -143,7 +143,6 @@ int (*cpu_dbtlb_ins)(int i, pa_space_t sp, vaddr_t va, paddr_t pa,
 
 dev_t	bootdev;
 int	physmem, resvmem, resvphysmem, esym;
-paddr_t	avail_end;
 
 #ifdef MULTIPROCESSOR
 struct mutex mtx_atomic = MUTEX_INITIALIZER(IPL_NONE);
@@ -288,17 +287,15 @@ hppa_cpuspeed(int *mhz)
 }
 
 void
-hppa_init(start)
-	paddr_t start;
+hppa_init(paddr_t start)
 {
-	extern u_long cpu_hzticks;
 	extern int kernel_text;
 	struct cpu_info *ci;
 	int error;
+	paddr_t	avail_end;
 
 	pdc_init();	/* init PDC iface, so we can call em easy */
 
-	cpu_hzticks = (PAGE0->mem_10msec * 100) / hz;
 	delay_init();	/* calculate cpu clock ratio */
 
 	/* cache parameters */
@@ -329,7 +326,7 @@ hppa_init(start)
 	/* setup hpmc handler */
 	{
 		extern u_int hpmc_v[];	/* from locore.s */
-		register u_int *p = hpmc_v;
+		u_int *p = hpmc_v;
 
 		if (pdc_call((iodcio_t)pdc, 0, PDC_INSTR, PDC_INSTR_DFLT, p))
 			*p = 0x08000240;
@@ -341,7 +338,7 @@ hppa_init(start)
 
 	{
 		extern u_int hppa_toc[], hppa_toc_end[];
-		register u_int cksum, *p;
+		u_int cksum, *p;
 
 		for (cksum = 0, p = hppa_toc; p < hppa_toc_end; p++)
 			cksum += *p;
@@ -353,7 +350,7 @@ hppa_init(start)
 
 	{
 		extern u_int hppa_pfr[], hppa_pfr_end[];
-		register u_int cksum, *p;
+		u_int cksum, *p;
 
 		for (cksum = 0, p = hppa_pfr; p < hppa_pfr_end; p++)
 			cksum += *p;
@@ -676,7 +673,7 @@ cpu_startup(void)
 void
 delay_init(void)
 {
-	register u_int num, denom, delta, mdelta;
+	u_int num, denom, delta, mdelta;
 
 	mdelta = UINT_MAX;
 	for (denom = 1; denom < 1000; denom++) {
@@ -695,10 +692,9 @@ delay_init(void)
 }
 
 void
-delay(us)
-	u_int us;
+delay(u_int us)
 {
-	register u_int start, end, n;
+	u_int start, end, n;
 
 	mfctl(CR_ITMR, start);
 	while (us) {
@@ -720,10 +716,9 @@ delay(us)
 }
 
 static __inline void
-fall(c_base, c_count, c_loop, c_stride, data)
-	int c_base, c_count, c_loop, c_stride, data;
+fall(int c_base, int c_count, int c_loop, int c_stride, int data)
 {
-	register int loop;
+	int loop;
 
 	for (; c_count--; c_base += c_stride)
 		for (loop = c_loop; loop--; )
@@ -755,13 +750,13 @@ fdcacheall(void)
 void
 ptlball(void)
 {
-	register pa_space_t sp;
-	register int i, j, k;
+	pa_space_t sp;
+	int i, j, k;
 
 	/* instruction TLB */
 	sp = pdc_cache.it_sp_base;
 	for (i = 0; i < pdc_cache.it_sp_count; i++) {
-		register vaddr_t off = pdc_cache.it_off_base;
+		vaddr_t off = pdc_cache.it_off_base;
 		for (j = 0; j < pdc_cache.it_off_count; j++) {
 			for (k = 0; k < pdc_cache.it_loop; k++)
 				pitlbe(sp, off);
@@ -773,7 +768,7 @@ ptlball(void)
 	/* data TLB */
 	sp = pdc_cache.dt_sp_base;
 	for (i = 0; i < pdc_cache.dt_sp_count; i++) {
-		register vaddr_t off = pdc_cache.dt_off_base;
+		vaddr_t off = pdc_cache.dt_off_base;
 		for (j = 0; j < pdc_cache.dt_off_count; j++) {
 			for (k = 0; k < pdc_cache.dt_loop; k++)
 				pdtlbe(sp, off);
@@ -784,29 +779,20 @@ ptlball(void)
 }
 
 int
-hpti_g(hpt, hptsize)
-	vaddr_t hpt;
-	vsize_t hptsize;
+hpti_g(vaddr_t hpt, vsize_t hptsize)
 {
 	return pdc_call((iodcio_t)pdc, 0, PDC_TLB, PDC_TLB_CONFIG,
 	    &pdc_hwtlb, hpt, hptsize, PDC_TLB_CURRPDE);
 }
 
 int
-pbtlb_g(i)
-	int i;
+pbtlb_g(int i)
 {
 	return -1;
 }
 
 int
-ibtlb_g(i, sp, va, pa, sz, prot)
-	int i;
-	pa_space_t sp;
-	vaddr_t va;
-	paddr_t pa;
-	vsize_t sz;
-	u_int prot;
+ibtlb_g(int i, pa_space_t sp, vaddr_t va, paddr_t pa, vsize_t sz, u_int prot)
 {
 	int error;
 
@@ -820,16 +806,11 @@ ibtlb_g(i, sp, va, pa, sz, prot)
 }
 
 int
-btlb_insert(space, va, pa, lenp, prot)
-	pa_space_t space;
-	vaddr_t va;
-	paddr_t pa;
-	vsize_t *lenp;
-	u_int prot;
+btlb_insert(pa_space_t space, vaddr_t va, paddr_t pa, vsize_t *lenp, u_int prot)
 {
 	static u_int32_t mask;
-	register vsize_t len;
-	register int error, i, btlb_max;
+	vsize_t len;
+	int error, i, btlb_max;
 
 	if (!pdc_btlb.min_size && !pdc_btlb.max_size)
 		return -(ENXIO);
@@ -908,8 +889,7 @@ btlb_insert(space, va, pa, lenp, prot)
 int waittime = -1;
 
 void
-boot(howto)
-	int howto;
+boot(int howto)
 {
 	/* If system is cold, just halt. */
 	if (cold) {
@@ -943,6 +923,10 @@ boot(howto)
 			dumpsys();
 
 		doshutdownhooks();
+
+#ifdef MULTIPROCESSOR
+		hppa_ipi_broadcast(HPPA_IPI_HALT);
+#endif
 	}
 
 	/* in case we came on powerfail interrupt */
@@ -975,7 +959,7 @@ boot(howto)
 		    :: "r" (CMD_RESET), "r" (HPPA_LBCAST + iomod_command));
 	}
 
-	for(;;); /* loop while bus reset is comming up */
+	for (;;) ; /* loop while bus reset is coming up */
 	/* NOTREACHED */
 }
 
@@ -1110,30 +1094,19 @@ dumpsys(void)
 
 /* bcopy(), error on fault */
 int
-kcopy(from, to, size)
-	const void *from;
-	void *to;
-	size_t size;
+kcopy(const void *from, void *to, size_t size)
 {
 	return spcopy(HPPA_SID_KERNEL, from, HPPA_SID_KERNEL, to, size);
 }
 
 int
-copystr(src, dst, size, lenp)
-	const void *src;
-	void *dst;
-	size_t size;
-	size_t *lenp;
+copystr(const void *src, void *dst, size_t size, size_t *lenp)
 {
 	return spstrcpy(HPPA_SID_KERNEL, src, HPPA_SID_KERNEL, dst, size, lenp);
 }
 
 int
-copyinstr(src, dst, size, lenp)
-	const void *src;
-	void *dst;
-	size_t size;
-	size_t *lenp;
+copyinstr(const void *src, void *dst, size_t size, size_t *lenp)
 {
 	return spstrcpy(curproc->p_addr->u_pcb.pcb_space, src,
 	    HPPA_SID_KERNEL, dst, size, lenp);
@@ -1141,11 +1114,7 @@ copyinstr(src, dst, size, lenp)
 
 
 int
-copyoutstr(src, dst, size, lenp)
-	const void *src;
-	void *dst;
-	size_t size;
-	size_t *lenp;
+copyoutstr(const void *src, void *dst, size_t size, size_t *lenp)
 {
 	return spstrcpy(HPPA_SID_KERNEL, src,
 	    curproc->p_addr->u_pcb.pcb_space, dst, size, lenp);
@@ -1153,20 +1122,14 @@ copyoutstr(src, dst, size, lenp)
 
 
 int
-copyin(src, dst, size)
-	const void *src;
-	void *dst;
-	size_t size;
+copyin(const void *src, void *dst, size_t size)
 {
 	return spcopy(curproc->p_addr->u_pcb.pcb_space, src,
 	    HPPA_SID_KERNEL, dst, size);
 }
 
 int
-copyout(src, dst, size)
-	const void *src;
-	void *dst;
-	size_t size;
+copyout(const void *src, void *dst, size_t size)
 {
 	return spcopy(HPPA_SID_KERNEL, src,
 	    curproc->p_addr->u_pcb.pcb_space, dst, size);
@@ -1176,11 +1139,8 @@ copyout(src, dst, size)
  * Set registers on exec.
  */
 void
-setregs(p, pack, stack, retval)
-	struct proc *p;
-	struct exec_package *pack;
-	u_long stack;
-	register_t *retval;
+setregs(struct proc *p, struct exec_package *pack, u_long stack,
+    register_t *retval)
 {
 	struct trapframe *tf = p->p_md.md_regs;
 	struct pcb *pcb = &p->p_addr->u_pcb;
@@ -1218,12 +1178,8 @@ setregs(p, pack, stack, retval)
  * Send an interrupt to process.
  */
 void
-sendsig(catcher, sig, mask, code, type, val)
-	sig_t catcher;
-	int sig, mask;
-	u_long code;
-	int type;
-	union sigval val;
+sendsig(sig_t catcher, int sig, int mask, u_long code, int type,
+    union sigval val)
 {
 	struct proc *p = curproc;
 	struct trapframe *tf = p->p_md.md_regs;
@@ -1348,10 +1304,7 @@ sendsig(catcher, sig, mask, code, type, val)
 }
 
 int
-sys_sigreturn(p, v, retval)
-	struct proc *p;
-	void *v;
-	register_t *retval;
+sys_sigreturn(struct proc *p, void *v, register_t *retval)
 {
 	struct sys_sigreturn_args /* {
 		syscallarg(struct sigcontext *) sigcntxp;
@@ -1437,18 +1390,19 @@ sys_sigreturn(p, v, retval)
 	return (EJUSTRETURN);
 }
 
+void
+signotify(struct proc *p)
+{
+	setsoftast(p);
+	cpu_unidle(p->p_cpu);
+}
+
 /*
  * machine dependent system variables.
  */
 int
-cpu_sysctl(name, namelen, oldp, oldlenp, newp, newlen, p)
-	int *name;
-	u_int namelen;
-	void *oldp;
-	size_t *oldlenp;
-	void *newp;
-	size_t newlen;
-	struct proc *p;
+cpu_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp,
+    size_t newlen, struct proc *p)
 {
 	extern u_int fpu_enable;
 	extern int cpu_fpuena;

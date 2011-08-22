@@ -1,4 +1,4 @@
-/*	$OpenBSD: disklabel.c,v 1.170 2010/08/08 05:24:46 tedu Exp $	*/
+/*	$OpenBSD: disklabel.c,v 1.175 2010/12/13 01:01:41 marco Exp $	*/
 
 /*
  * Copyright (c) 1987, 1993
@@ -115,17 +115,13 @@ int	getasciilabel(FILE *, struct disklabel *);
 int	cmplabel(struct disklabel *, struct disklabel *);
 void	usage(void);
 u_int64_t getnum(char *, u_int64_t, u_int64_t, const char **);
-void	uid_print(FILE *, struct disklabel *);
-int	uid_parse(struct disklabel *, char *);
 
 int
 main(int argc, char *argv[])
 {
 	int ch, f, i, writeable, error = 0;
 	struct disklabel *lp;
-	struct fstab *fsent;
 	FILE *t;
-	char *partname;
 
 	while ((ch = getopt(argc, argv, "ABEf:hNRWb:cdenp:s:tvw")) != -1)
 		switch (ch) {
@@ -229,17 +225,6 @@ main(int argc, char *argv[])
 	    &specname);
 	if (f < 0)
 		err(4, "%s", specname);
-
-	asprintf(&partname, "/dev/%s%c", dkname, 'a');
-	setfsent();
-	for (i = 0; i < MAXPARTITIONS; i++) {
-		partname[strlen(dkname)+5] = 'a'+i;
-		fsent = getfsspec(partname);
-		if (fsent)
-			mountpoints[i] = strdup(fsent->fs_file);
-	}
-	endfsent();
-	free(partname);
 
 	switch (op) {
 	case EDIT:
@@ -423,7 +408,7 @@ writelabel(int f, char *boot, struct disklabel *lp)
 			if (ioctl(f, DIOCWLABEL, &writeable) < 0)
 				perror("ioctl DIOCWLABEL");
 	} else
-#endif /* NUMBOOT > 0 */	
+#endif /* NUMBOOT > 0 */
 	if (!donothing) {
 		if (ioctl(f, DIOCWDINFO, lp) < 0) {
 			l_perror("ioctl DIOCWDINFO");
@@ -482,6 +467,10 @@ l_perror(char *s)
 void
 readlabel(int f)
 {
+	char *partname, *partduid;
+	struct fstab *fsent;
+	int i;
+
 	if (cflag && ioctl(f, DIOCRLDINFO) < 0)
 		err(4, "ioctl DIOCRLDINFO");
 
@@ -492,6 +481,25 @@ readlabel(int f)
 		if (ioctl(f, DIOCGDINFO, &lab) < 0)
 			err(4, "ioctl DIOCGDINFO");
 	}
+
+	asprintf(&partname, "/dev/%s%c", dkname, 'a');
+	asprintf(&partduid,
+	    "%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx.a",
+            lab.d_uid[0], lab.d_uid[1], lab.d_uid[2], lab.d_uid[3],
+            lab.d_uid[4], lab.d_uid[5], lab.d_uid[6], lab.d_uid[7]);
+	setfsent();
+	for (i = 0; i < MAXPARTITIONS; i++) {
+		partname[strlen(dkname) + 5] = 'a' + i;
+		partduid[strlen(partduid) - 1] = 'a' + i;
+		fsent = getfsspec(partname);
+		if (fsent == NULL)
+			fsent = getfsspec(partduid);
+		if (fsent)
+			mountpoints[i] = strdup(fsent->fs_file);
+	}
+	endfsent();
+	free(partduid);
+	free(partname);
 
 	if (aflag)
 		editor_allocspace(&lab);
@@ -597,7 +605,6 @@ void
 makedisktab(FILE *f, struct disklabel *lp)
 {
 	int i;
-	char *did = "\\\n\t:";
 	struct partition *pp;
 
 	if (lp->d_packname[0])
@@ -776,9 +783,9 @@ display(FILE *f, struct disklabel *lp, char unit, int all)
 	    lp->d_typename);
 	fprintf(f, "label: %.*s\n", (int)sizeof(lp->d_packname),
 	    lp->d_packname);
-	fprintf(f, "uid: ");
-	uid_print(f, lp);
-	fprintf(f, "\n");
+	fprintf(f, "duid: %02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx\n",
+            lp->d_uid[0], lp->d_uid[1], lp->d_uid[2], lp->d_uid[3],
+            lp->d_uid[4], lp->d_uid[5], lp->d_uid[6], lp->d_uid[7]);
 	fprintf(f, "flags:");
 	if (lp->d_flags & D_BADSECT)
 		fprintf(f, " badsect");
@@ -977,21 +984,10 @@ getnum(char *nptr, u_int64_t min, u_int64_t max, const char **errstr)
 	return (ret);
 }
 
-void
-uid_print(FILE *f, struct disklabel *lp)
-{
-	char hex[] = "0123456789abcdef";
-	int i;
-
-	for (i = 0; i < sizeof(lp->d_uid); i++)
-		fprintf(f, "%c%c", hex[(lp->d_uid[i] >> 4) & 0xf],
-		    hex[lp->d_uid[i] & 0xf]);
-}
-
 int
-uid_parse(struct disklabel *lp, char *s)
+duid_parse(struct disklabel *lp, char *s)
 {
-	u_char uid[8];
+	u_char duid[8];
 	char c;
 	int i;
 
@@ -1008,11 +1004,11 @@ uid_parse(struct disklabel *lp, char *s)
 			c -= ('A' - 10);
 		else
 			return -1;
-		uid[i / 2] <<= 4;
-		uid[i / 2] |= c & 0xf;
+		duid[i / 2] <<= 4;
+		duid[i / 2] |= c & 0xf;
 	}
 
-	memcpy(lp->d_uid, &uid, sizeof(lp->d_uid));
+	memcpy(lp->d_uid, &duid, sizeof(lp->d_uid));
 	return 0;
 }
 
@@ -1115,8 +1111,8 @@ getasciilabel(FILE *f, struct disklabel *lp)
 			strncpy(lp->d_packname, tp, sizeof (lp->d_packname));
 			continue;
 		}
-		if (!strcmp(cp, "uid")) {
-			if (uid_parse(lp, tp) != 0) {
+		if (!strcmp(cp, "duid")) {
+			if (duid_parse(lp, tp) != 0) {
 				warnx("line %d: bad %s: %s", lineno, cp, tp);
 				errors++;
 			}
@@ -1417,7 +1413,7 @@ setbootflag(struct disklabel *lp)
 				pp->p_fstype = FS_UNUSED;
 			continue;
 		}
-		
+
 		part = 'a' + i;
 		switch (pp->p_fstype) {
 		case FS_BOOT:	/* Already marked. */

@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpu.h,v 1.9 2010/04/28 16:20:28 syuu Exp $ */
+/*	$OpenBSD: cpu.h,v 1.11 2010/09/11 11:29:50 syuu Exp $ */
 /*-
  * Copyright (c) 1992, 1993
  *	The Regents of the University of California.  All rights reserved.
@@ -47,12 +47,15 @@
 #ifdef _KERNEL
 #if defined(MULTIPROCESSOR) && !defined(_LOCORE)
 struct cpu_info;
+struct cpu_info *hw_getcurcpu(void);
+void hw_setcurcpu(struct cpu_info *);
 void hw_cpu_boot_secondary(struct cpu_info *);
 void hw_cpu_hatch(struct cpu_info *);
 void hw_cpu_spinup_trampoline(struct cpu_info *);
 int  hw_ipi_intr_establish(int (*)(void *), u_long);
 void hw_ipi_intr_set(u_long);
 void hw_ipi_intr_clear(u_long);
+void hw_cpu_init_secondary(struct cpu_info *);
 #endif	/* MULTIPROCESSOR && !_LOCORE */
 
 /*

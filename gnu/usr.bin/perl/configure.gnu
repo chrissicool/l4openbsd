@@ -1,6 +1,6 @@
 #! /bin/sh
 #
-# $Id: configure.gnu,v 1.8 2009/10/12 18:24:20 millert Exp $
+# $Id: configure,v 3.0.1.1 1995/07/25 14:16:21 ram Exp $
 #
 # GNU configure-like front end to metaconfig's Configure.
 #
@@ -15,10 +15,7 @@
 # The remaining of this leading shell comment may be removed if you
 # include this script in your own package.
 #
-# $Log: configure.gnu,v $
-# Revision 1.8  2009/10/12 18:24:20  millert
-# Merge in perl 5.10.1
-#
+# $Log: configure,v $
 # Revision 3.0.1.1  1995/07/25  14:16:21  ram
 # patch56: created
 #

@@ -1,4 +1,4 @@
-/*	$OpenBSD: ldpe.c,v 1.11 2010/07/08 09:41:05 claudio Exp $ */
+/*	$OpenBSD: ldpe.c,v 1.14 2011/01/10 12:28:25 claudio Exp $ */
 
 /*
  * Copyright (c) 2005 Claudio Jeker <claudio@openbsd.org>
@@ -51,7 +51,6 @@ void	 recv_packet(int, short, void *);
 struct ldpd_conf	*leconf = NULL, *nconf;
 struct imsgev		*iev_main;
 struct imsgev		*iev_lde;
-int			 oe_nofib;
 
 /* ARGSUSED */
 void
@@ -143,8 +142,6 @@ ldpe(struct ldpd_conf *xconf, int pipe_parent2ldpe[2], int pipe_ldpe2lde[2],
 	session_socket_blockmode(xconf->ldp_session_socket, BM_NONBLOCK);
 
 	leconf = xconf;
-	if (leconf->flags & LDPD_FLAG_NO_LFIB_UPDATE)
-		oe_nofib = 1;
 
 	if ((pw = getpwnam(LDPD_USER)) == NULL)
 		fatal("getpwnam");
@@ -163,7 +160,6 @@ ldpe(struct ldpd_conf *xconf, int pipe_parent2ldpe[2], int pipe_ldpe2lde[2],
 		fatal("can't drop privileges");
 
 	event_init();
-	nbr_init(NBR_HASHSIZE);
 
 	/* setup signal handler */
 	signal_set(&ev_sigint, SIGINT, ldpe_sig_handler, NULL);
@@ -398,8 +394,10 @@ ldpe_dispatch_lde(int fd, short event, void *bula)
 
 		switch (imsg.hdr.type) {
 		case IMSG_MAPPING_ADD:
+		case IMSG_RELEASE_ADD:
+		case IMSG_REQUEST_ADD:
 			if (imsg.hdr.len - IMSG_HEADER_SIZE != sizeof(map))
-				fatalx("invalid size of OE request");
+				fatalx("invalid size of map request");
 			memcpy(&map, imsg.data, sizeof(map));
 
 			nbr = nbr_find_peerid(imsg.hdr.peerid);
@@ -409,40 +407,39 @@ ldpe_dispatch_lde(int fd, short event, void *bula)
 				return;
 			}
 
-			nbr_mapping_add(nbr, &nbr->mapping_list, &map);
+			switch (imsg.hdr.type) {
+			case IMSG_MAPPING_ADD:
+				nbr_mapping_add(nbr, &nbr->mapping_list, &map);
+				break;
+			case IMSG_RELEASE_ADD:
+				nbr_mapping_add(nbr, &nbr->release_list, &map);
+				break;
+			case IMSG_REQUEST_ADD:
+				nbr_mapping_add(nbr, &nbr->request_list, &map);
+				break;
+			}
 			break;
 		case IMSG_MAPPING_ADD_END:
-			nbr = nbr_find_peerid(imsg.hdr.peerid);
-			if (nbr == NULL) {
-				log_debug("ldpe_dispatch_lde: cannot find "
-				    "neighbor");
-				return;
-			}
-
-			send_labelmapping(nbr);
-			break;
-		case IMSG_RELEASE_ADD:
-			if (imsg.hdr.len - IMSG_HEADER_SIZE != sizeof(map))
-				fatalx("invalid size of OE request");
-			memcpy(&map, imsg.data, sizeof(map));
-
-			nbr = nbr_find_peerid(imsg.hdr.peerid);
-			if (nbr == NULL) {
-				log_debug("ldpe_dispatch_lde: cannot find "
-				    "neighbor");
-				return;
-			}
-
-			nbr_mapping_add(nbr, &nbr->release_list, &map);
-			break;
 		case IMSG_RELEASE_ADD_END:
+		case IMSG_REQUEST_ADD_END:
 			nbr = nbr_find_peerid(imsg.hdr.peerid);
 			if (nbr == NULL) {
 				log_debug("ldpe_dispatch_lde: cannot find "
 				    "neighbor");
 				return;
 			}
-			send_labelrelease(nbr);
+
+			switch (imsg.hdr.type) {
+			case IMSG_MAPPING_ADD_END:
+				send_labelmapping(nbr);
+				break;
+			case IMSG_RELEASE_ADD_END:
+				send_labelrelease(nbr);
+				break;
+			case IMSG_REQUEST_ADD_END:
+				send_labelrequest(nbr);
+				break;
+			}
 			break;
 		case IMSG_NOTIFICATION_SEND:
 			if (imsg.hdr.len - IMSG_HEADER_SIZE != sizeof(nm))
@@ -458,29 +455,6 @@ ldpe_dispatch_lde(int fd, short event, void *bula)
 
 			send_notification_nbr(nbr, nm.status,
 			    htonl(nm.messageid), htonl(nm.type));
-			break;
-		case IMSG_REQUEST_ADD:
-			if (imsg.hdr.len - IMSG_HEADER_SIZE != sizeof(map))
-				fatalx("invalid size of OE request");
-			memcpy(&map, imsg.data, sizeof(map));
-
-			nbr = nbr_find_peerid(imsg.hdr.peerid);
-			if (nbr == NULL) {
-				log_debug("ldpe_dispatch_lde: cannot find "
-				    "neighbor");
-				return;
-			}
-
-			nbr_mapping_add(nbr, &nbr->request_list, &map);
-			break;
-		case IMSG_REQUEST_ADD_END:
-			nbr = nbr_find_peerid(imsg.hdr.peerid);
-			if (nbr == NULL) {
-				log_debug("ldpe_dispatch_lde: cannot find "
-				    "neighbor");
-				return;
-			}
-			send_labelrequest(nbr);
 			break;
 		case IMSG_CTL_END:
 		case IMSG_CTL_SHOW_LIB:
@@ -509,15 +483,6 @@ ldpe_router_id(void)
 }
 
 void
-ldpe_fib_update(int type)
-{
-	if (type == IMSG_CTL_LFIB_COUPLE)
-		oe_nofib = 0;
-	if (type == IMSG_CTL_LFIB_DECOUPLE)
-		oe_nofib = 1;
-}
-
-void
 ldpe_iface_ctl(struct ctl_conn *c, unsigned int idx)
 {
 	struct iface		*iface;
@@ -531,23 +496,4 @@ ldpe_iface_ctl(struct ctl_conn *c, unsigned int idx)
 			    0, 0, -1, ictl, sizeof(struct ctl_iface));
 		}
 	}
-}
-
-void
-ldpe_nbr_ctl(struct ctl_conn *c)
-{
-	struct iface	*iface;
-	struct nbr	*nbr;
-	struct ctl_nbr	*nctl;
-
-	LIST_FOREACH(iface, &leconf->iface_list, entry) {
-		LIST_FOREACH(nbr, &iface->nbr_list, entry) {
-			nctl = nbr_to_ctl(nbr);
-			imsg_compose_event(&c->iev,
-			    IMSG_CTL_SHOW_NBR, 0, 0, -1, nctl,
-			    sizeof(struct ctl_nbr));
-		}
-	}
-
-	imsg_compose_event(&c->iev, IMSG_CTL_END, 0, 0, -1, NULL, 0);
 }

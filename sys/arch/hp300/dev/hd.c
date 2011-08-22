@@ -1,4 +1,4 @@
-/*	$OpenBSD: hd.c,v 1.61 2010/05/23 10:49:19 dlg Exp $	*/
+/*	$OpenBSD: hd.c,v 1.63 2010/09/22 01:18:57 matthew Exp $	*/
 /*	$NetBSD: rd.c,v 1.33 1997/07/10 18:14:08 kleink Exp $	*/
 
 /*
@@ -295,7 +295,7 @@ hdattach(parent, self, aux)
 	 * Initialize and attach the disk structure.
 	 */
 	sc->sc_dkdev.dk_name = sc->sc_dev.dv_xname;
-	disk_attach(&sc->sc_dkdev);
+	disk_attach(&sc->sc_dev, &sc->sc_dkdev);
 
 	sc->sc_slave = ha->ha_slave;
 	sc->sc_punit = ha->ha_punit;
@@ -1110,7 +1110,7 @@ hdread(dev, uio, flags)
 	int flags;
 {
 
-	return (physio(hdstrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(hdstrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -1120,7 +1120,7 @@ hdwrite(dev, uio, flags)
 	int flags;
 {
 
-	return (physio(hdstrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(hdstrategy, dev, B_WRITE, minphys, uio));
 }
 
 int

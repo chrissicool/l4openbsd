@@ -1,4 +1,4 @@
-.\" $OpenBSD: otus.4,v 1.13 2010/04/29 09:20:17 jmc Exp $
+.\" $OpenBSD: otus.4,v 1.17 2011/01/06 19:47:46 damien Exp $
 .\"
 .\" Copyright (c) 2009 Damien Bergamini <damien.bergamini@free.fr>
 .\"
@@ -14,7 +14,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: April 29 2010 $
+.Dd $Mdocdate: January 6 2011 $
 .Dt OTUS 4
 .Os
 .Sh NAME
@@ -88,9 +88,10 @@ http://damien.bergamini.free.fr/packages/openbsd/otus-firmware-1.0.tgz
 The following adapters should work:
 .Pp
 .Bl -tag -width Ds -offset indent -compact
+.It 3Com 3CRUSBN275
 .It Arcadyan WN7512
 .\" .It AVM FRITZ!WLAN USB Stick N
-.It CACE AirPcap Nx
+.It CACE AirPcap \&Nx
 .It D-Link DWA-130 rev \&D1
 .It D-Link DWA-160 rev A1
 .It D-Link DWA-160 rev A2
@@ -119,17 +120,10 @@ dhcp NONE NONE NONE nwkey 0x1deadbeef1 chan 11
 .Pp
 Configure otus0 to join network
 .Dq my_net
-using WPA-PSK with passphrase
+using WPA with passphrase
 .Dq my_passphrase :
 .Bd -literal -offset indent
-# ifconfig otus0 nwid my_net wpa wpapsk \e
-	`wpa-psk my_net my_passphrase`
-.Ed
-.Pp
-Return otus0 to its default settings:
-.Bd -literal -offset indent
-# ifconfig otus0 -bssid -chan media autoselect \e
-	nwid "" -nwkey -wpa -wpapsk
+# ifconfig otus0 nwid my_net wpakey my_passphrase
 .Ed
 .Pp
 Join an existing BSS network,
@@ -155,11 +149,7 @@ This should not happen.
 .Xr netintro 4 ,
 .Xr usb 4 ,
 .Xr hostname.if 5 ,
-.Xr ifconfig 8 ,
-.Xr wpa-psk 8
-.Pp
-Atheros Communications AR9001U-2NX/AR9001U-2NG/AR9001U-NG:
-.Pa http://www.atheros.com/pt/bulletins/AR9001USBBulletin.pdf
+.Xr ifconfig 8
 .Sh HISTORY
 The
 .Nm

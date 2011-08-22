@@ -1,4 +1,4 @@
-/*	$OpenBSD: locore.S,v 1.39 2009/06/09 02:56:38 krw Exp $	*/
+/*	$OpenBSD: locore.S,v 1.44 2010/12/04 05:20:18 guenther Exp $	*/
 /*	$NetBSD: locore.S,v 1.13 2004/03/25 18:33:17 drochner Exp $	*/
 
 /*
@@ -741,6 +741,8 @@ ENTRY(cpu_switchto)
 	movb	$SONPROC,P_STAT(%r12)	# p->p_stat = SONPROC
 	SET_CURPROC(%r12,%rcx)
 
+	movl	CPUVAR(CPUID),%edi
+
 	/* If old proc exited, don't bother. */
 	testq	%r13,%r13
 	jz	switch_exited
@@ -752,12 +754,15 @@ ENTRY(cpu_switchto)
 	 *   %rax, %rcx - scratch
 	 *   %r13 - old proc, then old pcb
 	 *   %r12 - new proc
+	 *   %edi - cpuid
 	 */
 
-	movq	%r13,%rdi
-	call	pmap_deactivate
-
 	movq	P_ADDR(%r13),%r13
+
+	/* clear the old pmap's bit for the cpu */
+	movq	PCB_PMAP(%r13),%rcx
+	lock
+	btrq	%rdi,PM_CPUS(%rcx)
 
 	/* Save stack pointers. */
 	movq	%rsp,PCB_RSP(%r13)
@@ -781,30 +786,27 @@ switch_exited:
 	movq	PCB_RSP(%r13),%rsp
 	movq	PCB_RBP(%r13),%rbp
 
-#if 0
+	movq	CPUVAR(TSS),%rcx
+	movq	PCB_KSTACK(%r13),%rdx
+	movq	%rdx,TSS_RSP0(%rcx)
+
+	movq	PCB_CR3(%r13),%rax
+	movq	%rax,%cr3
+
 	/* Don't bother with the rest if switching to a system process. */
 	testl	$P_SYSTEM,P_FLAG(%r12)
 	jnz	switch_restored
+
+	/* set the new pmap's bit for the cpu */
+	movl	CPUVAR(CPUID),%edi
+	movq	PCB_PMAP(%r13),%rcx
+	lock
+	btsq	%rdi,PM_CPUS(%rcx)
+#ifdef DIAGNOSTIC
+	jc	_C_LABEL(switch_pmcpu_set)
 #endif
 
-	/* Load TSS info. */
-#ifdef MULTIPROCESSOR
-	movq    CPUVAR(GDT),%rax
-#else   
-	movq	_C_LABEL(gdtstore)(%rip),%rax
-#endif
-	movl	P_MD_TSS_SEL(%r12),%edx
-
-	/* Switch TSS. Reset "task busy" flag before */
-	andl	$~0x0200,4(%rax,%rdx, 1)
-	ltr	%dx
-
-	movq	%r12,%rdi
-	call	_C_LABEL(pmap_activate)
-
-#if 0
 switch_restored:
-#endif
 	/* Restore cr0 (including FPU state). */
 	movl	PCB_CR0(%r13),%ecx
 #ifdef MULTIPROCESSOR
@@ -876,6 +878,11 @@ NENTRY(switch_error3)
 	call	_C_LABEL(panic)
 	/* NOTREACHED */
 1:	.asciz	"cpu_switch 3"
+NENTRY(switch_pmcpu_set)
+	movabsq	$1f,%rdi
+	call	_C_LABEL(panic)
+	/* NOTREACHED */
+1:	.asciz	"activate already active pmap"
 #endif /* DIAGNOSTIC */
 
 /*
@@ -900,7 +907,7 @@ IDTVEC(syscall)
 	swapgs
 	movq	%r15,CPUVAR(SCRATCH)
 	movq	CPUVAR(CURPCB),%r15
-	movq	PCB_RSP0(%r15),%r15
+	movq	PCB_KSTACK(%r15),%r15
 	xchgq	%r15,%rsp
 	sti
 
@@ -911,7 +918,7 @@ IDTVEC(syscall)
 	 * ss:rsp, etc, so that all GP registers can be
 	 * saved. Then, fill in the rest.
 	 */
-	pushq	$(LSEL(LUDATA_SEL, SEL_UPL))
+	pushq	$(GSEL(GUDATA_SEL, SEL_UPL))
 	pushq	%r15
 	subq	$(TF_RSP-TF_TRAPNO),%rsp
 	movq	CPUVAR(SCRATCH),%r15
@@ -920,9 +927,9 @@ IDTVEC(syscall)
 	movw	%fs,TF_FS(%rsp)
 	movw	%gs,TF_GS(%rsp)
 	movw	%es,TF_ES(%rsp)
-	movw	$(LSEL(LUDATA_SEL, SEL_UPL)),TF_DS(%rsp)
+	movw	$(GSEL(GUDATA_SEL, SEL_UPL)),TF_DS(%rsp)
 	movq	%r11, TF_RFLAGS(%rsp)	/* old rflags from syscall insn */
-	movq	$(LSEL(LUCODE_SEL, SEL_UPL)), TF_CS(%rsp)
+	movq	$(GSEL(GUCODE_SEL, SEL_UPL)), TF_CS(%rsp)
 	movq	%rcx,TF_RIP(%rsp)
 	movq	$2,TF_ERR(%rsp)
 	movq	$T_ASTFLT, TF_TRAPNO(%rsp)
@@ -961,7 +968,7 @@ syscall_return:
 	movw	TF_FS(%rsp),%fs
 	movw	TF_GS(%rsp),%gs
 	INTR_RESTORE_GPRS
-	movw	$(LSEL(LUDATA_SEL, SEL_UPL)),%r11
+	movw	$(GSEL(GUDATA_SEL, SEL_UPL)),%r11
 	movw	%r11,%ds
 	addq	$48,%rsp
 	popq	%rcx	/* return rip */
@@ -1008,26 +1015,12 @@ NENTRY(child_trampoline)
 
 	.globl  _C_LABEL(osyscall_return)
 
-/* XXX - can we zap the following two? */
-
-/*
- * Old call gate entry for syscall. only needed if we're
- * going to support running old NetBSD or ibcs2 binaries, etc,
- * on NetBSD/amd64.
- */
-IDTVEC(oosyscall)
-	/* Set rflags in trap frame. */
-	pushfq
-	popq	8(%rsp)
-	pushq	$7		# size of instruction for restart
-	jmp	osyscall1
 
 /*
  * Trap gate entry for int $80 syscall, also used by sigreturn.
  */
 IDTVEC(osyscall)
 	pushq	$2		# size of instruction for restart
-osyscall1:
 	pushq	$T_ASTFLT	# trap # for doing ASTs
 	INTRENTRY
 	sti
@@ -1049,12 +1042,28 @@ _C_LABEL(osyscall_return):
 	jmp	2b
 
 iret_return:
-#ifndef DIAGNOSTIC
-1:	INTRFASTEXIT
-#else /* DIAGNOSTIC */
-1:	cmpl	$IPL_NONE,CPUVAR(ILEVEL)
+1:
+#ifdef DIAGNOSTIC
+	cmpl	$IPL_NONE,CPUVAR(ILEVEL)
 	jne	3f
-	INTRFASTEXIT
+#endif /* DIAGNOSTIC */
+	.globl	intr_fast_exit
+intr_fast_exit:
+	INTR_RESTORE_GPRS
+	testq	$SEL_UPL,56(%rsp)
+	je	5f
+	cli
+	swapgs
+	movw	0(%rsp),%gs
+	movw	8(%rsp),%fs
+	movw	16(%rsp),%es
+	movw	24(%rsp),%ds
+5:	addq	$48,%rsp
+	.globl	_C_LABEL(doreti_iret)
+_C_LABEL(doreti_iret):
+	iretq
+
+#ifdef DIAGNOSTIC
 3:	sti
 	movabsq	$4f, %rdi
 	xorq	%rax,%rax

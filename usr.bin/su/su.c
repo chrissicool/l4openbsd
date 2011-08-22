@@ -1,4 +1,4 @@
-/*	$OpenBSD: su.c,v 1.58 2009/10/27 23:59:44 deraadt Exp $	*/
+/*	$OpenBSD: su.c,v 1.65 2011/01/11 10:07:56 robert Exp $	*/
 
 /*
  * Copyright (c) 1988 The Regents of the University of California.
@@ -61,6 +61,7 @@ int
 main(int argc, char **argv)
 {
 	int asme = 0, asthem = 0, ch, fastlogin = 0, emlogin = 0, prio;
+	int altshell = 0, homeless = 0;
 	char *user, *shell = NULL, *avshell, *username, **np;
 	char *class = NULL, *style = NULL, *p;
 	enum { UNSET, YES, NO } iscsh = UNSET;
@@ -72,7 +73,7 @@ main(int argc, char **argv)
 	uid_t ruid;
 	u_int flags;
 
-	while ((ch = getopt(argc, argv, "a:c:fKLlm-")) != -1)
+	while ((ch = getopt(argc, argv, "a:c:fKLlms:-")) != -1)
 		switch (ch) {
 		case 'a':
 			if (style)
@@ -104,6 +105,10 @@ main(int argc, char **argv)
 			asme = 1;
 			asthem = 0;
 			break;
+		case 's':
+			altshell = 1;
+			shell = optarg;
+			break;
 		default:
 			usage();
 		}
@@ -129,6 +134,9 @@ main(int argc, char **argv)
 	if (ruid && class)
 		auth_errx(as, 1, "only the superuser may specify a login class");
 
+	if (ruid && altshell)
+		auth_errx(as, 1, "only the superuser may specify a login shell");
+
 	if (username != NULL)
 		auth_setoption(as, "invokinguser", username);
 
@@ -139,7 +147,7 @@ main(int argc, char **argv)
 		auth_errx(as, 1, "who are you?");
 	if ((username = strdup(pwd->pw_name)) == NULL)
 		auth_errx(as, 1, "can't allocate memory");
-	if (asme) {
+	if (asme && !altshell) {
 		if (pwd->pw_shell && *pwd->pw_shell) {
 			if ((shell = strdup(pwd->pw_shell)) == NULL)
 				auth_errx(as, 1, "can't allocate memory");
@@ -166,7 +174,7 @@ main(int argc, char **argv)
 			*p++ = '\0';
 			style = p;	/* XXX overrides -a flag */
 		}
-		
+
 		/*
 		 * Clean and setup our current authentication session.
 		 * Note that options *are* not cleared.
@@ -186,7 +194,7 @@ main(int argc, char **argv)
 
 		/* If the user specified a login class, use it */
 		if (!class && pwd && pwd->pw_class && pwd->pw_class[0] != '\0')
-			class = pwd->pw_class;
+			class = strdup(pwd->pw_class);
 		if ((lc = login_getclass(class)) == NULL)
 			auth_errx(as, 1, "no such login class: %s",
 			    class ? class : LOGIN_DEFCLASS);
@@ -204,17 +212,19 @@ main(int argc, char **argv)
 		fprintf(stderr, "Login incorrect\n");
 	}
 
-	if (asme) {
-		/* if asme and non-standard target shell, must be root */
-		if (!chshell(pwd->pw_shell) && ruid)
-			auth_errx(as, 1, "permission denied (shell).");
-	} else if (pwd->pw_shell && *pwd->pw_shell) {
-		if ((shell = strdup(pwd->pw_shell)) == NULL)
-			auth_errx(as, 1, "can't allocate memory");
-		iscsh = UNSET;
-	} else {
-		shell = _PATH_BSHELL;
-		iscsh = NO;
+	if (!altshell) {
+		if (asme) {
+			/* if asme and non-std target shell, must be root */
+			if (ruid && !chshell(shell))
+				auth_errx(as, 1, "permission denied (shell).");
+		} else if (pwd->pw_shell && *pwd->pw_shell) {
+			if ((shell = strdup(pwd->pw_shell)) == NULL)
+				auth_errx(as, 1, "can't allocate memory");
+			iscsh = UNSET;
+		} else {
+			shell = _PATH_BSHELL;
+			iscsh = NO;
+		}
 	}
 
 	if ((p = strrchr(shell, '/')))
@@ -238,8 +248,18 @@ main(int argc, char **argv)
 
 			setegid(pwd->pw_gid);
 			seteuid(pwd->pw_uid);
-			if (chdir(pwd->pw_dir) < 0)
-				auth_err(as, 1, "%s", pwd->pw_dir);
+
+			homeless = chdir(pwd->pw_dir);
+			if (homeless) {
+				if (login_getcapbool(lc, "requirehome", 0)) {
+					auth_err(as, 1, "%s", pwd->pw_dir);
+				} else {
+					(void)printf("No home directory %s!\n", pwd->pw_dir);
+					(void)printf("Logging in with home = \"/\".\n");
+					if (chdir("/") < 0)
+						auth_err(as, 1, "/");
+				}
+			}
 			setegid(0);	/* XXX use a saved gid instead? */
 			seteuid(0);
 		} else if (pwd->pw_uid == 0) {
@@ -252,8 +272,11 @@ main(int argc, char **argv)
 			    setenv("USER", pwd->pw_name, 1) == -1)
 				auth_err(as, 1, "unable to set environment");
 		}
-		if (setenv("HOME", pwd->pw_dir, 1) == -1 ||
+		if (setenv("HOME", homeless ? "/" : pwd->pw_dir, 1) == -1 ||
 		    setenv("SHELL", shell, 1) == -1)
+			auth_err(as, 1, "unable to set environment");
+	} else if (altshell) {
+		if (setenv("SHELL", shell, 1) == -1)
 			auth_err(as, 1, "unable to set environment");
 	}
 
@@ -293,9 +316,11 @@ main(int argc, char **argv)
 		 */
 		if (getsid(0) != getpid())
 			flags &= ~LOGIN_SETLOGIN;
-	} else
-		flags = (asthem ? (LOGIN_SETPRIORITY | LOGIN_SETUMASK) : 0) |
-		    LOGIN_SETRESOURCES | LOGIN_SETGROUP | LOGIN_SETUSER;
+	} else {
+		flags = LOGIN_SETRESOURCES|LOGIN_SETGROUP|LOGIN_SETUSER;
+		if (asthem)
+			flags |= LOGIN_SETENV|LOGIN_SETPRIORITY|LOGIN_SETUMASK;
+	}
 	if (setusercontext(lc, pwd, pwd->pw_uid, flags) != 0)
 		auth_err(as, 1, "unable to set user context");
 	if (pwd->pw_uid && auth_approval(as, lc, pwd->pw_name, "su") <= 0)
@@ -418,7 +443,9 @@ usage(void)
 	extern char *__progname;
 
 	fprintf(stderr, "usage: %s [-fKLlm] [-a auth-type] [-c login-class] "
-	    "[login [shell arguments]]\n", __progname);
+	    "[-s login-shell]\n"
+	    "%-*s[login [shell arguments]]\n", __progname,
+	    (int)strlen(__progname) + 8, "");
 	exit(1);
 }
 

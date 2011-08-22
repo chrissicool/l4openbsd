@@ -1,4 +1,4 @@
-/* $OpenBSD: status.c,v 1.63 2010/06/21 01:27:46 nicm Exp $ */
+/* $OpenBSD: status.c,v 1.71 2011/01/26 01:54:56 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
@@ -33,7 +33,8 @@ char   *status_redraw_get_left(
 	    struct client *, time_t, int, struct grid_cell *, size_t *);
 char   *status_redraw_get_right(
 	    struct client *, time_t, int, struct grid_cell *, size_t *);
-char   *status_job(struct client *, char **);
+char   *status_find_job(struct client *, char **);
+void	status_job_free(void *);
 void	status_job_callback(struct job *);
 char   *status_print(
 	    struct client *, struct winlink *, time_t, struct grid_cell *);
@@ -41,8 +42,23 @@ void	status_replace1(struct client *,
 	    struct winlink *, char **, char **, char *, size_t, int);
 void	status_message_callback(int, short, void *);
 
-void	status_prompt_add_history(struct client *);
+const char *status_prompt_up_history(u_int *);
+const char *status_prompt_down_history(u_int *);
+void	status_prompt_add_history(const char *);
 char   *status_prompt_complete(const char *);
+
+/* Status prompt history. */
+ARRAY_DECL(, char *) status_prompt_history = ARRAY_INITIALIZER;
+
+/* Status output tree. */
+RB_GENERATE(status_out_tree, status_out, entry, status_out_cmp);
+
+/* Output tree comparison function. */
+int
+status_out_cmp(struct status_out *so1, struct status_out *so2)
+{
+	return (strcmp(so1->cmd, so2->cmd));
+}
 
 /* Retrieve options for left string. */
 char *
@@ -360,9 +376,8 @@ status_replace1(struct client *c,struct winlink *wl,
 			ch = ')';
 			goto skip_to;
 		}
-		if ((ptr = status_job(c, iptr)) == NULL)
+		if ((ptr = status_find_job(c, iptr)) == NULL)
 			return;
-		freeptr = ptr;
 		goto do_replace;
 	case 'H':
 		if (gethostname(tmp, sizeof tmp) != 0)
@@ -388,19 +403,8 @@ status_replace1(struct client *c,struct winlink *wl,
 		ptr = wl->window->name;
 		goto do_replace;
 	case 'F':
-		tmp[0] = ' ';
-		if (wl->flags & WINLINK_CONTENT)
-			tmp[0] = '+';
-		else if (wl->flags & WINLINK_BELL)
-			tmp[0] = '!';
-		else if (wl->flags & WINLINK_ACTIVITY)
-			tmp[0] = '#';
-		else if (wl == s->curw)
-			tmp[0] = '*';
-		else if (wl == TAILQ_FIRST(&s->lastw))
-			tmp[0] = '-';
-		tmp[1] = '\0';
-		ptr = tmp;
+		ptr = window_printable_flags(s, wl);
+		freeptr = ptr;
 		goto do_replace;
 	case '[':
 		/*
@@ -462,7 +466,7 @@ status_replace(struct client *c,
 			break;
 		ch = *iptr++;
 
-		if (ch != '#') {
+		if (ch != '#' || *iptr == '\0') {
 			*optr++ = ch;
 			continue;
 		}
@@ -475,12 +479,12 @@ status_replace(struct client *c,
 
 /* Figure out job name and get its result, starting it off if necessary. */
 char *
-status_job(struct client *c, char **iptr)
+status_find_job(struct client *c, char **iptr)
 {
-	struct job	*job;
-	char   		*cmd;
-	int		 lastesc;
-	size_t		 len;
+	struct status_out	*so, so_find;
+	char   			*cmd;
+	int			 lastesc;
+	size_t			 len;
 
 	if (**iptr == '\0')
 		return (NULL);
@@ -510,24 +514,88 @@ status_job(struct client *c, char **iptr)
 	(*iptr)++;			/* skip final ) */
 	cmd[len] = '\0';
 
-	job = job_get(&c->status_jobs, cmd);
-	if (job == NULL) {
-		job = job_add(&c->status_jobs,
-		    JOB_PERSIST, c, cmd, status_job_callback, xfree, NULL);
-		job_run(job);
+	/* First try in the new tree. */
+	so_find.cmd = cmd;
+	so = RB_FIND(status_out_tree, &c->status_new, &so_find);
+	if (so != NULL && so->out != NULL)
+		return (so->out);
+
+	/* If not found at all, start the job and add to the tree. */
+	if (so == NULL) {
+		job_run(cmd, status_job_callback, status_job_free, c);
+		c->references++;
+
+		so = xmalloc(sizeof *so);
+		so->cmd = xstrdup(cmd);
+		so->out = NULL;
+		RB_INSERT(status_out_tree, &c->status_new, so);
 	}
+
+	/* Lookup in the old tree. */
+	so_find.cmd = cmd;
+	so = RB_FIND(status_out_tree, &c->status_old, &so_find);
 	xfree(cmd);
-	if (job->data == NULL)
-		return (xstrdup(""));
-	return (xstrdup(job->data));
+	if (so != NULL)
+		return (so->out);
+	return (NULL);
+}
+
+/* Free job tree. */
+void
+status_free_jobs(struct status_out_tree *sotree)
+{
+	struct status_out	*so, *so_next;
+
+	so_next = RB_MIN(status_out_tree, sotree);
+	while (so_next != NULL) {
+		so = so_next;
+		so_next = RB_NEXT(status_out_tree, sotree, so);
+
+		RB_REMOVE(status_out_tree, sotree, so);
+		if (so->out != NULL)
+			xfree(so->out);
+		xfree(so->cmd);
+		xfree(so);
+	}
+}
+
+/* Update jobs on status interval. */
+void
+status_update_jobs(struct client *c)
+{
+	/* Free the old tree. */
+	status_free_jobs(&c->status_old);
+
+	/* Move the new to old. */
+	memcpy(&c->status_old, &c->status_new, sizeof c->status_old);
+	RB_INIT(&c->status_new);
+}
+
+/* Free status job. */
+void
+status_job_free(void *data)
+{
+	struct client	*c = data;
+
+	c->references--;
 }
 
 /* Job has finished: save its result. */
 void
 status_job_callback(struct job *job)
 {
-	char	*line, *buf;
-	size_t	 len;
+	struct client		*c = job->data;
+	struct status_out	*so, so_find;
+	char			*line, *buf;
+	size_t			 len;
+
+	if (c->flags & CLIENT_DEAD)
+		return;
+
+	so_find.cmd = job->cmd;
+	so = RB_FIND(status_out_tree, &c->status_new, &so_find);
+	if (so == NULL || so->out != NULL)
+		return;
 
 	buf = NULL;
 	if ((line = evbuffer_readline(job->event->input)) == NULL) {
@@ -536,17 +604,11 @@ status_job_callback(struct job *job)
 		if (len != 0)
 			memcpy(buf, EVBUFFER_DATA(job->event->input), len);
 		buf[len] = '\0';
-	}
+	} else
+		buf = xstrdup(line);
 
-	if (job->data != NULL)
-		xfree(job->data);
-	else
-		server_redraw_client(job->client);
-
-	if (line == NULL)
-		job->data = buf;
-	else
-		job->data = xstrdup(line);
+	so->out = buf;
+	server_redraw_client(c);
 }
 
 /* Return winlink status line entry and adjust gc as necessary. */
@@ -858,6 +920,7 @@ status_prompt_key(struct client *c, int key)
 {
 	struct paste_buffer	*pb;
 	char   			*s, *first, *last, word[64], swapc;
+	const char              *histstr;
 	u_char			 ch;
 	size_t			 size, n, off, idx;
 
@@ -970,34 +1033,25 @@ status_prompt_key(struct client *c, int key)
 		}
 		break;
 	case MODEKEYEDIT_HISTORYUP:
-		if (ARRAY_LENGTH(&c->prompt_hdata) == 0)
+		histstr = status_prompt_up_history(&c->prompt_hindex);
+		if (histstr == NULL)
 			break;
 	       	xfree(c->prompt_buffer);
-
-		c->prompt_buffer = xstrdup(ARRAY_ITEM(&c->prompt_hdata,
-		    ARRAY_LENGTH(&c->prompt_hdata) - 1 - c->prompt_hindex));
-		if (c->prompt_hindex != ARRAY_LENGTH(&c->prompt_hdata) - 1)
-			c->prompt_hindex++;
-
+		c->prompt_buffer = xstrdup(histstr);
 		c->prompt_index = strlen(c->prompt_buffer);
 		c->flags |= CLIENT_STATUS;
 		break;
 	case MODEKEYEDIT_HISTORYDOWN:
+		histstr = status_prompt_down_history(&c->prompt_hindex);
+		if (histstr == NULL)
+			break;
 		xfree(c->prompt_buffer);
-
-		if (c->prompt_hindex != 0) {
-			c->prompt_hindex--;
-			c->prompt_buffer = xstrdup(ARRAY_ITEM(
-			    &c->prompt_hdata, ARRAY_LENGTH(
-			    &c->prompt_hdata) - 1 - c->prompt_hindex));
-		} else
-			c->prompt_buffer = xstrdup("");
-
+		c->prompt_buffer = xstrdup(histstr);
 		c->prompt_index = strlen(c->prompt_buffer);
 		c->flags |= CLIENT_STATUS;
 		break;
 	case MODEKEYEDIT_PASTE:
-		if ((pb = paste_get_top(&c->session->buffers)) == NULL)
+		if ((pb = paste_get_top(&global_buffers)) == NULL)
 			break;
 		for (n = 0; n < pb->size; n++) {
 			ch = (u_char) pb->data[n];
@@ -1034,7 +1088,7 @@ status_prompt_key(struct client *c, int key)
 		break;
 	case MODEKEYEDIT_ENTER:
 		if (*c->prompt_buffer != '\0')
-			status_prompt_add_history(c);
+			status_prompt_add_history(c->prompt_buffer);
 		if (c->prompt_callbackfn(c->prompt_data, c->prompt_buffer) == 0)
 			status_prompt_clear(c);
 		break;
@@ -1070,32 +1124,68 @@ status_prompt_key(struct client *c, int key)
 	}
 }
 
+/* Get previous line from the history. */
+const char *
+status_prompt_up_history(u_int *idx)
+{
+	u_int size;
+
+	/*
+	 * History runs from 0 to size - 1.
+	 *
+	 * Index is from 0 to size. Zero is empty.
+	 */
+
+	size = ARRAY_LENGTH(&status_prompt_history);
+	if (size == 0 || *idx == size)
+		return (NULL);
+	(*idx)++;
+	return (ARRAY_ITEM(&status_prompt_history, size - *idx));
+}
+
+/* Get next line from the history. */
+const char *
+status_prompt_down_history(u_int *idx)
+{
+	u_int size;
+
+	size = ARRAY_LENGTH(&status_prompt_history);
+	if (size == 0 || *idx == 0)
+		return ("");
+	(*idx)--;
+	if (*idx == 0)
+		return ("");
+	return (ARRAY_ITEM(&status_prompt_history, size - *idx));
+}
+
 /* Add line to the history. */
 void
-status_prompt_add_history(struct client *c)
+status_prompt_add_history(const char *line)
 {
-	if (ARRAY_LENGTH(&c->prompt_hdata) > 0 &&
-	    strcmp(ARRAY_LAST(&c->prompt_hdata), c->prompt_buffer) == 0)
+	u_int size;
+
+	size = ARRAY_LENGTH(&status_prompt_history);
+	if (size > 0 && strcmp(ARRAY_LAST(&status_prompt_history), line) == 0)
 		return;
 
-	if (ARRAY_LENGTH(&c->prompt_hdata) == PROMPT_HISTORY) {
-		xfree(ARRAY_FIRST(&c->prompt_hdata));
-		ARRAY_REMOVE(&c->prompt_hdata, 0);
+	if (size == PROMPT_HISTORY) {
+		xfree(ARRAY_FIRST(&status_prompt_history));
+		ARRAY_REMOVE(&status_prompt_history, 0);
 	}
 
-	ARRAY_ADD(&c->prompt_hdata, xstrdup(c->prompt_buffer));
+	ARRAY_ADD(&status_prompt_history, xstrdup(line));
 }
 
 /* Complete word. */
 char *
 status_prompt_complete(const char *s)
 {
-	const struct cmd_entry 	      **cmdent;
-	const struct set_option_entry  *entry;
-	ARRAY_DECL(, const char *)	list;
-	char			       *prefix, *s2;
-	u_int				i;
-	size_t			 	j;
+	const struct cmd_entry 	  	       **cmdent;
+	const struct options_table_entry	*oe;
+	ARRAY_DECL(, const char *)		 list;
+	char					*prefix, *s2;
+	u_int					 i;
+	size_t				 	 j;
 
 	if (*s == '\0')
 		return (NULL);
@@ -1106,17 +1196,17 @@ status_prompt_complete(const char *s)
 		if (strncmp((*cmdent)->name, s, strlen(s)) == 0)
 			ARRAY_ADD(&list, (*cmdent)->name);
 	}
-	for (entry = set_option_table; entry->name != NULL; entry++) {
-		if (strncmp(entry->name, s, strlen(s)) == 0)
-			ARRAY_ADD(&list, entry->name);
+	for (oe = server_options_table; oe->name != NULL; oe++) {
+		if (strncmp(oe->name, s, strlen(s)) == 0)
+			ARRAY_ADD(&list, oe->name);
 	}
-	for (entry = set_session_option_table; entry->name != NULL; entry++) {
-		if (strncmp(entry->name, s, strlen(s)) == 0)
-			ARRAY_ADD(&list, entry->name);
+	for (oe = session_options_table; oe->name != NULL; oe++) {
+		if (strncmp(oe->name, s, strlen(s)) == 0)
+			ARRAY_ADD(&list, oe->name);
 	}
-	for (entry = set_window_option_table; entry->name != NULL; entry++) {
-		if (strncmp(entry->name, s, strlen(s)) == 0)
-			ARRAY_ADD(&list, entry->name);
+	for (oe = window_options_table; oe->name != NULL; oe++) {
+		if (strncmp(oe->name, s, strlen(s)) == 0)
+			ARRAY_ADD(&list, oe->name);
 	}
 
 	/* If none, bail now. */

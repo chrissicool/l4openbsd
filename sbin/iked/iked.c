@@ -1,4 +1,4 @@
-/*	$OpenBSD: iked.c,v 1.6 2010/06/24 20:15:30 reyk Exp $	*/
+/*	$OpenBSD: iked.c,v 1.8 2011/01/21 11:56:00 reyk Exp $	*/
 /*	$vantronix: iked.c,v 1.22 2010/06/02 14:43:30 reyk Exp $	*/
 
 /*
@@ -87,11 +87,9 @@ main(int argc, char *argv[])
 			debug++;
 			break;
 		case 'D':
-#if 0
 			if (cmdline_symset(optarg) < 0)
 				log_warnx("could not parse macro definition %s",
 				    optarg);
-#endif
 			break;
 		case 'n':
 			debug = 1;
@@ -196,6 +194,10 @@ parent_configure(struct iked *env)
 	env->sc_pfkey = -1;
 	config_setpfkey(env, PROC_IKEV2);
 
+	/* Now compile the policies and calculate skip steps */
+	config_setcompile(env, PROC_IKEV1);
+	config_setcompile(env, PROC_IKEV2);
+
 	bzero(&ss, sizeof(ss));
 	ss.ss_family = AF_INET;
 
@@ -232,6 +234,10 @@ parent_reload(struct iked *env, int reset, const char *filename)
 			log_debug("%s: failed to load config file %s",
 			    __func__, filename);
 		}
+
+		/* Re-compile policies and skip steps */
+		config_setcompile(env, PROC_IKEV1);
+		config_setcompile(env, PROC_IKEV2);
 
 		config_setcoupled(env, env->sc_decoupled ? 0 : 1);
 		config_setmode(env, env->sc_passive ? 1 : 0);

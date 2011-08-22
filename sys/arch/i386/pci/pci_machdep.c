@@ -127,6 +127,20 @@ l4vbus_device_handle_t root_bridge;
 
 int pci_mode = -1;
 
+/*
+ * Memory Mapped Configuration space access.
+ *
+ * Since mapping the whole configuration space will cost us up to
+ * 256MB of kernel virtual memory, we use seperate mappings per bus.
+ * The mappings are created on-demand, such that we only use kernel
+ * virtual memory for busses that are actually present.
+ */
+bus_addr_t pci_mcfg_addr;
+int pci_mcfg_min_bus, pci_mcfg_max_bus;
+bus_space_tag_t pci_mcfgt = I386_BUS_SPACE_MEM;
+bus_space_handle_t pci_mcfgh[256];
+void pci_mcfg_map_bus(int);
+
 struct mutex pci_conf_lock = MUTEX_INITIALIZER(IPL_HIGH);
 
 #define	PCI_CONF_LOCK()							\
@@ -180,7 +194,7 @@ struct bus_dma_tag pci_bus_dma_tag = {
 	_bus_dmamap_load_uio,
 	_bus_dmamap_load_raw,
 	_bus_dmamap_unload,
-	NULL,			/* _dmamap_sync */
+	_bus_dmamap_sync,
 	_bus_dmamem_alloc,
 	_bus_dmamem_free,
 	_bus_dmamem_map,
@@ -296,6 +310,31 @@ pci_decompose_tag(pci_chipset_tag_t pc, pcitag_t tag, int *bp, int *dp, int *fp)
 	}
 }
 
+int
+pci_conf_size(pci_chipset_tag_t pc, pcitag_t tag)
+{
+	int bus;
+
+	if (pci_mcfg_addr) {
+		pci_decompose_tag(pc, tag, &bus, NULL, NULL);
+		if (bus >= pci_mcfg_min_bus && bus <= pci_mcfg_max_bus)
+			return PCIE_CONFIG_SPACE_SIZE;
+	}
+
+	return PCI_CONFIG_SPACE_SIZE;
+}
+
+void
+pci_mcfg_map_bus(int bus)
+{
+	if (pci_mcfgh[bus])
+		return;
+
+	if (bus_space_map(pci_mcfgt, pci_mcfg_addr + (bus << 20), 1 << 20,
+	    0, &pci_mcfgh[bus]))
+		panic("pci_conf_read: cannot map mcfg space");
+}
+
 #ifdef L4
 pcireg_t
 pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
@@ -325,6 +364,17 @@ pcireg_t
 pci_conf_read(pci_chipset_tag_t pc, pcitag_t tag, int reg)
 {
 	pcireg_t data;
+	int bus;
+
+	if (pci_mcfg_addr && reg >= PCI_CONFIG_SPACE_SIZE) {
+		pci_decompose_tag(pc, tag, &bus, NULL, NULL);
+		if (bus >= pci_mcfg_min_bus && bus <= pci_mcfg_max_bus) {
+			pci_mcfg_map_bus(bus);
+			data = bus_space_read_4(pci_mcfgt, pci_mcfgh[bus],
+			    (tag.mode1 & 0x000ff00) << 4 | reg);
+			return data;
+		}
+	}
 
 	PCI_CONF_LOCK();
 	switch (pci_mode) {

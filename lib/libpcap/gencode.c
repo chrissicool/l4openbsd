@@ -1,4 +1,4 @@
-/*	$OpenBSD: gencode.c,v 1.34 2010/07/27 04:13:34 canacar Exp $	*/
+/*	$OpenBSD: gencode.c,v 1.36 2010/10/09 08:14:36 canacar Exp $	*/
 
 /*
  * Copyright (c) 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998
@@ -526,7 +526,7 @@ gen_mcmp(offset, size, v, mask)
 	if (mask != 0xffffffff) {
 		s = new_stmt(BPF_ALU|BPF_AND|BPF_K);
 		s->s.k = mask;
-		b->stmts->next = s;
+		sappend(b->stmts, s);
 	}
 	return b;
 }
@@ -544,7 +544,7 @@ gen_mcmp_nl(offset, size, v, mask)
 	if (mask != 0xffffffff) {
 		s = new_stmt(BPF_ALU|BPF_AND|BPF_K);
 		s->s.k = mask;
-		b->stmts->next = s;
+		sappend(b->stmts, s);
 	}
 	return b;
 }
@@ -618,7 +618,7 @@ nl2X_stmt(void)
 			sappend(s, tmp);
 
 			tmp = new_stmt(BPF_ALU|BPF_AND|BPF_K);
-			tmp->s.k = 0xf6;
+			tmp->s.k = 0xfc;
 			sappend(s, tmp);
 
 			nl_reg = alloc_reg();

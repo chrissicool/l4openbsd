@@ -1,10 +1,7 @@
 #
 # syslog.pl
 #
-# $Log: syslog.pl,v $
-# Revision 1.9  2009/10/12 18:24:38  millert
-# Merge in perl 5.10.1
-#
+# $Log:	syslog.pl,v $
 # 
 # tom christiansen <tchrist@convex.com>
 # modified to use sockets by Larry Wall <lwall@jpl-devvax.jpl.nasa.gov>

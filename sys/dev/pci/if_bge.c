@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_bge.c,v 1.298 2010/08/07 03:50:02 krw Exp $	*/
+/*	$OpenBSD: if_bge.c,v 1.305 2011/02/22 18:00:44 robert Exp $	*/
 
 /*
  * Copyright (c) 2001 Wind River Systems
@@ -151,11 +151,9 @@ int bge_intr(void *);
 void bge_start(struct ifnet *);
 int bge_ioctl(struct ifnet *, u_long, caddr_t);
 void bge_init(void *);
-void bge_power(int, void *);
 void bge_stop_block(struct bge_softc *, bus_size_t, u_int32_t);
 void bge_stop(struct bge_softc *);
 void bge_watchdog(struct ifnet *);
-void bge_shutdown(void *);
 int bge_ifmedia_upd(struct ifnet *);
 void bge_ifmedia_sts(struct ifnet *, struct ifmediareq *);
 
@@ -1466,6 +1464,14 @@ bge_blockinit(struct bge_softc *sc)
 		    BUS_DMASYNC_PREREAD|BUS_DMASYNC_PREWRITE);
 	}
 
+	/* Choose de-pipeline mode for BCM5906 A0, A1 and A2. */
+	if (BGE_ASICREV(sc->bge_chipid) == BGE_ASICREV_BCM5906) {
+		if (sc->bge_chipid == BGE_CHIPID_BCM5906_A0 ||
+		    sc->bge_chipid == BGE_CHIPID_BCM5906_A1 ||
+		    sc->bge_chipid == BGE_CHIPID_BCM5906_A2)
+			CSR_WRITE_4(sc, BGE_ISO_PKT_TX,
+			    (CSR_READ_4(sc, BGE_ISO_PKT_TX) & ~3) | 2);
+	}
 	/*
 	 * Set the BD ring replenish thresholds. The recommended
 	 * values are 1/8th the number of descriptors allocated to
@@ -1796,12 +1802,12 @@ bge_attach(struct device *parent, struct device *self, void *aux)
 	struct pci_attach_args	*pa = aux;
 	pci_chipset_tag_t	pc = pa->pa_pc;
 	const struct bge_revision *br;
-	pcireg_t		pm_ctl, memtype, subid;
+	pcireg_t		pm_ctl, memtype, subid, reg;
 	pci_intr_handle_t	ih;
 	const char		*intrstr = NULL;
 	bus_size_t		size;
 	bus_dma_segment_t	seg;
-	int			rseg, gotenaddr = 0;
+	int			rseg, gotenaddr = 0, aspm_off;
 	u_int32_t		hwcfg = 0;
 	u_int32_t		mac_addr = 0;
 	u_int32_t		misccfg;
@@ -1887,7 +1893,13 @@ bge_attach(struct device *parent, struct device *self, void *aux)
 	 * PCI Express or PCI-X controller check.
 	 */
 	if (pci_get_capability(pa->pa_pc, pa->pa_tag, PCI_CAP_PCIEXPRESS,
-	    NULL, NULL) != 0) {
+	    &aspm_off, NULL) != 0) {
+		/* Disable PCIe Active State Power Management (ASPM). */
+		reg = pci_conf_read(pa->pa_pc, pa->pa_tag,
+		    aspm_off + PCI_PCIE_LCSR);
+		reg &= ~(PCI_PCIE_LCSR_ASPM_L0S | PCI_PCIE_LCSR_ASPM_L1);
+		pci_conf_write(pa->pa_pc, pa->pa_tag,
+		    aspm_off + PCI_PCIE_LCSR, reg);
 		sc->bge_flags |= BGE_PCIE;
 	} else {
 		if ((pci_conf_read(pa->pa_pc, pa->pa_tag, BGE_PCI_PCISTATE) &
@@ -2264,9 +2276,6 @@ bge_attach(struct device *parent, struct device *self, void *aux)
 	if_attach(ifp);
 	ether_ifattach(ifp);
 
-	sc->sc_shutdownhook = shutdownhook_establish(bge_shutdown, sc);
-	sc->sc_powerhook = powerhook_establish(bge_power, sc);	
-	
 	timeout_set(&sc->bge_timeout, bge_tick, sc);
 	timeout_set(&sc->bge_rxtimeout, bge_rxtick, sc);
 	return;
@@ -2293,18 +2302,24 @@ bge_activate(struct device *self, int act)
 {
 	struct bge_softc *sc = (struct bge_softc *)self;
 	struct ifnet *ifp = &sc->arpcom.ac_if;
+	int rv = 0;
 
 	switch (act) {
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
 	case DVACT_SUSPEND:
+		rv = config_activate_children(self, act);
 		if (ifp->if_flags & IFF_RUNNING)
 			bge_stop(sc);
 		break;
 	case DVACT_RESUME:
-		bge_power(PWR_RESUME, self);
+		if (ifp->if_flags & IFF_UP)
+			bge_init(sc);
+		rv = config_activate_children(self, act);
 		break;
 	}
-
-	return (0);
+	return (rv);
 }
 
 void
@@ -3615,19 +3630,6 @@ bge_stop(struct bge_softc *sc)
 	BGE_STS_CLRBIT(sc, BGE_STS_LINK);
 }
 
-/*
- * Stop all chip I/O so that the kernel's probe routines don't
- * get confused by errant DMAs when rebooting.
- */
-void
-bge_shutdown(void *xsc)
-{
-	struct bge_softc *sc = (struct bge_softc *)xsc;
-
-	bge_stop(sc);
-	bge_reset(sc);
-}
-
 void
 bge_link_upd(struct bge_softc *sc)
 {
@@ -3730,17 +3732,4 @@ bge_link_upd(struct bge_softc *sc)
 	CSR_WRITE_4(sc, BGE_MAC_STS, BGE_MACSTAT_SYNC_CHANGED|
 	    BGE_MACSTAT_CFG_CHANGED|BGE_MACSTAT_MI_COMPLETE|
 	    BGE_MACSTAT_LINK_CHANGED);
-}
-
-void
-bge_power(int why, void *xsc)
-{
-	struct bge_softc *sc = (struct bge_softc *)xsc;
-	struct ifnet *ifp;
-
-	if (why == PWR_RESUME) {
-		ifp = &sc->arpcom.ac_if;
-		if (ifp->if_flags & IFF_UP)
-			bge_init(xsc);
-	}
 }

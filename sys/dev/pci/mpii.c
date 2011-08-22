@@ -1,4 +1,4 @@
-/*	$OpenBSD: mpii.c,v 1.34 2010/07/16 01:23:11 dlg Exp $	*/
+/*	$OpenBSD: mpii.c,v 1.39 2011/02/24 23:40:31 dlg Exp $	*/
 /*
  * Copyright (c) 2010 Mike Belopuhov <mkb@crypt.org.ru>
  * Copyright (c) 2009 James Giannoules
@@ -29,6 +29,7 @@
 #include <sys/kernel.h>
 #include <sys/rwlock.h>
 #include <sys/sensors.h>
+#include <sys/dkio.h>
 #include <sys/tree.h>
 
 #include <machine/bus.h>
@@ -981,6 +982,51 @@ struct mpii_msg_sas_oper_reply {
 	u_int32_t		ioc_loginfo;
 } __packed;
 
+struct mpii_msg_raid_action_request {
+	u_int8_t	action;
+#define MPII_RAID_ACTION_CHANGE_VOL_WRITE_CACHE	(0x17)
+	u_int8_t	reserved1;
+	u_int8_t	chain_offset;
+	u_int8_t	function;
+
+	u_int16_t	vol_dev_handle;
+	u_int8_t	phys_disk_num;
+	u_int8_t	msg_flags;
+
+	u_int8_t	vp_id;
+	u_int8_t	vf_if;
+	u_int16_t	reserved2;
+
+	u_int32_t	reserved3;
+
+	u_int32_t	action_data;
+#define MPII_RAID_VOL_WRITE_CACHE_MASK			(0x03)
+#define MPII_RAID_VOL_WRITE_CACHE_DISABLE		(0x01)
+#define MPII_RAID_VOL_WRITE_CACHE_ENABLE		(0x02)
+
+	struct mpii_sge	action_sge;
+} __packed;
+
+struct mpii_msg_raid_action_reply {
+	u_int8_t	action;
+	u_int8_t	reserved1;
+	u_int8_t	chain_offset;
+	u_int8_t	function;
+
+	u_int16_t	vol_dev_handle;
+	u_int8_t	phys_disk_num;
+	u_int8_t	msg_flags;
+
+	u_int8_t	vp_id;
+	u_int8_t	vf_if;
+	u_int16_t	reserved2;
+
+	u_int16_t	reserved3;
+	u_int16_t	ioc_status;
+
+	u_int32_t	action_data[5];
+} __packed;
+
 struct mpii_cfg_hdr {
 	u_int8_t		page_version;
 	u_int8_t		page_length;
@@ -1256,6 +1302,11 @@ struct mpii_cfg_raid_vol_pg0 {
 #define MPII_CFG_RAID_VOL_0_STATUS_RESYNC		(1<<16)
 
 	u_int16_t		volume_settings;
+#define MPII_CFG_RAID_VOL_0_SETTINGS_CACHE_MASK		(0x3<<0)
+#define MPII_CFG_RAID_VOL_0_SETTINGS_CACHE_UNCHANGED	(0x0<<0)
+#define MPII_CFG_RAID_VOL_0_SETTINGS_CACHE_DISABLED	(0x1<<0)
+#define MPII_CFG_RAID_VOL_0_SETTINGS_CACHE_ENABLED	(0x2<<0)
+
 	u_int8_t		hot_spare_pool;
 	u_int8_t		reserved1;
 
@@ -1757,7 +1808,8 @@ struct mpii_ccb {
 	volatile enum {
 		MPII_CCB_FREE,
 		MPII_CCB_READY,
-		MPII_CCB_QUEUED
+		MPII_CCB_QUEUED,
+		MPII_CCB_TIMEOUT
 	}			ccb_state;
 
 	void			(*ccb_done)(struct mpii_ccb *);
@@ -1821,6 +1873,15 @@ struct mpii_softc {
 	struct mpii_ccb		*sc_ccbs;
 	struct mpii_ccb_list	sc_ccb_free;
 	struct mutex		sc_ccb_free_mtx;
+
+	struct mutex		sc_ccb_mtx;
+				/*
+				 * this protects the ccb state and list entry
+				 * between mpii_scsi_cmd and scsidone.
+				 */
+
+	struct mpii_ccb_list	sc_ccb_tmos;
+	struct scsi_iohandler	sc_ccb_tmo_handler;
 
 	struct scsi_iopool	sc_iopool;
 
@@ -1894,6 +1955,10 @@ int		mpii_alloc_queues(struct mpii_softc *);
 void		mpii_push_reply(struct mpii_softc *, struct mpii_rcb *);
 void		mpii_push_replies(struct mpii_softc *);
 
+void		mpii_scsi_cmd_tmo(void *);
+void		mpii_scsi_cmd_tmo_handler(void *, void *);
+void		mpii_scsi_cmd_tmo_done(struct mpii_ccb *);
+
 int		mpii_alloc_dev(struct mpii_softc *);
 int		mpii_insert_dev(struct mpii_softc *, struct mpii_device *);
 int		mpii_remove_dev(struct mpii_softc *, struct mpii_device *);
@@ -1958,6 +2023,8 @@ int		mpii_req_cfg_page(struct mpii_softc *, u_int32_t, int,
 
 int		mpii_get_ioc_pg8(struct mpii_softc *);
 
+int		mpii_ioctl_cache(struct scsi_link *, u_long, struct dk_cache *);
+
 #if NBIO > 0
 int		mpii_ioctl(struct device *, u_long, caddr_t);
 int		mpii_ioctl_inq(struct mpii_softc *, struct bioc_inq *);
@@ -2020,6 +2087,7 @@ void		mpii_refresh_sensors(void *);
 	    (_h), (_r), (_p), (_l))
 
 static const struct pci_matchid mpii_devices[] = {
+	{ PCI_VENDOR_SYMBIOS,	PCI_PRODUCT_SYMBIOS_SAS2004 },
 	{ PCI_VENDOR_SYMBIOS,	PCI_PRODUCT_SYMBIOS_SAS2008 }
 };
 
@@ -3416,6 +3484,8 @@ mpii_event_sas(struct mpii_softc *sc, struct mpii_msg_event_reply *enp)
 			mpii_remove_dev(sc, dev);
 			if (sc->sc_scsibus) {
 				SET(dev->flags, MPII_DF_DETACH);
+				scsi_activate(sc->sc_scsibus, dev->slot, -1,
+				    DVACT_DEACTIVATE);
 				if (scsi_task(mpii_event_defer, sc,
 				    dev, 0) != 0)
 					printf("%s: unable to run device "
@@ -3528,27 +3598,19 @@ mpii_event_defer(void *xsc, void *arg)
 	struct mpii_softc	*sc = xsc;
 	struct mpii_device	*dev = arg;
 
-	/*
-	 * SAS and IR events are delivered separately, so it won't hurt
-	 * to wait for a second.
-	 */
-	tsleep(sc, PRIBIO, "mpiipause", hz);
-
-	if (!ISSET(dev->flags, MPII_DF_HIDDEN)) {
-		if (ISSET(dev->flags, MPII_DF_ATTACH))
-			scsi_probe_target(sc->sc_scsibus, dev->slot);
-		else if (ISSET(dev->flags, MPII_DF_DETACH))
-			scsi_detach_target(sc->sc_scsibus, dev->slot,
-			    DETACH_FORCE);
-	}
-
 	if (ISSET(dev->flags, MPII_DF_DETACH)) {
 		mpii_sas_remove_device(sc, dev->dev_handle);
+		if (!ISSET(dev->flags, MPII_DF_HIDDEN)) {
+			scsi_detach_target(sc->sc_scsibus, dev->slot,
+			    DETACH_FORCE);
+		}
 		free(dev, M_DEVBUF);
-		return;
-	}
 
-	CLR(dev->flags, MPII_DF_ATTACH);
+	} else if (ISSET(dev->flags, MPII_DF_ATTACH)) {
+		CLR(dev->flags, MPII_DF_ATTACH);
+		if (!ISSET(dev->flags, MPII_DF_HIDDEN))
+			scsi_probe_target(sc->sc_scsibus, dev->slot);
+	}
 }
 
 void
@@ -4034,7 +4096,11 @@ mpii_alloc_ccbs(struct mpii_softc *sc)
 	int			i;
 
 	SLIST_INIT(&sc->sc_ccb_free);
+	SLIST_INIT(&sc->sc_ccb_tmos);
 	mtx_init(&sc->sc_ccb_free_mtx, IPL_BIO);
+	mtx_init(&sc->sc_ccb_mtx, IPL_BIO);
+	scsi_ioh_set(&sc->sc_ccb_tmo_handler, &sc->sc_iopool,
+	    mpii_scsi_cmd_tmo_handler, sc);
 
 	sc->sc_ccbs = malloc(sizeof(*ccb) * (sc->sc_request_depth-1),
 	    M_DEVBUF, M_NOWAIT | M_ZERO);
@@ -4447,6 +4513,7 @@ mpii_scsi_cmd(struct scsi_xfer *xs)
 	DNPRINTF(MPII_D_CMD, "%s:  Offset0: 0x%02x\n", DEVNAME(sc),
 	    io->sgl_offset0);
 
+	timeout_set(&xs->stimeout, mpii_scsi_cmd_tmo, ccb);
 	if (xs->flags & SCSI_POLL) {
 		if (mpii_poll(sc, ccb) != 0) {
 			xs->error = XS_DRIVER_STUFFUP;
@@ -4458,7 +4525,63 @@ mpii_scsi_cmd(struct scsi_xfer *xs)
 	DNPRINTF(MPII_D_CMD, "%s:    mpii_scsi_cmd(): opcode: %02x "
 	    "datalen: %d\n", DEVNAME(sc), xs->cmd->opcode, xs->datalen);
 
+	timeout_add_msec(&xs->stimeout, xs->timeout);
 	mpii_start(sc, ccb);
+}
+
+void
+mpii_scsi_cmd_tmo(void *xccb)
+{
+	struct mpii_ccb		*ccb = xccb;
+	struct mpii_softc	*sc = ccb->ccb_sc;
+
+	printf("%s: mpii_scsi_cmd_tmo\n", DEVNAME(sc));
+
+	mtx_enter(&sc->sc_ccb_mtx);
+	if (ccb->ccb_state == MPII_CCB_QUEUED) {
+		ccb->ccb_state = MPII_CCB_TIMEOUT;
+		SLIST_INSERT_HEAD(&sc->sc_ccb_tmos, ccb, ccb_link);
+	}
+	mtx_leave(&sc->sc_ccb_mtx);
+
+	scsi_ioh_add(&sc->sc_ccb_tmo_handler);
+}
+
+void
+mpii_scsi_cmd_tmo_handler(void *cookie, void *io)
+{
+	struct mpii_softc			*sc = cookie;
+	struct mpii_ccb				*tccb = io;
+	struct mpii_ccb				*ccb;
+	struct mpii_msg_scsi_task_request	*stq;
+
+	mtx_enter(&sc->sc_ccb_mtx);
+	ccb = SLIST_FIRST(&sc->sc_ccb_tmos);
+	if (ccb != NULL) {
+		SLIST_REMOVE_HEAD(&sc->sc_ccb_tmos, ccb_link);
+		ccb->ccb_state = MPII_CCB_QUEUED;
+	}
+	/* should remove any other ccbs for the same dev handle */
+	mtx_leave(&sc->sc_ccb_mtx);
+
+	if (ccb == NULL) {
+		scsi_io_put(&sc->sc_iopool, tccb);
+		return;
+	}
+
+	stq = tccb->ccb_cmd;
+	stq->function = MPII_FUNCTION_SCSI_TASK_MGMT;
+	stq->task_type = MPII_SCSI_TASK_TARGET_RESET;
+	stq->dev_handle = htole16(ccb->ccb_dev_handle);
+
+	tccb->ccb_done = mpii_scsi_cmd_tmo_done;
+	mpii_start(sc, tccb);
+}
+
+void
+mpii_scsi_cmd_tmo_done(struct mpii_ccb *tccb)
+{
+	mpii_scsi_cmd_tmo_handler(tccb->ccb_sc, tccb);
 }
 
 void
@@ -4469,6 +4592,14 @@ mpii_scsi_cmd_done(struct mpii_ccb *ccb)
 	struct scsi_xfer	*xs = ccb->ccb_cookie;
 	struct mpii_ccb_bundle	*mcb = ccb->ccb_cmd;
 	bus_dmamap_t		dmap = ccb->ccb_dmamap;
+
+	timeout_del(&xs->stimeout);
+	mtx_enter(&sc->sc_ccb_mtx);
+	if (ccb->ccb_state == MPII_CCB_TIMEOUT)
+		SLIST_REMOVE(&sc->sc_ccb_tmos, ccb, mpii_ccb, ccb_link);
+
+	ccb->ccb_state = MPII_CCB_READY;
+	mtx_leave(&sc->sc_ccb_mtx);
 
 	if (xs->datalen != 0) {
 		bus_dmamap_sync(sc->sc_dmat, dmap, 0, dmap->dm_mapsize,
@@ -4546,9 +4677,12 @@ mpii_scsi_cmd_done(struct mpii_ccb *ccb)
 
 	case MPII_IOCSTATUS_BUSY:
 	case MPII_IOCSTATUS_INSUFFICIENT_RESOURCES:
+		xs->error = XS_BUSY;
+		break;
+
 	case MPII_IOCSTATUS_SCSI_IOC_TERMINATED:
 	case MPII_IOCSTATUS_SCSI_TASK_TERMINATED:
-		xs->error = XS_BUSY;
+		xs->error = XS_RESET;
 		break;
 
 	case MPII_IOCSTATUS_SCSI_INVALID_DEVHANDLE:
@@ -4558,6 +4692,7 @@ mpii_scsi_cmd_done(struct mpii_ccb *ccb)
 
 	default:
 		xs->error = XS_DRIVER_STUFFUP;
+		break;
 	}
 
 	if (sie->scsi_state & MPII_SCSIIO_ERR_STATE_AUTOSENSE_VALID)
@@ -4568,19 +4703,123 @@ mpii_scsi_cmd_done(struct mpii_ccb *ccb)
 
 	mpii_push_reply(sc, ccb->ccb_rcb);
 	scsi_done(xs);
-}
+}        
 
 int
 mpii_scsi_ioctl(struct scsi_link *link, u_long cmd, caddr_t addr, int flag)
 {
 	struct mpii_softc	*sc = (struct mpii_softc *)link->adapter_softc;
+	struct mpii_device	*dev = sc->sc_devs[link->target];
 
 	DNPRINTF(MPII_D_IOCTL, "%s: mpii_scsi_ioctl\n", DEVNAME(sc));
 
-	if (sc->sc_ioctl)
-		return (sc->sc_ioctl(link->adapter_softc, cmd, addr));
-	else
-		return (ENOTTY);
+	switch (cmd) {
+	case DIOCGCACHE:
+	case DIOCSCACHE:
+		if (dev != NULL && ISSET(dev->flags, MPII_DF_VOLUME)) {
+			return (mpii_ioctl_cache(link, cmd,
+			    (struct dk_cache *)addr));
+		}
+		break;
+
+	default:
+		if (sc->sc_ioctl)
+			return (sc->sc_ioctl(link->adapter_softc, cmd, addr));
+
+		break;
+	}
+
+	return (ENOTTY);
+}
+
+int
+mpii_ioctl_cache(struct scsi_link *link, u_long cmd, struct dk_cache *dc)
+{
+	struct mpii_softc *sc = (struct mpii_softc *)link->adapter_softc;
+	struct mpii_device *dev = sc->sc_devs[link->target];
+	struct mpii_cfg_raid_vol_pg0 *vpg;
+	struct mpii_msg_raid_action_request *req;
+ 	struct mpii_msg_raid_action_reply *rep;
+	struct mpii_cfg_hdr hdr;
+	struct mpii_ccb	*ccb;
+	u_int32_t addr = MPII_CFG_RAID_VOL_ADDR_HANDLE | dev->dev_handle;
+	size_t pagelen;
+	int rv = 0;
+	int enabled;
+
+	if (mpii_req_cfg_header(sc, MPII_CONFIG_REQ_PAGE_TYPE_RAID_VOL, 0,
+	    addr, MPII_PG_POLL, &hdr) != 0)
+		return (EINVAL);
+
+	pagelen = hdr.page_length * 4;
+	vpg = malloc(pagelen, M_TEMP, M_WAITOK | M_CANFAIL | M_ZERO);
+	if (vpg == NULL)
+		return (ENOMEM);
+
+	if (mpii_req_cfg_page(sc, addr, MPII_PG_POLL, &hdr, 1,
+	    vpg, pagelen) != 0) {
+		rv = EINVAL;
+		goto done;
+		free(vpg, M_TEMP);
+		return (EINVAL);
+	}
+
+	enabled = ((letoh16(vpg->volume_settings) &
+	    MPII_CFG_RAID_VOL_0_SETTINGS_CACHE_MASK) ==
+	    MPII_CFG_RAID_VOL_0_SETTINGS_CACHE_ENABLED) ? 1 : 0;
+
+	if (cmd == DIOCGCACHE) {
+		dc->wrcache = enabled;
+		dc->rdcache = 0;
+		goto done;
+	} /* else DIOCSCACHE */
+
+	if (dc->rdcache) {
+		rv = EOPNOTSUPP;
+		goto done;
+	}
+
+	if (((dc->wrcache) ? 1 : 0) == enabled)
+		goto done;
+
+	ccb = scsi_io_get(&sc->sc_iopool, SCSI_POLL);
+	if (ccb == NULL) {
+		rv = ENOMEM;
+		goto done;
+	}
+
+	ccb->ccb_done = mpii_empty_done;
+
+	req = ccb->ccb_cmd;
+	bzero(req, sizeof(*req));
+	req->function = MPII_FUNCTION_RAID_ACTION;
+	req->action = MPII_RAID_ACTION_CHANGE_VOL_WRITE_CACHE;
+	req->vol_dev_handle = htole16(dev->dev_handle);
+	req->action_data = htole32(dc->wrcache ?
+	    MPII_RAID_VOL_WRITE_CACHE_ENABLE :
+	    MPII_RAID_VOL_WRITE_CACHE_DISABLE);
+
+	if (mpii_poll(sc, ccb) != 0) {
+		rv = EIO;
+		goto done;
+	}
+
+	if (ccb->ccb_rcb != NULL) {
+		rep = ccb->ccb_rcb->rcb_reply;
+		if ((rep->ioc_status != MPII_IOCSTATUS_SUCCESS) ||
+		    ((rep->action_data[0] &
+		     MPII_RAID_VOL_WRITE_CACHE_MASK) !=
+		    (dc->wrcache ? MPII_RAID_VOL_WRITE_CACHE_ENABLE :
+		     MPII_RAID_VOL_WRITE_CACHE_DISABLE)))
+			rv = EINVAL;
+		mpii_push_reply(sc, ccb->ccb_rcb);
+	}
+
+	scsi_io_put(&sc->sc_iopool, ccb);
+
+done:
+	free(vpg, M_TEMP);
+	return (rv);
 }
 
 #if NBIO > 0
@@ -4719,7 +4958,7 @@ mpii_ioctl_vol(struct mpii_softc *sc, struct bioc_vol *bv)
 
 	bv->bv_size = letoh64(vpg->max_lba) * letoh16(vpg->block_size);
 
-	lnk = scsi_get_link(sc->sc_scsibus, bv->bv_volid, 0);
+	lnk = scsi_get_link(sc->sc_scsibus, dev->slot, 0);
 	if (lnk != NULL) {
 		scdev = lnk->device_softc;
 		strlcpy(bv->bv_dev, scdev->dv_xname, sizeof(bv->bv_dev));

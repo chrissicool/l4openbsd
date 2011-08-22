@@ -1,4 +1,4 @@
-/*	$OpenBSD: mcd.c,v 1.53 2010/04/23 15:25:21 jsing Exp $ */
+/*	$OpenBSD: mcd.c,v 1.56 2010/09/22 01:18:57 matthew Exp $ */
 /*	$NetBSD: mcd.c,v 1.60 1998/01/14 12:14:41 drochner Exp $	*/
 
 /*
@@ -226,8 +226,6 @@ int	mcdlock(struct mcd_softc *);
 void	mcdunlock(struct mcd_softc *);
 void	mcd_pseudointr(void *);
 
-struct dkdriver mcddkdriver = { mcdstrategy };
-
 #define MCD_RETRIES	3
 #define MCD_RDRETRIES	3
 
@@ -271,9 +269,8 @@ mcdattach(parent, self, aux)
 	/*
 	 * Initialize and attach the disk structure.
 	 */
-	sc->sc_dk.dk_driver = &mcddkdriver;
 	sc->sc_dk.dk_name = sc->sc_dev.dv_xname;
-	disk_attach(&sc->sc_dk);
+	disk_attach(&sc->sc_dev, &sc->sc_dk);
 
 	printf(": model %s\n", sc->type != 0 ? sc->type : "unknown");
 
@@ -596,7 +593,7 @@ mcdread(dev, uio, flags)
 	int flags;
 {
 
-	return (physio(mcdstrategy, NULL, dev, B_READ, minphys, uio));
+	return (physio(mcdstrategy, dev, B_READ, minphys, uio));
 }
 
 int
@@ -606,7 +603,7 @@ mcdwrite(dev, uio, flags)
 	int flags;
 {
 
-	return (physio(mcdstrategy, NULL, dev, B_WRITE, minphys, uio));
+	return (physio(mcdstrategy, dev, B_WRITE, minphys, uio));
 }
 
 int

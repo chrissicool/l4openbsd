@@ -1,4 +1,4 @@
-/* $OpenBSD: crypto.c,v 1.29 2007/05/07 18:25:30 cloder Exp $	 */
+/* $OpenBSD: crypto.c,v 1.31 2010/10/19 07:47:34 mikeb Exp $	 */
 /* $EOM: crypto.c,v 1.32 2000/03/07 20:08:51 niklas Exp $	 */
 
 /*
@@ -89,9 +89,9 @@ struct crypto_xf transforms[] = {
 enum cryptoerr
 des1_init(struct keystate *ks, u_int8_t *key, u_int16_t len)
 {
-	/* des_set_key returns -1 for parity problems, and -2 for weak keys */
-	des_set_odd_parity((void *)key);
-	switch (des_set_key((void *)key, ks->ks_des[0])) {
+	/* DES_set_key returns -1 for parity problems, and -2 for weak keys */
+	DES_set_odd_parity((void *)key);
+	switch (DES_set_key((void *)key, &ks->ks_des[0])) {
 	case -2:
 		return EWEAKKEY;
 	default:
@@ -102,28 +102,28 @@ des1_init(struct keystate *ks, u_int8_t *key, u_int16_t len)
 void
 des1_encrypt(struct keystate *ks, u_int8_t *d, u_int16_t len)
 {
-	des_cbc_encrypt((void *)d, (void *)d, len, ks->ks_des[0], (void *)ks->riv,
+	DES_cbc_encrypt((void *)d, (void *)d, len, &ks->ks_des[0], (void *)ks->riv,
 	    DES_ENCRYPT);
 }
 
 void
 des1_decrypt(struct keystate *ks, u_int8_t *d, u_int16_t len)
 {
-	des_cbc_encrypt((void *)d, (void *)d, len, ks->ks_des[0], (void *)ks->riv,
+	DES_cbc_encrypt((void *)d, (void *)d, len, &ks->ks_des[0], (void *)ks->riv,
 	    DES_DECRYPT);
 }
 
 enum cryptoerr
 des3_init(struct keystate *ks, u_int8_t *key, u_int16_t len)
 {
-	des_set_odd_parity((void *)key);
-	des_set_odd_parity((void *)(key + 8));
-	des_set_odd_parity((void *)(key + 16));
+	DES_set_odd_parity((void *)key);
+	DES_set_odd_parity((void *)(key + 8));
+	DES_set_odd_parity((void *)(key + 16));
 
 	/* As of the draft Tripe-DES does not check for weak keys */
-	des_set_key((void *)key, ks->ks_des[0]);
-	des_set_key((void *)(key + 8), ks->ks_des[1]);
-	des_set_key((void *)(key + 16), ks->ks_des[2]);
+	DES_set_key((void *)key, &ks->ks_des[0]);
+	DES_set_key((void *)(key + 8), &ks->ks_des[1]);
+	DES_set_key((void *)(key + 16), &ks->ks_des[2]);
 
 	return EOKAY;
 }
@@ -134,8 +134,8 @@ des3_encrypt(struct keystate *ks, u_int8_t *data, u_int16_t len)
 	u_int8_t        iv[MAXBLK];
 
 	memcpy(iv, ks->riv, ks->xf->blocksize);
-	des_ede3_cbc_encrypt((void *)data, (void *)data, len, ks->ks_des[0],
-	    ks->ks_des[1], ks->ks_des[2], (void *)iv, DES_ENCRYPT);
+	DES_ede3_cbc_encrypt((void *)data, (void *)data, len, &ks->ks_des[0],
+	    &ks->ks_des[1], &ks->ks_des[2], (void *)iv, DES_ENCRYPT);
 }
 
 void
@@ -144,8 +144,8 @@ des3_decrypt(struct keystate *ks, u_int8_t *data, u_int16_t len)
 	u_int8_t        iv[MAXBLK];
 
 	memcpy(iv, ks->riv, ks->xf->blocksize);
-	des_ede3_cbc_encrypt((void *)data, (void *)data, len, ks->ks_des[0],
-	    ks->ks_des[1], ks->ks_des[2], (void *)iv, DES_DECRYPT);
+	DES_ede3_cbc_encrypt((void *)data, (void *)data, len, &ks->ks_des[0],
+	    &ks->ks_des[1], &ks->ks_des[2], (void *)iv, DES_DECRYPT);
 }
 
 enum cryptoerr
@@ -204,38 +204,21 @@ blf_decrypt(struct keystate *ks, u_int8_t *data, u_int16_t len)
 enum cryptoerr
 cast_init(struct keystate *ks, u_int8_t *key, u_int16_t len)
 {
-	cast_setkey(&ks->ks_cast, key, len);
+	CAST_set_key(&ks->ks_cast, len, key);
 	return EOKAY;
 }
 
 void
 cast1_encrypt(struct keystate *ks, u_int8_t *data, u_int16_t len)
 {
-	u_int16_t       i, blocksize = ks->xf->blocksize;
-	u_int8_t       *iv = ks->liv;
-
-	memcpy(iv, ks->riv, blocksize);
-
-	for (i = 0; i < len; data += blocksize, i += blocksize) {
-		XOR64(data, iv);
-		cast_encrypt(&ks->ks_cast, data, data);
-		SET64(iv, data);
-	}
+	memcpy(ks->liv, ks->riv, ks->xf->blocksize);
+	CAST_cbc_encrypt(data, data, len, &ks->ks_cast, ks->liv, 1);
 }
 
 void
 cast1_decrypt(struct keystate *ks, u_int8_t *data, u_int16_t len)
 {
-	u_int16_t       i, blocksize = ks->xf->blocksize;
-
-	data += len - blocksize;
-	for (i = len - blocksize; i >= blocksize; data -= blocksize,
-	    i -= blocksize) {
-		cast_decrypt(&ks->ks_cast, data, data);
-		XOR64(data, data - blocksize);
-	}
-	cast_decrypt(&ks->ks_cast, data, data);
-	XOR64(data, ks->riv);
+	CAST_cbc_encrypt(data, data, len, &ks->ks_cast, ks->riv, 0);
 }
 
 enum cryptoerr

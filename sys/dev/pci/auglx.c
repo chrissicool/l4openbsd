@@ -1,4 +1,4 @@
-/*      $OpenBSD: auglx.c,v 1.4 2010/07/15 03:43:11 jakemsr Exp $	*/
+/*      $OpenBSD: auglx.c,v 1.7 2010/09/21 02:00:13 jakemsr Exp $	*/
 
 /*
  * Copyright (c) 2008 Marc Balmer <mbalmer@openbsd.org>
@@ -197,11 +197,6 @@ struct auglx_softc {
 	struct ac97_codec_if	*codec_if;
 	struct ac97_host_if	 host_if;
 
-	/* power mgmt */
-	void			*sc_powerhook;
-	int			 sc_suspend;
-	u_int16_t		 sc_ext_ctrl;
-
 	int			 sc_dmamap_flags;
 };
 
@@ -246,7 +241,6 @@ void auglx_free_prd(struct auglx_softc *sc, struct auglx_ring *bm);
 int auglx_allocmem(struct auglx_softc *, size_t, size_t, struct auglx_dma *);
 void auglx_freemem(struct auglx_softc *, struct auglx_dma *);
 void auglx_get_default_params(void *, int, struct audio_params *);
-void auglx_powerhook(int, void *);
 
 struct audio_hw_if auglx_hw_if = {
 	auglx_open,
@@ -280,6 +274,7 @@ struct audio_hw_if auglx_hw_if = {
 
 int	auglx_match(struct device *, void *, void *);
 void	auglx_attach(struct device *, struct device *, void *);
+int	auglx_activate(struct device *, int);
 int	auglx_intr(void *);
 
 int	auglx_attach_codec(void *, struct ac97_codec_if *);
@@ -289,7 +284,8 @@ void	auglx_reset_codec(void *);
 enum ac97_host_flags	auglx_flags_codec(void *);
 
 struct cfattach auglx_ca = {
-	sizeof(struct auglx_softc), auglx_match, auglx_attach
+	sizeof(struct auglx_softc), auglx_match, auglx_attach, NULL,
+	auglx_activate
 };
 
 const struct pci_matchid auglx_devices[] = {
@@ -358,11 +354,6 @@ auglx_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 	audio_attach_mi(&auglx_hw_if, sc, &sc->sc_dev);
-
-	/* Watch for power changes */
-	sc->sc_suspend = PWR_RESUME;
-	sc->sc_powerhook = powerhook_establish(auglx_powerhook, sc);
-
 }
 
 /* Functions to communicate with the AC97 Codec via the ACC */
@@ -557,7 +548,6 @@ auglx_set_params(void *v, int setmode, int usemode, struct audio_params *play,
 	struct auglx_softc *sc = v;
 	int error;
 	u_int orate;
-	u_int adj_rate;
 
 	if (setmode & AUMODE_PLAY) {
 		play->factor = 1;
@@ -732,28 +722,25 @@ auglx_set_params(void *v, int setmode, int usemode, struct audio_params *play,
 		play->bps = AUDIO_BPS(play->precision);
 		play->msb = 1;
 
-		orate = adj_rate = play->sample_rate;
+		orate = play->sample_rate;
 
-		play->sample_rate = adj_rate;
+		play->sample_rate = orate;
 		error = ac97_set_rate(sc->codec_if,
 		    AC97_REG_PCM_LFE_DAC_RATE, &play->sample_rate);
 		if (error)
 			return error;
 
-		play->sample_rate = adj_rate;
+		play->sample_rate = orate;
 		error = ac97_set_rate(sc->codec_if,
 		    AC97_REG_PCM_SURR_DAC_RATE, &play->sample_rate);
 		if (error)
 			return error;
 
-		play->sample_rate = adj_rate;
+		play->sample_rate = orate;
 		error = ac97_set_rate(sc->codec_if,
 		    AC97_REG_PCM_FRONT_DAC_RATE, &play->sample_rate);
 		if (error)
 			return error;
-
-		if (play->sample_rate == adj_rate)
-			play->sample_rate = orate;
 	}
 
 	if (setmode & AUMODE_RECORD) {
@@ -909,12 +896,10 @@ auglx_set_params(void *v, int setmode, int usemode, struct audio_params *play,
 		rec->bps = AUDIO_BPS(rec->precision);
 		rec->msb = 1;
 
-		orate = rec->sample_rate;
 		error = ac97_set_rate(sc->codec_if, AC97_REG_PCM_LR_ADC_RATE,
 		    &rec->sample_rate);
 		if (error)
 			return error;
-		rec->sample_rate = orate;
 	}
 
 	return 0;
@@ -1345,27 +1330,26 @@ auglx_free_prd(struct auglx_softc *sc, struct auglx_ring *bm)
 	bus_dmamem_free(sc->sc_dmat, &bm->seg, bm->nsegs);
 }
 
-void
-auglx_powerhook(int why, void *self)
+int
+auglx_activate(struct device *self, int act)
 {
-	struct auglx_softc *sc = self;
+	struct auglx_softc *sc = (struct auglx_softc *)self;
+	int rv = 0;
 
-	if (why != PWR_RESUME) {
-		/* Power down */
-		sc->sc_suspend = why;
-		auglx_read_codec(sc, AC97_REG_EXT_AUDIO_CTRL, &sc->sc_ext_ctrl);
-	} else {
-		/* Wake up */
-		if (sc->sc_suspend == PWR_RESUME) {
-			printf("%s: resume without suspend?\n",
-			    sc->sc_dev.dv_xname);
-			sc->sc_suspend = why;
-			return;
-		}
-		sc->sc_suspend = why;
-		auglx_reset_codec(sc);
-		delay(1000);
-		(sc->codec_if->vtbl->restore_ports)(sc->codec_if);
-		auglx_write_codec(sc, AC97_REG_EXT_AUDIO_CTRL, sc->sc_ext_ctrl);
+	switch (act) {
+	case DVACT_ACTIVATE:
+		break;
+	case DVACT_QUIESCE:
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_SUSPEND:
+		break;
+	case DVACT_RESUME:
+		ac97_resume(&sc->host_if, sc->codec_if);
+		rv = config_activate_children(self, act);
+		break;
+	case DVACT_DEACTIVATE:
+		break;
 	}
+	return (rv);
 }

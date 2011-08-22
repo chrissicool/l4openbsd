@@ -1,4 +1,4 @@
-/*	$OpenBSD: ntfs_vfsops.c,v 1.18 2010/08/08 01:28:33 tedu Exp $	*/
+/*	$OpenBSD: ntfs_vfsops.c,v 1.24 2010/12/21 20:14:43 thib Exp $	*/
 /*	$NetBSD: ntfs_vfsops.c,v 1.7 2003/04/24 07:50:19 christos Exp $	*/
 
 /*-
@@ -436,11 +436,10 @@ ntfs_mountfs(devvp, mp, argsp, p)
 			goto out1;
 
 		/* Count valid entries */
-		for(num=0;;num++) {
+		for(num = 0; ; num++) {
 			error = ntfs_readattr(ntmp, VTONT(vp),
-					NTFS_A_DATA, NULL,
-					num * sizeof(ad), sizeof(ad),
-					&ad, NULL);
+			    NTFS_A_DATA, NULL, num * sizeof(ad), sizeof(ad),
+			    &ad, NULL);
 			if (error)
 				goto out1;
 			if (ad.ad_name[0] == 0)
@@ -448,18 +447,16 @@ ntfs_mountfs(devvp, mp, argsp, p)
 		}
 
 		/* Alloc memory for attribute definitions */
-		ntmp->ntm_ad = (struct ntvattrdef *) malloc(
-			num * sizeof(struct ntvattrdef),
-			M_NTFSMNT, M_WAITOK);
+		ntmp->ntm_ad = malloc(num * sizeof(struct ntvattrdef),
+		    M_NTFSMNT, M_WAITOK);
 
 		ntmp->ntm_adnum = num;
 
 		/* Read them and translate */
-		for(i=0;i<num;i++){
+		for(i = 0; i < num; i++){
 			error = ntfs_readattr(ntmp, VTONT(vp),
-					NTFS_A_DATA, NULL,
-					i * sizeof(ad), sizeof(ad),
-					&ad, NULL);
+			    NTFS_A_DATA, NULL, i * sizeof(ad), sizeof(ad),
+			    &ad, NULL);
 			if (error)
 				goto out1;
 			j = 0;
@@ -501,9 +498,9 @@ out:
 	}
 
 	/* lock the device vnode before calling VOP_CLOSE() */
-	VN_LOCK(devvp, LK_EXCLUSIVE | LK_RETRY, p);
+	vn_lock(devvp, LK_EXCLUSIVE | LK_RETRY, p);
 	(void)VOP_CLOSE(devvp, ronly ? FREAD : FREAD|FWRITE, NOCRED, p);
-	VOP__UNLOCK(devvp, 0, p);
+	VOP_UNLOCK(devvp, 0, p);
 	
 	return (error);
 }
@@ -634,7 +631,7 @@ ntfs_calccfree(
 
 	bmsize = VTOF(vp)->f_size;
 
-	tmp = (u_int8_t *) malloc(bmsize, M_TEMP, M_WAITOK);
+	tmp = malloc(bmsize, M_TEMP, M_WAITOK);
 
 	error = ntfs_readattr(ntmp, VTONT(vp), NTFS_A_DATA, NULL,
 			       0, bmsize, tmp, NULL);
@@ -828,13 +825,13 @@ ntfs_vgetex(
 
 	if (FTOV(fp)) {
 		/* vget() returns error if the vnode has been recycled */
-		if (VGET(FTOV(fp), lkflags, p) == 0) {
+		if (vget(FTOV(fp), lkflags, p) == 0) {
 			*vpp = FTOV(fp);
 			return (0);
 		}
 	}
 
-	error = getnewvnode(VT_NTFS, ntmp->ntm_mountp, ntfs_vnodeop_p, &vp);
+	error = getnewvnode(VT_NTFS, ntmp->ntm_mountp, &ntfs_vops, &vp);
 	if(error) {
 		ntfs_frele(fp);
 		ntfs_ntput(ip, p);
@@ -851,7 +848,7 @@ ntfs_vgetex(
 		vp->v_flag |= VROOT;
 
 	if (lkflags & LK_TYPE_MASK) {
-		error = VN_LOCK(vp, lkflags, p);
+		error = vn_lock(vp, lkflags, p);
 		if (error) {
 			vput(vp);
 			return (error);
@@ -871,13 +868,6 @@ ntfs_vget(
 	return ntfs_vgetex(mp, ino, NTFS_A_DATA, NULL,
 			LK_EXCLUSIVE | LK_RETRY, 0, curproc, vpp); /* XXX */
 }
-
-extern const struct vnodeopv_desc ntfs_vnodeop_opv_desc;
-
-const struct vnodeopv_desc * const ntfs_vnodeopv_descs[] = {
-	&ntfs_vnodeop_opv_desc,
-	NULL,
-};
 
 const struct vfsops ntfs_vfsops = {
 	ntfs_mount,

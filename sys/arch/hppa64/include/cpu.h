@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpu.h,v 1.17 2010/07/24 21:27:57 kettenis Exp $	*/
+/*	$OpenBSD: cpu.h,v 1.19 2010/12/21 14:56:23 claudio Exp $	*/
 
 /*
  * Copyright (c) 2005 Michael Shalayeff
@@ -110,9 +110,6 @@
 #define	splx(c)		spllower(c)
 
 #define	setsoftast()		(astpending = 1)
-#define	setsoftclock()		/* TODO */
-#define	setsoftnet()		/* TODO */
-#define	setsofttty()		/* TODO */
 
 #ifndef _LOCORE
 #include <sys/time.h>
@@ -137,6 +134,9 @@ struct cpu_info {
 	void		*ci_initstack;
 
 	u_long		ci_itmr;
+#ifdef DIAGNOSTIC
+	int		ci_mutex_level;
+#endif
 };
 
 struct cpu_info *curcpu(void);

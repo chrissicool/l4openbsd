@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile,v 1.290 2010/06/29 17:17:53 nicm Exp $
+#	$OpenBSD: Makefile,v 1.294 2010/10/26 20:56:03 robert Exp $
 
 TZDIR=		/usr/share/zoneinfo
 LOCALTIME=	Canada/Mountain
@@ -30,7 +30,7 @@ BIN1+=	wsconsctl.conf
 # -rw-rw-r--
 BIN2=	motd
 
-MISETS=	base${OSrev}.tgz comp${OSrev}.tgz misc${OSrev}.tgz \
+MISETS=	base${OSrev}.tgz comp${OSrev}.tgz \
 	man${OSrev}.tgz game${OSrev}.tgz etc${OSrev}.tgz
 
 PCS=	pcs750.bin
@@ -103,6 +103,7 @@ distribution-etc-root-var: distrib-dirs
 	${INSTALL} -c -o root -g wheel -m 600 sasyncd.conf ${DESTDIR}/etc
 	${INSTALL} -c -o root -g wheel -m 600 snmpd.conf ${DESTDIR}/etc
 	${INSTALL} -c -o root -g wheel -m 600 ldapd.conf ${DESTDIR}/etc
+	${INSTALL} -c -o root -g _nsd -m 640 nsd.conf ${DESTDIR}/etc
 	${INSTALL} -c -o ${BINOWN} -g ${BINGRP} -m 555 \
 	    etc.${MACHINE}/MAKEDEV ${DESTDIR}/dev
 	cd root; \
@@ -232,8 +233,6 @@ distribution-etc-root-var: distrib-dirs
 	    ${DESTDIR}/var/log/wtmp
 	${INSTALL} -c -o ${BINOWN} -g wheel -m 640 /dev/null \
 	    ${DESTDIR}/var/log/xferlog
-	${INSTALL} -c -o daemon -g staff -m 664 /dev/null \
-	    ${DESTDIR}/var/msgs/bounds
 	${INSTALL} -c -o ${BINOWN} -g utmp -m 664 /dev/null \
 	    ${DESTDIR}/var/run/utmp
 .if ${MACHINE} == "vax"
@@ -256,6 +255,9 @@ distribution-etc-root-var: distrib-dirs
 	    ${DESTDIR}/var/mail/root
 	${INSTALL} -c -o root -g wheel -m 440 ../usr.bin/sudo/sudoers \
 	    ${DESTDIR}/etc/sudoers
+	cd rc.d; \
+		${INSTALL} -c -o root -g wheel -m 644 rc.subr \
+		    ${DESTDIR}/etc/rc.d
 
 distribution:
 	exec ${SUDO} ${MAKE} distribution-etc-root-var

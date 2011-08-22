@@ -1,4 +1,4 @@
-/*	$OpenBSD: pfctl_osfp.c,v 1.16 2009/12/24 10:06:35 sobrado Exp $ */
+/*	$OpenBSD: pfctl_osfp.c,v 1.18 2010/10/18 15:55:28 deraadt Exp $ */
 
 /*
  * Copyright (c) 2003 Mike Frantzen <frantzen@openbsd.org>

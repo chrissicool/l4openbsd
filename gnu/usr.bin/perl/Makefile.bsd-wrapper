@@ -1,4 +1,4 @@
-# $OpenBSD: Makefile.bsd-wrapper,v 1.82 2010/05/10 18:20:31 drahn Exp $
+# $OpenBSD: Makefile.bsd-wrapper,v 1.84 2010/11/30 19:45:02 millert Exp $
 #
 # Build wrapper for Perl 5.10.0
 #
@@ -23,6 +23,7 @@ CONFIGURE_ARGS= -dsE -Dopenbsd_distribution=defined
 .if defined(THREADED_PERL) && ($(THREADED_PERL) == true)
 CONFIGURE_ARGS+= -Dusethreads
 CFLAGS+= -pthread
+LDFLAGS+= -pthread
 .endif
 .if !exists(${.OBJDIR}/config.over)
 CONFIGURE_ARGS+= -Dmksymlinks
@@ -35,7 +36,7 @@ LIB=	perl
 SRCS1=	gv.c toke.c perly.c pad.c regcomp.c dump.c util.c mg.c reentr.c \
 	mro.c hv.c av.c run.c pp_hot.c sv.c pp.c scope.c pp_ctl.c \
 	pp_sys.c doop.c doio.c regexec.c utf8.c taint.c deb.c universal.c \
-	xsutils.c globals.c perlio.c perlapi.c numeric.c mathoms.c locale.c \
+	globals.c perlio.c perlapi.c numeric.c mathoms.c locale.c \
 	pp_pack.c pp_sort.c
 SRCS=	${SRCS1} op.c perl.c
 
@@ -57,7 +58,7 @@ CPPFLAGS+= -DPERL_CORE -DPERL_RANDOM_DEVICE=\"/dev/arandom\" -I.
 STRIPFLAGS='-s'
 .endif
 
-GEN_AFTER= 	config.h uudmap.h cflags makeaperl makedepend makedir \
+GEN_AFTER= 	bitcount.h config.h uudmap.h cflags makeaperl makedepend \
 		myconfig writemain Makefile Policy.sh pod/Makefile \
 		x2p/Makefile x2p/cflags
 
@@ -73,7 +74,7 @@ all:	perl.build man.build
 man.build: perl.build
 	cd ${.CURDIR} && exec ${MAKE} -f Makefile.bsd-wrapper1 $@
 
-beforedepend: config.sh config.h uudmap.h Makefile makedepend x2p/Makefile writemain 
+beforedepend: config.sh config.h bitcount.h uudmap.h Makefile makedepend x2p/Makefile writemain 
 	cd ${.OBJDIR} && exec ${MAKE} depend
 
 perl.build:	perl.lib
@@ -92,8 +93,10 @@ Policy.sh:
 config.h: 
 	cd ${.OBJDIR} && exec /bin/sh config_h.SH
 
-uudmap.h: generate_uudmap
-	./generate_uudmap > uudmap.h
+uudmap.h: bitcount.h
+
+bitcount.h: generate_uudmap
+	./generate_uudmap uudmap.h bitcount.h
 
 generate_uudmap: generate_uudmap.o
 	${CC} -o generate_uudmap generate_uudmap.o
@@ -158,7 +161,7 @@ PICFLAG=-fPIC
 
 # The DynaLoader extension is now compiled statically into libperl
 miniperl: ${GENERATED} ${SRCS1:S/.c/.o/g} opmini.o miniperl.o miniperlmain.o
-	${CC} -o miniperl ${SRCS1:S/.c/.o/g} opmini.o miniperl.o miniperlmain.o -lm
+	${CC} -o miniperl ${SRCS1:S/.c/.o/g} opmini.o miniperl.o miniperlmain.o ${LDFLAGS} -lm
 
 opmini.c: op.c
 	rm -f opmini.c
@@ -174,7 +177,9 @@ lib/Config.pm: miniperl config.sh
 	cd ${.OBJDIR} && exec ${MAKE} preplibrary
 
 DynaLoader.c: miniperl ${DYNALOADER} lib/Config.pm
-	./miniperl -Ilib lib/ExtUtils/xsubpp -noprototypes -typemap \
+	./miniperl -Ilib -Icpan/Cwd -Icpan/Cwd/lib -Icpan/ExtUtils-ParseXS/lib \
+	    -Icpan/Getopt-Long/lib -Idist/constant/lib \
+	    cpan/ExtUtils-ParseXS/lib/ExtUtils/xsubpp -noprototypes -typemap \
 	    ../../lib/ExtUtils/typemap ${DYNALOADER} | \
 	    sed -f ${.CURDIR}/DynaLoader.sed > $@
 

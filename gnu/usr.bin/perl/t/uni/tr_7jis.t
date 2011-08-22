@@ -1,15 +1,12 @@
+#! perl -w
 #
-# $Id: tr_7jis.t,v 1.6 2009/10/12 18:30:28 millert Exp $
+# $Id$
 #
 # This script is written intentionally in ISO-2022-JP
 # requires Encode 1.83 or better to work
 # -- dankogai
 
 BEGIN {
-    if ($ENV{'PERL_CORE'}){
-        chdir 't';
-        @INC = '../lib';
-    }
     require Config; import Config;
     if ($Config{'extensions'} !~ /\bEncode\b/) {
       print "1..0 # Skip: Encode was not built\n";
@@ -28,11 +25,11 @@ BEGIN {
         exit 0;
     }
     $| = 1;
+    require './test.pl';
 }
 
 use strict;
-use Test::More tests => 6;
-use Encode;
+plan(tests => 6);
 use encoding 'iso-2022-jp';
 
 my @hiragana =  map {chr} ord("ぁ")..ord("ん");

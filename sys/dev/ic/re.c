@@ -1,4 +1,4 @@
-/*	$OpenBSD: re.c,v 1.127 2010/08/08 21:00:31 krw Exp $	*/
+/*	$OpenBSD: re.c,v 1.132 2010/11/28 22:13:48 kettenis Exp $	*/
 /*	$FreeBSD: if_re.c,v 1.31 2004/09/04 07:54:05 ru Exp $	*/
 /*
  * Copyright (c) 1997, 1998-2003
@@ -1104,7 +1104,6 @@ re_attach(struct rl_softc *sc, const char *intrstr)
 	ifp->if_ioctl = re_ioctl;
 	ifp->if_start = re_start;
 	ifp->if_watchdog = re_watchdog;
-	ifp->if_init = re_init;
 	if ((sc->rl_flags & RL_FLAG_NOJUMBO) == 0)
 		ifp->if_hardmtu = RL_JUMBO_MTU;
 	IFQ_SET_MAXLEN(&ifp->if_snd, RL_TX_QLEN);
@@ -1606,21 +1605,17 @@ re_intr(void *arg)
 		return (0);
 
 	rx = tx = 0;
-	for (;;) {
+	status = CSR_READ_2(sc, RL_ISR);
+	/* If the card has gone away the read returns 0xffff. */
+	if (status == 0xffff)
+		return (0);
+	if (status)
+		CSR_WRITE_2(sc, RL_ISR, status);
 
-		status = CSR_READ_2(sc, RL_ISR);
-		/* If the card has gone away the read returns 0xffff. */
-		if (status == 0xffff)
-			break;
-		if (status)
-			CSR_WRITE_2(sc, RL_ISR, status);
+	if (status & RL_ISR_TIMEOUT_EXPIRED)
+		claimed = 1;
 
-		if (status & RL_ISR_TIMEOUT_EXPIRED)
-			claimed = 1;
-
-		if ((status & RL_INTRS_CPLUS) == 0)
-			break;
-
+	if (status & RL_INTRS_CPLUS) {
 		if (status & (sc->rl_rx_ack | RL_ISR_RX_ERR)) {
 			rx |= re_rxeof(sc);
 			claimed = 1;
@@ -2043,8 +2038,10 @@ re_init(struct ifnet *ifp)
 	if (sc->sc_hwrev != RL_HWREV_8139CPLUS)
 		CSR_WRITE_2(sc, RL_MAXRXPKTLEN, 16383);
 
-	if (sc->rl_testmode)
+	if (sc->rl_testmode) {
+		splx(s);
 		return (0);
+	}
 
 	mii_mediachg(&sc->sc_mii);
 

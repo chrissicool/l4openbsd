@@ -1,5 +1,5 @@
 # Haiku hints file
-# $Id: haiku.sh,v 1.2 2009/10/12 18:24:37 millert Exp $
+# $Id$
 
 prefix="/boot/common"
 

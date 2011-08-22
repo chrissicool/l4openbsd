@@ -1,4 +1,4 @@
-/*	$OpenBSD: uhcivar.h,v 1.22 2009/11/04 19:14:10 kettenis Exp $ */
+/*	$OpenBSD: uhcivar.h,v 1.24 2010/12/14 16:13:16 jakemsr Exp $ */
 /*	$NetBSD: uhcivar.h,v 1.36 2002/12/31 00:39:11 augustss Exp $	*/
 /*	$FreeBSD: src/sys/dev/usb/uhcivar.h,v 1.14 1999/11/17 22:33:42 n_hibma Exp $	*/
 
@@ -159,7 +159,6 @@ typedef struct uhci_softc {
 
 	char sc_isreset;
 	char sc_suspend;
-	char sc_dying;
 
 	LIST_HEAD(, uhci_intr_info) sc_intrhead;
 
@@ -171,7 +170,6 @@ typedef struct uhci_softc {
 	char sc_vendor[32];		/* vendor string for root hub */
 	int sc_id_vendor;		/* vendor ID for root hub */
 
-	void *sc_powerhook;		/* cookie from power hook */
 	void *sc_shutdownhook;		/* cookie from shutdown hook */
 
 	struct device *sc_child;		/* /dev/usb# device */

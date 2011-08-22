@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_ethersubr.c,v 1.145 2010/07/02 00:49:43 claudio Exp $	*/
+/*	$OpenBSD: if_ethersubr.c,v 1.148 2011/01/28 13:19:44 reyk Exp $	*/
 /*	$NetBSD: if_ethersubr.c,v 1.19 1996/05/07 02:40:30 thorpej Exp $	*/
 
 /*
@@ -282,10 +282,12 @@ ether_output(ifp0, m0, dst, rt0)
 			if (rt->rt_gwroute == 0)
 				goto lookup;
 			if (((rt = rt->rt_gwroute)->rt_flags & RTF_UP) == 0) {
-				rtfree(rt); rt = rt0;
-			lookup: rt->rt_gwroute = rtalloc1(rt->rt_gateway,
-			    RT_REPORT, ifp->if_rdomain);
-				if ((rt = rt->rt_gwroute) == 0)
+				rtfree(rt);
+				rt = rt0;
+			lookup:
+				rt->rt_gwroute = rtalloc1(rt->rt_gateway,
+				    RT_REPORT, ifp->if_rdomain);
+				if ((rt = rt->rt_gwroute) == NULL)
 					senderr(EHOSTUNREACH);
 			}
 		}
@@ -668,7 +670,7 @@ ether_input(ifp0, eh, m)
 	 * If packet has been filtered by the bpf listener, drop it now
 	 */
 	if (m->m_flags & M_FILDROP) {
-		m_free(m);
+		m_freem(m);
 		return;
 	}
 
@@ -735,13 +737,6 @@ decapsulate:
 #if NPPPOE > 0 || defined(PIPEX)
 	case ETHERTYPE_PPPOEDISC:
 	case ETHERTYPE_PPPOE:
-		/* XXX we dont have this flag */
-		/*
-		if (m->m_flags & M_PROMISC) {
-			m_freem(m);
-			goto done;
-		}
-		*/
 #ifndef PPPOE_SERVER
 		if (m->m_flags & (M_MCAST | M_BCAST)) {
 			m_freem(m);
@@ -771,7 +766,7 @@ decapsulate:
 
 		schednetisr(NETISR_PPPOE);
 		break;
-#endif /* NPPPOE > 0 || defined(PIPEX) */
+#endif
 #ifdef AOE
 	case ETHERTYPE_AOE:
 		aoe_input(ifp, m);

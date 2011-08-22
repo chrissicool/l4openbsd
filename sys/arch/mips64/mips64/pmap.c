@@ -1,4 +1,4 @@
-/*	$OpenBSD: pmap.c,v 1.49 2010/02/02 02:49:57 syuu Exp $	*/
+/*	$OpenBSD: pmap.c,v 1.52 2010/12/06 20:57:17 miod Exp $	*/
 
 /*
  * Copyright (c) 2001-2004 Opsycon AB  (www.opsycon.se / www.opsycon.com)
@@ -1119,16 +1119,13 @@ pmap_extract(pmap_t pmap, vaddr_t va, paddr_t *pap)
  * Find first virtual address >= *vap that
  * will not cause cache aliases.
  */
-void
-pmap_prefer(paddr_t foff, vaddr_t *vap)
+vaddr_t
+pmap_prefer(paddr_t foff, vaddr_t va)
 {
-	if (CpuCacheAliasMask != 0) {
-#if 1
-		*vap += (foff - *vap) & (CpuCacheAliasMask | PAGE_MASK);
-#else
-		*vap += (*vap ^ foff) & CpuCacheAliasMask;
-#endif
-	}
+	if (CpuCacheAliasMask != 0)
+		va += (foff - va) & (CpuCacheAliasMask | PAGE_MASK);
+
+	return va;
 }
 
 /*
@@ -1629,3 +1626,45 @@ pmap_pg_free(struct pool *pp, void *item)
 	Mips_HitInvalidateDCache(curcpu(), va, pa, PAGE_SIZE);
 	uvm_pagefree(pg);
 }
+
+void
+pmap_proc_iflush(struct proc *p, vaddr_t va, vsize_t len)
+{
+#ifdef MULTIPROCESSOR
+	struct pmap *pmap = vm_map_pmap(&p->p_vmspace->vm_map);
+	CPU_INFO_ITERATOR cii;
+	struct cpu_info *ci;
+
+	CPU_INFO_FOREACH(cii, ci) {
+		if (ci->ci_curpmap == pmap) {
+			Mips_InvalidateICache(ci, va, len);
+			break;
+		}
+	}
+#else
+	Mips_InvalidateICache(curcpu(), va, len);
+#endif
+}
+
+#ifdef __HAVE_PMAP_DIRECT
+vaddr_t
+pmap_map_direct(vm_page_t pg)
+{
+	paddr_t pa = VM_PAGE_TO_PHYS(pg);
+	vaddr_t va = PHYS_TO_XKPHYS(pa, CCA_CACHED);
+
+	return va;
+}
+
+vm_page_t
+pmap_unmap_direct(vaddr_t va)
+{
+	paddr_t pa = XKPHYS_TO_PHYS(va);
+	vm_page_t pg = PHYS_TO_VM_PAGE(pa);
+
+	if (CpuCacheAliasMask)
+		Mips_HitInvalidateDCache(curcpu(), va, pa, PAGE_SIZE);
+
+	return pg;
+}
+#endif

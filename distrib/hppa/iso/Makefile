@@ -1,4 +1,4 @@
-#	$OpenBSD: Makefile,v 1.5 2009/04/17 03:58:54 deraadt Exp $
+#	$OpenBSD: Makefile,v 1.8 2011/02/17 20:24:11 jasper Exp $
 
 TOP=	${.CURDIR}/..
 
@@ -10,8 +10,8 @@ RELDIR?=	/home/rel-${MACHINE}
 
 BASE=		${RELDIR}/base${OSrev}.tgz ${RELDIR}/comp${OSrev}.tgz \
 		${RELDIR}/etc${OSrev}.tgz ${RELDIR}/game${OSrev}.tgz \
-		${RELDIR}/man${OSrev}.tgz ${RELDIR}/misc${OSrev}.tgz \
-		${RELDIR}/bsd ${RELDIR}/bsd.rd \
+		${RELDIR}/man${OSrev}.tgz \
+		${RELDIR}/bsd ${RELDIR}/bsd.mp ${RELDIR}/bsd.rd \
 		${RELDIR}/INSTALL.${MACHINE}
 XBASE=		${RELXDIR}/xbase${OSrev}.tgz ${RELXDIR}/xetc${OSrev}.tgz \
 		${RELXDIR}/xfont${OSrev}.tgz ${RELXDIR}/xshare${OSrev}.tgz \
@@ -37,9 +37,6 @@ ${CDROM}: ${BASE} ${XBASE}
 	    -o ${.OBJDIR}/${CDROM} ${.OBJDIR}/cd-dir
 	dd if=${DESTDIR}/usr/mdec/cdboot of=${.OBJDIR}/${CDROM} \
 	    bs=32k count=1 conv=notrunc
-	vnconfig -v -c svnd0 ${.OBJDIR}/${CDROM}
-	disklabel -w svnd0 fakecdrom "OpenBSD/${MACHINE}    "
-	vnconfig -u svnd0
 	dd if=/dev/zero bs=64k count=1 >> ${.OBJDIR}/${CDROM}
 
 install:

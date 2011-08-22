@@ -1,4 +1,4 @@
-/*	$OpenBSD: expand.c,v 1.8 2010/06/01 23:06:23 jacekm Exp $	*/
+/*	$OpenBSD: expand.c,v 1.11 2010/11/28 14:35:58 gilles Exp $	*/
 
 /*
  * Copyright (c) 2009 Gilles Chehade <gilles@openbsd.org>
@@ -22,37 +22,37 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 
-#include <ctype.h>
-#include <errno.h>
 #include <event.h>
-#include <fcntl.h>
+#include <imsg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "smtpd.h"
+#include "log.h"
 
 struct expandnode *
-expandtree_lookup(struct expandtree *tree, struct expandnode *node)
+expandtree_lookup(struct expandtree *expandtree, struct expandnode *node)
 {
 	struct expandnode key;
 
 	key = *node;
-	return RB_FIND(expandtree, tree, &key);
+	return RB_FIND(expandtree, expandtree, &key);
 }
 
 void
-expandtree_increment_node(struct expandtree *tree, struct expandnode *node)
+expandtree_increment_node(struct expandtree *expandtree, struct expandnode *node)
 {
 	struct expandnode *p;
 
-	p = expandtree_lookup(tree, node);
+	p = expandtree_lookup(expandtree, node);
 	if (p == NULL) {
-		p = malloc(sizeof *node);
+		p = calloc(1, sizeof(struct expandnode));
 		if (p == NULL)
-			fatal(NULL);
-		*p = *node;			/* XXX p->refcnt == node->refcnt */
-		RB_INSERT(expandtree, tree, p);
+			fatal("calloc");
+		*p = *node;
+		if (RB_INSERT(expandtree, expandtree, p))
+			fatalx("expandtree_increment_node: node already exists");
 	}
 	p->refcnt++;
 }
@@ -85,8 +85,10 @@ void
 expandtree_free_nodes(struct expandtree *expandtree)
 {
 	struct expandnode *p;
+	struct expandnode *nxt;
 
-	while ((p = RB_MIN(expandtree, expandtree))) {
+	for (p = RB_MIN(expandtree, expandtree); p != NULL; p = nxt) {
+		nxt = RB_NEXT(expandtree, expandtree, p);
 		RB_REMOVE(expandtree, expandtree, p);
 		free(p);
 	}

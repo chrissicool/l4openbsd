@@ -1,4 +1,4 @@
-/* $OpenBSD: zts.c,v 1.11 2007/05/29 21:09:43 robert Exp $ */
+/* $OpenBSD: zts.c,v 1.14 2010/09/07 16:21:41 deraadt Exp $ */
 /*
  * Copyright (c) 2005 Dale Rahn <drahn@openbsd.org>
  *
@@ -71,9 +71,9 @@ struct tsscale {
 
 int	zts_match(struct device *, void *, void *);
 void	zts_attach(struct device *, struct device *, void *);
+int	zts_activate(struct device *, int);
 int	zts_enable(void *);
 void	zts_disable(void *);
-void	zts_power(int, void *);
 void	zts_poll(void *);
 int	zts_irq(void *);
 int	zts_ioctl(void *, u_long, caddr_t, int, struct proc *);
@@ -82,8 +82,8 @@ struct zts_softc {
 	struct device sc_dev;
 	struct timeout sc_ts_poll;
 	void *sc_gh;
-	void *sc_powerhook;
 	int sc_enabled;
+	int sc_running;
 	int sc_buttons; /* button emulation ? */
 	struct device *sc_wsmousedev;
 	int sc_oldx;
@@ -94,7 +94,8 @@ struct zts_softc {
 };
 
 struct cfattach zts_ca = {
-	sizeof(struct zts_softc), zts_match, zts_attach
+	sizeof(struct zts_softc), zts_match, zts_attach, NULL,
+	zts_activate
 };
 
 struct cfdriver zts_cd = {
@@ -155,12 +156,6 @@ zts_enable(void *v)
 
 	timeout_del(&sc->sc_ts_poll);
 
-	sc->sc_powerhook = powerhook_establish(zts_power, sc);
-	if (sc->sc_powerhook == NULL) {
-		printf("%s: enable failed\n", sc->sc_dev.dv_xname);
-		return ENOMEM;
-	}
-
 	pxa2x0_gpio_set_function(GPIO_TP_INT_C3K, GPIO_IN);
 
 	/* XXX */
@@ -173,6 +168,7 @@ zts_enable(void *v)
 
 	/* enable interrupts */
 	sc->sc_enabled = 1;
+	sc->sc_running = 1;
 	sc->sc_buttons = 0;
 
 	return 0;
@@ -185,11 +181,6 @@ zts_disable(void *v)
 
 	timeout_del(&sc->sc_ts_poll);
 
-	if (sc->sc_powerhook != NULL) {
-		powerhook_disestablish(sc->sc_powerhook);
-		sc->sc_powerhook = NULL;
-	}
-
 	if (sc->sc_gh != NULL) {
 #if 0
 		pxa2x0_gpio_intr_disestablish(sc->sc_gh);
@@ -199,17 +190,19 @@ zts_disable(void *v)
 
 	/* disable interrupts */
 	sc->sc_enabled = 0;
+	sc->sc_running = 0;
 }
 
-void
-zts_power(int why, void *v)
+int
+zts_activate(struct device *self, int act)
 {
-	struct zts_softc *sc = v;
+	struct zts_softc *sc = (struct zts_softc *)self;
 
-	switch (why) {
-	case PWR_STANDBY:
-	case PWR_SUSPEND:
-		sc->sc_enabled = 0;
+	switch (act) {
+	case DVACT_SUSPEND:
+		if (sc->sc_enabled == 0)
+			break;
+		sc->sc_running = 0;
 #if 0
 		pxa2x0_gpio_intr_disestablish(sc->sc_gh);
 #endif
@@ -225,7 +218,9 @@ zts_power(int why, void *v)
 		    GPIO_OUT | GPIO_SET);
 		break;
 
-	case PWR_RESUME:
+	case DVACT_RESUME:
+		if (sc->sc_enabled == 0)
+			break;
 		pxa2x0_gpio_set_function(GPIO_TP_INT_C3K, GPIO_IN);
 		pxa2x0_gpio_intr_mask(sc->sc_gh);
 
@@ -240,9 +235,10 @@ zts_power(int why, void *v)
 #else
 		pxa2x0_gpio_intr_unmask(sc->sc_gh);
 #endif
-		sc->sc_enabled = 1;
+		sc->sc_running = 1;
 		break;
 	}
+	return 0;
 }
 
 struct zts_pos {
@@ -493,7 +489,7 @@ zts_irq(void *v)
 	int down;
 	extern int zkbd_modstate;
 
-	if (!sc->sc_enabled)
+	if (!sc->sc_running)
 		return 0;
 
 	s = splhigh();

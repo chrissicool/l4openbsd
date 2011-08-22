@@ -1,4 +1,4 @@
-/*	$OpenBSD: pmap.c,v 1.55 2010/05/13 19:27:24 oga Exp $	*/
+/*	$OpenBSD: pmap.c,v 1.60 2010/11/30 19:30:16 kettenis Exp $	*/
 /*	$NetBSD: pmap.c,v 1.3 2003/05/08 18:13:13 thorpej Exp $	*/
 
 /*
@@ -121,6 +121,7 @@
 #include <uvm/uvm.h>
 
 #include <machine/atomic.h>
+#include <machine/lock.h>
 #include <machine/cpu.h>
 #include <machine/specialreg.h>
 #include <machine/gdt.h>
@@ -244,15 +245,6 @@ int pmap_pg_g = 0;
 int pmap_pg_wc = PG_UCMINUS;
 
 /*
- * i386 physical memory comes in a big contig chunk with a small
- * hole toward the front of it...  the following 4 paddr_t's
- * (shared with machdep.c) describe the physical address space
- * of this machine.
- */
-paddr_t avail_start;	/* PA of first available physical page */
-paddr_t avail_end;	/* PA of last available physical page */
-
-/*
  * other data structures
  */
 
@@ -359,7 +351,7 @@ static __inline boolean_t
 pmap_is_active(struct pmap *pmap, int cpu_id)
 {
 	return (pmap == pmap_kernel() ||
-	    (pmap->pm_cpus & (1U << cpu_id)) != 0);
+	    (pmap->pm_cpus & (1ULL << cpu_id)) != 0);
 }
 
 static __inline u_int
@@ -1020,12 +1012,7 @@ pmap_create(void)
 	}
 	pmap->pm_stats.wired_count = 0;
 	pmap->pm_stats.resident_count = 1;	/* count the PDP allocd below */
-	pmap->pm_flags = 0;
-
-	/* init the LDT */
-	pmap->pm_ldt = NULL;
-	pmap->pm_ldt_len = 0;
-	pmap->pm_ldt_sel = GSYSSEL(GLDT_SEL, SEL_KPL);
+	pmap->pm_cpus = 0;
 
 	/* allocate PDP */
 
@@ -1075,6 +1062,12 @@ pmap_destroy(struct pmap *pmap)
 	 * reference count is zero, free pmap resources and then free pmap.
 	 */
 
+#ifdef DIAGNOSTIC
+	if (pmap->pm_cpus != 0)
+		printf("pmap_destroy: pmap %p cpus=0x%lx\n",
+		    (void *)pmap, pmap->pm_cpus);
+#endif
+
 	/*
 	 * remove it from global list of pmaps
 	 */
@@ -1114,9 +1107,9 @@ pmap_reference(struct pmap *pmap)
 }
 
 /*
- * pmap_activate: activate a process' pmap (fill in %cr3 and LDT info)
+ * pmap_activate: activate a process' pmap (fill in %cr3)
  *
- * => called from cpu_switch()
+ * => called from cpu_fork() and when switching pmaps during exec
  * => if p is the curproc, then load it into the MMU
  */
 
@@ -1127,17 +1120,15 @@ pmap_activate(struct proc *p)
 	struct pmap *pmap = p->p_vmspace->vm_map.pmap;
 
 	pcb->pcb_pmap = pmap;
-	pcb->pcb_ldt_sel = pmap->pm_ldt_sel;
 	pcb->pcb_cr3 = pmap->pm_pdirpa;
-	if (p == curproc)
+	if (p == curproc) {
 		lcr3(pcb->pcb_cr3);
-	if (pcb == curpcb)
-		lldt(pcb->pcb_ldt_sel);
 
-	/*
-	 * mark the pmap in use by this processor.
-	 */
-	x86_atomic_setbits_ul(&pmap->pm_cpus, (1U << cpu_number()));
+		/*
+		 * mark the pmap in use by this processor.
+		 */
+		x86_atomic_setbits_u64(&pmap->pm_cpus, (1ULL << cpu_number()));
+	}
 }
 
 /*
@@ -1152,8 +1143,7 @@ pmap_deactivate(struct proc *p)
 	/*
 	 * mark the pmap no longer in use by this processor. 
 	 */
-	x86_atomic_clearbits_ul(&pmap->pm_cpus, (1U << cpu_number()));
-
+	x86_atomic_clearbits_u64(&pmap->pm_cpus, (1ULL << cpu_number()));
 }
 
 /*
@@ -2466,13 +2456,13 @@ pmap_tlb_shootpage(struct pmap *pm, vaddr_t va)
 	struct cpu_info *ci, *self = curcpu();
 	CPU_INFO_ITERATOR cii;
 	long wait = 0;
-	int mask = 0;
+	u_int64_t mask = 0;
 
 	CPU_INFO_FOREACH(cii, ci) {
 		if (ci == self || !pmap_is_active(pm, ci->ci_cpuid) ||
 		    !(ci->ci_flags & CPUF_RUNNING))
 			continue;
-		mask |= 1 << ci->ci_cpuid;
+		mask |= (1ULL << ci->ci_cpuid);
 		wait++;
 	}
 
@@ -2485,7 +2475,7 @@ pmap_tlb_shootpage(struct pmap *pm, vaddr_t va)
 		}
 		tlb_shoot_addr1 = va;
 		CPU_INFO_FOREACH(cii, ci) {
-			if ((mask & 1 << ci->ci_cpuid) == 0)
+			if ((mask & (1ULL << ci->ci_cpuid)) == 0)
 				continue;
 			if (x86_fast_ipi(ci, LAPIC_IPI_INVLPG) != 0)
 				panic("pmap_tlb_shootpage: ipi failed");
@@ -2503,14 +2493,14 @@ pmap_tlb_shootrange(struct pmap *pm, vaddr_t sva, vaddr_t eva)
 	struct cpu_info *ci, *self = curcpu();
 	CPU_INFO_ITERATOR cii;
 	long wait = 0;
-	int mask = 0;
+	u_int64_t mask = 0;
 	vaddr_t va;
 
 	CPU_INFO_FOREACH(cii, ci) {
 		if (ci == self || !pmap_is_active(pm, ci->ci_cpuid) ||
 		    !(ci->ci_flags & CPUF_RUNNING))
 			continue;
-		mask |= 1 << ci->ci_cpuid;
+		mask |= (1ULL << ci->ci_cpuid);
 		wait++;
 	}
 
@@ -2524,7 +2514,7 @@ pmap_tlb_shootrange(struct pmap *pm, vaddr_t sva, vaddr_t eva)
 		tlb_shoot_addr1 = sva;
 		tlb_shoot_addr2 = eva;
 		CPU_INFO_FOREACH(cii, ci) {
-			if ((mask & 1 << ci->ci_cpuid) == 0)
+			if ((mask & (1ULL << ci->ci_cpuid)) == 0)
 				continue;
 			if (x86_fast_ipi(ci, LAPIC_IPI_INVLRANGE) != 0)
 				panic("pmap_tlb_shootrange: ipi failed");
@@ -2543,12 +2533,12 @@ pmap_tlb_shoottlb(void)
 	struct cpu_info *ci, *self = curcpu();
 	CPU_INFO_ITERATOR cii;
 	long wait = 0;
-	int mask = 0;
+	u_int64_t mask = 0;
 
 	CPU_INFO_FOREACH(cii, ci) {
 		if (ci == self || !(ci->ci_flags & CPUF_RUNNING))
 			continue;
-		mask |= 1 << ci->ci_cpuid;
+		mask |= (1ULL << ci->ci_cpuid);
 		wait++;
 	}
 
@@ -2561,7 +2551,7 @@ pmap_tlb_shoottlb(void)
 		}
 
 		CPU_INFO_FOREACH(cii, ci) {
-			if ((mask & 1 << ci->ci_cpuid) == 0)
+			if ((mask & (1ULL << ci->ci_cpuid)) == 0)
 				continue;
 			if (x86_fast_ipi(ci, LAPIC_IPI_INVLTLB) != 0)
 				panic("pmap_tlb_shoottlb: ipi failed");

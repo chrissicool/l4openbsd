@@ -5,9 +5,6 @@
  *		Adapted from dl_dlopen.xs reference implementation by
  *              Paul Marquess (pmarquess@bfsec.bt.co.uk)
  * $Log: dl_mac.xs,v $
- * Revision 1.6  2009/10/12 18:24:27  millert
- * Merge in perl 5.10.1
- *
  * Revision 1.3  1998/04/07 01:47:24  neeri
  * MacPerl 5.2.0r4b1
  *

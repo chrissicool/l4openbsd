@@ -1,4 +1,4 @@
-/*	$OpenBSD: ommmc.c,v 1.6 2010/06/01 03:09:41 drahn Exp $	*/
+/*	$OpenBSD: ommmc.c,v 1.8 2010/09/06 19:20:19 deraadt Exp $	*/
 
 /*
  * Copyright (c) 2009 Dale Rahn <drahn@openbsd.org>
@@ -516,8 +516,7 @@ ommmc_power(int why, void *arg)
 #endif
 
 	switch(why) {
-	case PWR_STANDBY:
-	case PWR_SUSPEND:
+	case DVACT_SUSPEND:
 		/* XXX poll for command completion or suspend command
 		 * in progress */
 
@@ -528,7 +527,7 @@ ommmc_power(int why, void *arg)
 #endif
 		break;
 
-	case PWR_RESUME:
+	case DVACT_RESUME:
 		/* Restore the host controller state. */
 #if 0
 		(void)ommmc_host_reset(sc);

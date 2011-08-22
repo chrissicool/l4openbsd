@@ -1,4 +1,4 @@
-/*	$OpenBSD: ufs_vnops.c,v 1.92 2010/08/02 02:03:21 matthew Exp $	*/
+/*	$OpenBSD: ufs_vnops.c,v 1.97 2010/12/21 20:14:44 thib Exp $	*/
 /*	$NetBSD: ufs_vnops.c,v 1.18 1996/05/11 18:28:04 mycroft Exp $	*/
 
 /*
@@ -748,7 +748,7 @@ abortit:
 		if ((fcnp->cn_flags & SAVESTART) == 0)
 			panic("ufs_rename: lost from startdir");
 		fcnp->cn_nameiop = DELETE;
-		if ((error = relookup(fdvp, &fvp, fcnp)) != 0)
+		if ((error = vfs_relookup(fdvp, &fvp, fcnp)) != 0)
 			return (error);		/* relookup did vrele() */
 		vrele(fdvp);
 		return (VOP_REMOVE(fdvp, fvp, fcnp));
@@ -855,7 +855,7 @@ abortit:
 		}
 		if ((tcnp->cn_flags & SAVESTART) == 0)
 			panic("ufs_rename: lost to startdir");
-		if ((error = relookup(tdvp, &tvp, tcnp)) != 0)
+		if ((error = vfs_relookup(tdvp, &tvp, tcnp)) != 0)
 			goto out;
 		vrele(tdvp); /* relookup() acquired a reference */
 		dp = VTOI(tdvp);
@@ -1004,7 +1004,7 @@ abortit:
 	fcnp->cn_flags |= LOCKPARENT | LOCKLEAF;
 	if ((fcnp->cn_flags & SAVESTART) == 0)
 		panic("ufs_rename: lost from startdir");
-	if ((error = relookup(fdvp, &fvp, fcnp)) != 0) {
+	if ((error = vfs_relookup(fdvp, &fvp, fcnp)) != 0) {
 		vrele(ap->a_fvp);
 		return (error);
 	}
@@ -1357,7 +1357,7 @@ ufs_symlink(void *v)
 	} else
 		error = vn_rdwr(UIO_WRITE, vp, ap->a_target, len, (off_t)0,
 		    UIO_SYSSPACE, IO_NODELOCKED, ap->a_cnp->cn_cred, NULL,
-		    (struct proc *)0);
+		    curproc);
 	vput(vp);
 	return (error);
 }
@@ -1570,7 +1570,7 @@ ufs_strategy(void *v)
 	}
 	vp = ip->i_devvp;
 	bp->b_dev = vp->v_rdev;
-	VOCALL(vp->v_op, VOFFSET(vop_strategy), ap);
+	(vp->v_op->vop_strategy)(ap);
 	return (0);
 }
 
@@ -1617,7 +1617,7 @@ ufsspec_read(void *v)
 	 * Set access flag.
 	 */
 	VTOI(ap->a_vp)->i_flag |= IN_ACCESS;
-	return (VOCALL (spec_vnodeop_p, VOFFSET(vop_read), ap));
+	return (spec_read(ap));
 }
 
 /*
@@ -1632,7 +1632,7 @@ ufsspec_write(void *v)
 	 * Set update and change flags.
 	 */
 	VTOI(ap->a_vp)->i_flag |= IN_CHANGE | IN_UPDATE;
-	return (VOCALL (spec_vnodeop_p, VOFFSET(vop_write), ap));
+	return (spec_write(ap));
 }
 
 /*
@@ -1653,7 +1653,7 @@ ufsspec_close(void *v)
 		getmicrotime(&tv);
 		ITIMES(ip, &tv, &tv);
 	}
-	return (VOCALL (spec_vnodeop_p, VOFFSET(vop_close), ap));
+	return (spec_close(ap));
 }
 
 #ifdef FIFO
@@ -1664,13 +1664,12 @@ int
 ufsfifo_read(void *v)
 {
 	struct vop_read_args *ap = v;
-	extern int (**fifo_vnodeop_p)(void *);
 
 	/*
 	 * Set access flag.
 	 */
 	VTOI(ap->a_vp)->i_flag |= IN_ACCESS;
-	return (VOCALL (fifo_vnodeop_p, VOFFSET(vop_read), ap));
+	return (fifo_read(ap));
 }
 
 /*
@@ -1680,13 +1679,12 @@ int
 ufsfifo_write(void *v)
 {
 	struct vop_write_args *ap = v;
-	extern int (**fifo_vnodeop_p)(void *);
 
 	/*
 	 * Set update and change flags.
 	 */
 	VTOI(ap->a_vp)->i_flag |= IN_CHANGE | IN_UPDATE;
-	return (VOCALL (fifo_vnodeop_p, VOFFSET(vop_write), ap));
+	return (fifo_write(ap));
 }
 
 /*
@@ -1698,7 +1696,6 @@ int
 ufsfifo_close(void *v)
 {
 	struct vop_close_args *ap = v;
-	extern int (**fifo_vnodeop_p)(void *);
 	struct vnode *vp = ap->a_vp;
 	struct inode *ip = VTOI(vp);
 
@@ -1708,7 +1705,7 @@ ufsfifo_close(void *v)
 		getmicrotime(&tv);
 		ITIMES(ip, &tv, &tv);
 	}
-	return (VOCALL (fifo_vnodeop_p, VOFFSET(vop_close), ap));
+	return (fifo_close(ap));
 }
 #endif /* FIFO */
 
@@ -1763,8 +1760,8 @@ ufs_advlock(void *v)
  * vnodes.
  */
 int
-ufs_vinit(struct mount *mntp, int (**specops)(void *),
-    int (**fifoops)(void *), struct vnode **vpp)
+ufs_vinit(struct mount *mntp, struct vops *specops, struct vops *fifoops,
+    struct vnode **vpp)
 {
 	struct inode *ip;
 	struct vnode *vp, *nvp;
@@ -1784,7 +1781,7 @@ ufs_vinit(struct mount *mntp, int (**specops)(void *),
 			 */
 			nvp->v_data = vp->v_data;
 			vp->v_data = NULL;
-			vp->v_op = spec_vnodeop_p;
+			vp->v_op = &spec_vops;
 #ifdef VFSDEBUG
 			vp->v_flag &= ~VLOCKSWORK;
 #endif

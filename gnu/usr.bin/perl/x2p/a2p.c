@@ -10,7 +10,7 @@ static const char yysccsid[] = "@(#)yaccpar	1.9 (Berkeley) 02/21/93";
 extern int yyparse(void);
 #define YYPREFIX "yy"
 #line 2 "a2p.y"
-/* $RCSfile: a2p.c,v $$Revision: 1.11 $$Date: 2009/10/12 18:30:28 $
+/* $RCSfile: a2p.y,v $$Revision: 4.1 $$Date: 92/08/07 18:29:12 $
  *
  *    Copyright (C) 1991, 1992, 1993, 1994, 1996, 1997, 1999, 2000,
  *    by Larry Wall and others
@@ -18,10 +18,7 @@ extern int yyparse(void);
  *    You may distribute under the terms of either the GNU General Public
  *    License or the Artistic License, as specified in the README file.
  *
- * $Log: a2p.c,v $
- * Revision 1.11  2009/10/12 18:30:28  millert
- * Merge in perl 5.10.1; part two
- *
+ * $Log:	a2p.y,v $
  */
 
 #include "INTERN.h"
