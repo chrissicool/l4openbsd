@@ -2,3 +2,5 @@ obj
 obj.*
 *.swp
 *~
+*.orig
+*.rej
